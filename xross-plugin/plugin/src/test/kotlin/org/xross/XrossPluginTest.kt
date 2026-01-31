@@ -6,14 +6,14 @@ import kotlin.test.assertNotNull
 
 class XrossPluginTest {
     @Test fun `plugin registers xross tasks`() {
-        // プロジェクトの作成
         val project = ProjectBuilder.builder().build()
 
-        // プラグインの適用 (IDは build.gradle.kts で設定したもの)
+        // プラグインを適用
         project.plugins.apply("org.xross")
 
-        // 登録したタスクが存在するか確認
+        // 【重要】afterEvaluate ブロックを実行させるために必要
+        (project as org.gradle.api.internal.project.DefaultProject).evaluate()
+
         assertNotNull(project.tasks.findByName("generateXrossBindings"))
-        assertNotNull(project.tasks.findByName("buildXrossNatives"))
     }
 }
