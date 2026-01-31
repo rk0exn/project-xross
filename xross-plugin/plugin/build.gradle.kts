@@ -70,3 +70,12 @@ tasks.withType<Test>().configureEach {
         languageVersion.set(JavaLanguageVersion.of(25))
     })
 }
+
+// XrossPlugin.kt 内の apply メソッドに追加する例
+project.tasks.withType(Test::class.java).configureEach {
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+}
+
+project.tasks.withType(JavaExec::class.java).configureEach {
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+}

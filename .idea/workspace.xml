@@ -21,19 +21,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="f975a9a1-e29b-4a10-834b-aa32ce0e2a24" name="変更" comment="">
-      <change afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossClass.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossExtension.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossMethod.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossType.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/test/kotlin/org/xross/XrossPluginTest.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/xross.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/xross.iml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/gradle/libs.versions.toml" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/gradle/libs.versions.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/build.gradle.kts" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/build.gradle.kts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/functionalTest/kotlin/org/example/XrossPluginPluginFunctionalTest.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/functionalTest/kotlin/org/xross/XrossPluginFunctionalTest.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossPlugin.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossPlugin.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/test/kotlin/org/example/XrossPluginPluginTest.kt" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -154,7 +142,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1769839797497</updated>
-      <workItem from="1769839799702" duration="10957000" />
+      <workItem from="1769839799702" duration="11095000" />
     </task>
     <servers />
   </component>
