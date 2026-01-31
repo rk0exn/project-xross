@@ -4,12 +4,12 @@ kotlin = "2.3.0" # 2.3.0はまだ先なので安定版の最新付近を指定
 serialization = "1.7.3"
 kotlinpoet = "2.0.0"
 gradle = "9.3.0"
+kotlin-gradle = "1.9.20"
 [libraries]
 # Gradle Plugin 開発に必要な依存
 gradle-api = { module = "dev.gradleplugins:gradle-api", version.ref = "gradle" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
 kotlinpoet = { group = "com.squareup", name = "kotlinpoet", version.ref = "kotlinpoet" }
-
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

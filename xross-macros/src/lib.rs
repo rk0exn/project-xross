@@ -199,7 +199,7 @@ pub fn jvm_export_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // JSON書き出し
     let class_meta = XrossClass {
-        package: package_name,
+        package_name: package_name,
         struct_name: struct_name_ident.to_string(),
         docs: vec![], // implブロックからは取りづらいためderiveと合わせるのが理想
         fields: vec![],

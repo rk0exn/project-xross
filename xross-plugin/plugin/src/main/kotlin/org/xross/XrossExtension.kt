@@ -4,5 +4,7 @@ package org.xross
 interface XrossExtension {
     var rustProjectDir: String
     var crateName: String
+
+    var packageName:String
 }
 
