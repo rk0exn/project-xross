@@ -1,6 +1,5 @@
 use std::{env, fs, path::Path};
 use serde::{Serialize, Deserialize}; // serde を追加
-use serde_json::Value;
 
 // xross-macros/src/lib.rs で定義したメタデータ構造体をコピー
 // あるいは、xross-core が xross-macros に依存するようにして、use xross_macros::... とする
