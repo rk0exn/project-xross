@@ -4,11 +4,25 @@
  * The settings file is used to specify which projects to include in your build.
  * For more detailed information on multi-project builds, please refer to https://docs.gradle.org/9.3.0/userguide/multi_project_builds.html in the Gradle documentation.
  */
-
-plugins {
-    // Apply the foojay-resolver plugin to allow automatic download of JDKs
-    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
-}
-
 rootProject.name = "xross-example"
 include("app")
+
+pluginManagement {
+    repositories {
+        mavenLocal()
+        gradlePluginPortal()
+        mavenCentral()
+    }
+    plugins {
+        // Apply the foojay-resolver plugin to allow automatic download of JDKs
+        id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+    }
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == "org.xross") {
+                // plugin プロジェクトの成果物を指すようにする
+                useModule("org.xross:plugin:0.1.0")
+            }
+        }
+    }
+}

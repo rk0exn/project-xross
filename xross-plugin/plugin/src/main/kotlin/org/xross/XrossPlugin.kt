@@ -66,7 +66,7 @@ class XrossPlugin @Inject constructor(
 
     private fun generateKotlinCode(meta: XrossClass, outputDir: File, crateName: String) {
         val libObjectName = "Lib${crateName.replaceFirstChar { it.uppercase() }}"
-        val libPackage = meta.package_name
+        val libPackage = meta.packageName
 
         // Panama API Classes
         val linkerClass = ClassName("java.lang.foreign", "Linker")
@@ -84,7 +84,7 @@ class XrossPlugin @Inject constructor(
             .build()
 
         // 2. {Struct} Class
-        val structClass = TypeSpec.classBuilder(meta.struct_name)
+        val structClass = TypeSpec.classBuilder(meta.structName)
             .primaryConstructor(FunSpec.constructorBuilder()
                 .addParameter("segment", memorySegmentClass)
                 .build())
@@ -97,7 +97,7 @@ class XrossPlugin @Inject constructor(
             }
             .build()
 
-        FileSpec.builder(libPackage, meta.struct_name)
+        FileSpec.builder(libPackage, meta.structName)
             .addType(libObject)
             .addType(structClass)
             .build()

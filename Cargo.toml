@@ -4,9 +4,9 @@ resolver = "3"  # これを追加
 # 管理するパッケージ（クレート）をここにリストアップします
 members = [
     "xross-core",
-    "xross-example",
     "xross-macros",
-    "xross-metadata"
+    "xross-metadata",
+    "xross-example/rust"
 ]
 
 # 共通の依存関係がある場合は、ここで一括管理も可能です (Rust 1.64+)

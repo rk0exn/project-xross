@@ -4,4 +4,4 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-xross-core = { path = "../xross-core" }
+xross-core = { path = "../../xross-core" }

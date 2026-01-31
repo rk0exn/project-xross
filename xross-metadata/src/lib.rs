@@ -11,6 +11,7 @@ pub enum XrossType {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct XrossField {
     pub name: String,
     pub ty: XrossType,
@@ -18,6 +19,7 @@ pub struct XrossField {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct XrossMethod {
     pub name: String,
     pub symbol: String,
@@ -28,6 +30,7 @@ pub struct XrossMethod {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct XrossClass {
     pub package: String,
     pub struct_name: String,

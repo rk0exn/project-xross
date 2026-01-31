@@ -8,7 +8,7 @@
       <package file="$PROJECT_DIR$/xross-core">
         <feature name="default" enabled="true" />
       </package>
-      <package file="$PROJECT_DIR$/xross-example">
+      <package file="$PROJECT_DIR$/xross-example/rust">
         <feature name="default" enabled="true" />
       </package>
       <package file="$PROJECT_DIR$/xross-macros">
@@ -21,7 +21,22 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="f975a9a1-e29b-4a10-834b-aa32ce0e2a24" name="変更" comment="">
+      <change afterPath="$PROJECT_DIR$/.idea/modules/xross-example.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/gradle.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/gradle.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-example/app/build.gradle.kts" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/app/build.gradle.kts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-example/app/src/main/kotlin/org/example/App.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/app/src/main/kotlin/org/example/App.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-example/gradle/libs.versions.toml" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/gradle/libs.versions.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-example/rust/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/rust/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-example/settings.gradle.kts" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/settings.gradle.kts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-metadata/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-metadata/src/lib.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/build.gradle.kts" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/build.gradle.kts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossClass.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossClass.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossMethod.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossMethod.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossPlugin.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossPlugin.kt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -30,6 +45,9 @@
   </component>
   <component name="ExecutionTargetManager" SELECTED_TARGET="RsBuildProfile:test" />
   <component name="ExternalProjectsData">
+    <projectState path="$PROJECT_DIR$/xross-example">
+      <ProjectState />
+    </projectState>
     <projectState path="$PROJECT_DIR$/xross-plugin">
       <ProjectState />
     </projectState>
@@ -70,7 +88,7 @@
     "accountId": "a3884603-a52f-4bfc-9058-2d3e470c5c53"
   }
 }]]></component>
-  <component name="GradleScriptDefinitionsStorage" workingDir="$PROJECT_DIR$/xross-plugin" gradleHome="$USER_HOME$/.gradle/wrapper/dists/gradle-9.3.0-bin/79n14ral3mx1ozqr3csh2u872/gradle-9.3.0" javaHome="$USER_HOME$/.jdks/openjdk-25.0.2" gradleVersion="9.3.0" />
+  <component name="GradleScriptDefinitionsStorage" workingDir="$PROJECT_DIR$/xross-example" gradleHome="$USER_HOME$/.gradle/wrapper/dists/gradle-9.3.0-bin/79n14ral3mx1ozqr3csh2u872/gradle-9.3.0" javaHome="$USER_HOME$/.jdks/openjdk-25.0.2" gradleVersion="9.3.0" />
   <component name="MacroExpansionManager">
     <option name="directoryName" value="pi1NlfLH" />
   </component>
@@ -90,9 +108,10 @@
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
     "RunOnceActivity.git.unshallow": "true",
     "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
     "git-widget-placeholder": "dev/The-Infinitys",
     "kotlin-language-version-configured": "true",
-    "last_opened_file_path": "/home/the-infinitys/github/xross/xross-plugin/settings.gradle.kts",
+    "last_opened_file_path": "/home/the-infinitys/github/xross",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -142,7 +161,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1769839797497</updated>
-      <workItem from="1769839799702" duration="11095000" />
+      <workItem from="1769839799702" duration="12668000" />
     </task>
     <servers />
   </component>

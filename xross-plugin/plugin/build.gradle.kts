@@ -8,7 +8,7 @@
 plugins {
     // Apply the Java Gradle plugin development plugin to add support for developing Gradle plugins
     `java-gradle-plugin`
-
+    `maven-publish`
     // Apply the Kotlin JVM plugin to add support for Kotlin.
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
@@ -79,3 +79,5 @@ project.tasks.withType(Test::class.java).configureEach {
 project.tasks.withType(JavaExec::class.java).configureEach {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
 }
+group = "org.xross"
+version = "0.1.0"

@@ -8,9 +8,14 @@
 plugins {
     // Apply the org.jetbrains.kotlin.jvm Plugin to add support for Kotlin.
     alias(libs.plugins.kotlin.jvm)
-
+    id("org.xross") version "0.1.0"
     // Apply the application plugin to add support for building a CLI application in Java.
     application
+}
+xross{
+
+    rustProjectDir = "../rust"
+    crateName = "testcrate"
 }
 
 repositories {
@@ -46,4 +51,11 @@ application {
 tasks.named<Test>("test") {
     // Use JUnit Platform for unit tests.
     useJUnitPlatform()
+}
+
+sourceSets {
+    main {
+        // 生成されたディレクトリをソースルートに追加
+        kotlin.srcDir("build/generated/source/xross/main/kotlin")
+    }
 }
