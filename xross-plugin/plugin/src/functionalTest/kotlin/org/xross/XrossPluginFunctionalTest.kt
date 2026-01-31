@@ -48,7 +48,6 @@ class XrossPluginFunctionalTest {
 
             xross {
                 rustProjectDir = "rust-lib"
-                crateName = "testcrate"
             }
         """.trimIndent())
 

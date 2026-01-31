@@ -20,7 +20,6 @@ class XrossPlugin @Inject constructor() : Plugin<Project> {
             val metadataDir = project.file(extension.rustProjectDir).resolve("target/xross")
             task.metadataDir.set(metadataDir)
             task.outputDir.set(outputDir)
-            task.crateName.set(extension.crateName)
             task.packageName.set(extension.packageName)
         }
     }

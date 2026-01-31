@@ -14,7 +14,6 @@ plugins {
 }
 xross{
     rustProjectDir = "../rust"
-    crateName = "testcrate"
     packageName = "org.example"
 }
 

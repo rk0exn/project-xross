@@ -8,6 +8,5 @@ import java.io.File
 interface GenerateParameters : WorkParameters {
     val jsonFile: Property<File>
     val outputDir: DirectoryProperty
-    val crateName: Property<String>
     val packageName: Property<String>
 }

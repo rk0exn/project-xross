@@ -1,5 +1,6 @@
 package org.xross
 
+import com.squareup.kotlinpoet.*
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import java.lang.foreign.ValueLayout
@@ -12,7 +13,7 @@ sealed class XrossType {
     @Serializable @SerialName("i16") object I16 : XrossType()
     @Serializable @SerialName("i32") object I32 : XrossType()
     @Serializable @SerialName("i64") object I64 : XrossType()
-    @Serializable @SerialName("u16") object U16 : XrossType() // Java Char
+    @Serializable @SerialName("u16") object U16 : XrossType()
     @Serializable @SerialName("f32") object F32 : XrossType()
     @Serializable @SerialName("f64") object F64 : XrossType()
     @Serializable @SerialName("pointer") object Pointer : XrossType()
@@ -21,19 +22,30 @@ sealed class XrossType {
     @Serializable @SerialName("slice")
     data class Slice(val elementType: XrossType) : XrossType()
 
-    /**
-     * Java FFM API の ValueLayout への変換
-     */
-    val layout: java.lang.foreign.MemoryLayout? get() = when (this) {
-        Void -> null
-        Bool -> ValueLayout.JAVA_BOOLEAN
-        I8 -> ValueLayout.JAVA_BYTE
-        I16 -> ValueLayout.JAVA_SHORT
-        I32 -> ValueLayout.JAVA_INT
-        I64 -> ValueLayout.JAVA_LONG
-        U16 -> ValueLayout.JAVA_CHAR
-        F32 -> ValueLayout.JAVA_FLOAT
-        F64 -> ValueLayout.JAVA_DOUBLE
-        Pointer, StringType, is Slice -> ValueLayout.ADDRESS
+    /** KotlinPoet 用の型取得 */
+    val kotlinType: TypeName get() = when (this) {
+        I32 -> INT
+        I64 -> LONG
+        F32 -> FLOAT
+        F64 -> DOUBLE
+        Bool -> BOOLEAN
+        I8 -> BYTE
+        I16 -> SHORT
+        U16 -> CHAR
+        Void -> UNIT
+        Pointer, StringType, is Slice -> ClassName("java.lang.foreign", "MemorySegment")
     }
+
+    /** FFM API (ValueLayout) へのマッピング */
+    val layoutMember: MemberName get() = MemberName("java.lang.foreign.ValueLayout", when (this) {
+        I32 -> "JAVA_INT"
+        I64 -> "JAVA_LONG"
+        F32 -> "JAVA_FLOAT"
+        F64 -> "JAVA_DOUBLE"
+        Bool -> "JAVA_BOOLEAN"
+        I8 -> "JAVA_BYTE"
+        I16 -> "JAVA_SHORT"
+        U16 -> "JAVA_CHAR"
+        Pointer, StringType, is Slice, Void -> "ADDRESS"
+    })
 }

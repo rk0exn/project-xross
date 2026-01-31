@@ -15,7 +15,6 @@ import javax.inject.Inject
 abstract class GenerateXrossTask @Inject constructor(private val workerExecutor: WorkerExecutor) : DefaultTask() {
     @get:InputDirectory @get:Optional abstract val metadataDir: DirectoryProperty
     @get:OutputDirectory abstract val outputDir: DirectoryProperty
-    @get:Input abstract val crateName: Property<String>
     @get:Input abstract val packageName: Property<String>
 
     @TaskAction
@@ -33,7 +32,6 @@ abstract class GenerateXrossTask @Inject constructor(private val workerExecutor:
             queue.submit(GenerateAction::class.java) { params ->
                 params.jsonFile.set(file)
                 params.outputDir.set(outDir)
-                params.crateName.set(crateName)
                 params.packageName.set(packageName)
             }
         }

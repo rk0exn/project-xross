@@ -15,7 +15,6 @@ abstract class GenerateAction : WorkAction<GenerateParameters> {
         XrossGenerator.generate(
             meta,
             parameters.outputDir.get().asFile,
-            parameters.crateName.get(),
             targetPackage
         )
     }
