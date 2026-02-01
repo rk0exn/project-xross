@@ -87,6 +87,7 @@ object XrossGenerator {
         // 以下のような「staticな一括生成メソッド」を挟むのが最もクリーンです
         classBuilder.addFunction(builder.build())
     }
+
     private fun generateClone(
         classBuilder: TypeSpec.Builder,
         meta: XrossClass
@@ -310,7 +311,7 @@ object XrossGenerator {
                     )
                 }
             }
-            .addStatement("STRUCT_SIZE = tempMap.values.maxOfOrNull { it.offset + 8 } ?: 0L")
+            .addStatement("STRUCT_SIZE = tempMap[\"__self\"]?.size ?: (tempMap.values.maxOfOrNull { it.offset + 8 } ?: 0L)")
             .nextControlFlow("catch (e: Throwable)")
             .addStatement("throw RuntimeException(\"Init failed for ${meta.structName}\", e)").endControlFlow()
 

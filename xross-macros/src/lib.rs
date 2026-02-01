@@ -129,21 +129,14 @@ pub fn jvm_class_derive(input: TokenStream) -> TokenStream {
         impl #marker_name for #struct_name {
             fn layout() -> *mut std::ffi::c_char {
                 let mut parts = Vec::new();
-
-                // 1. 構造体全体の情報 (名前:サイズ:アライメント)
-                parts.push(format!("{}:{}:{}",
-                    stringify!(#struct_name),
-                    std::mem::size_of::<#struct_name>(),
-                    std::mem::align_of::<#struct_name>()
+                parts.push(format!(
+                    "__self:0:{}",
+                    std::mem::size_of::<#struct_name>()
                 ));
-
-                // 2. フィールド情報の追加 (ここで先ほどの layout_parts が展開される)
                 #(
                     parts.push(#layout_parts);
                 )*
-
                 let joined = parts.join(";");
-
                 match std::ffi::CString::new(joined) {
                     Ok(c_str) => c_str.into_raw(),
                     Err(_) => std::ptr::null_mut(),
@@ -282,7 +275,7 @@ pub fn jvm_class(attr: TokenStream, item: TokenStream) -> TokenStream {
                                     // パフォーマンス重視: 可能なら借用 (&str) にし、必要なら owned (String) にする
                                     conversion_logic.push(quote! {
                                         let #arg_name_ident = unsafe {
-                                            if #internal_name.is_null() { "" } 
+                                            if #internal_name.is_null() { "" }
                                             else { std::ffi::CStr::from_ptr(#internal_name).to_str().unwrap_or("") }
                                         };
                                     });
