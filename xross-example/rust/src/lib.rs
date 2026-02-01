@@ -34,8 +34,8 @@ pub mod test {
         }
 
         #[jvm_method]
-        pub fn execute(&self, data: i32) -> i32 {
-            data * 2
+        pub fn execute(&self) -> i32 {
+            self.val * 2
         }
     }
 }

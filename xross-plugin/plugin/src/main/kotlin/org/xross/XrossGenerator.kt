@@ -22,6 +22,7 @@ object XrossGenerator {
                     .addParameter("size", Long::class).build()
             )
             .addProperty(PropertySpec.builder("offset", Long::class).initializer("offset").build())
+            .addProperty(PropertySpec.builder("size", Long::class).initializer("size").build())
             .build()
         classBuilder.addType(memoryInfoClass)
         val memoryInfoClassName = ClassName("", "FieldMemoryInfo")
@@ -32,26 +33,50 @@ object XrossGenerator {
                 .addModifiers(KModifier.PRIVATE).mutable(true).initializer("MemorySegment.NULL").build()
         )
 
-        val companionBuilder = TypeSpec.companionObjectBuilder()
-        val handleType = ClassName("java.lang.invoke", "MethodHandle")
+        // --- コンストラクタ生成 ---
+        val constructorMethod = meta.methods.find { it.isConstructor }
+        if (constructorMethod != null) {
+            val constructorBuilder = FunSpec.constructorBuilder()
+            constructorMethod.args.forEach { arg ->
+                constructorBuilder.addParameter(arg.escapeName(), arg.ty.kotlinType)
+            }
 
-        // --- フィールド・メソッドのプロパティ定義 ---
-        // 基本ハンドル (new, drop, etc)
+            val invokeArgs = constructorMethod.args.joinToString(", ") { it.escapeName() }
+
+            constructorBuilder.beginControlFlow("try")
+                // ★ 修正：戻ってきたポインタを STRUCT_SIZE で reinterpret する
+                .addStatement("val raw = newHandle.invokeExact($invokeArgs) as MemorySegment")
+                .addStatement("this.segment = if (STRUCT_SIZE > 0) raw.reinterpret(STRUCT_SIZE) else raw")
+                .nextControlFlow("catch (e: Throwable)")
+                .addStatement("throw RuntimeException(%S, e)", "Failed to allocate native struct")
+                .endControlFlow()
+
+            classBuilder.primaryConstructor(constructorBuilder.build())
+        }
+
+        // --- Companion Object ---
+        val companionBuilder = TypeSpec.companionObjectBuilder()
+        val handleType = java.lang.invoke.MethodHandle::class.asClassName()
+
+        // ハンドル定義
         val coreHandles = listOf("new", "drop", "clone", "layout")
         coreHandles.forEach { suffix ->
             companionBuilder.addProperty(
                 PropertySpec.builder("${suffix}Handle", handleType).addModifiers(KModifier.PRIVATE).build()
             )
         }
-
-        // カスタムメソッドのハンドル
         meta.methods.filter { !it.isConstructor }.forEach { method ->
             companionBuilder.addProperty(
                 PropertySpec.builder("${method.name}Handle", handleType).addModifiers(KModifier.PRIVATE).build()
             )
         }
 
-        // フィールドオフセット保持用
+        // ★ 構造体全体のサイズを保持
+        companionBuilder.addProperty(
+            PropertySpec.builder("STRUCT_SIZE", Long::class).addModifiers(KModifier.PRIVATE).mutable(true)
+                .initializer("0L").build()
+        )
+
         meta.fields.forEach { field ->
             companionBuilder.addProperty(
                 PropertySpec.builder("OFFSET_${field.name}", memoryInfoClassName).addModifiers(KModifier.PRIVATE)
@@ -59,19 +84,26 @@ object XrossGenerator {
             )
         }
 
-// --- Companion Initializer (Linker & Handles) ---
+        // --- Initializer Block ---
         val companionInit = CodeBlock.builder()
-            .addStatement("val linker = java.lang.foreign.Linker.nativeLinker()")
-            .addStatement("val lookup = java.lang.foreign.SymbolLookup.loaderLookup()")
+            .addStatement("val linker = Linker.nativeLinker()")
+            .addStatement("val lookup = SymbolLookup.loaderLookup()")
             .apply {
-                // 基本ハンドルの初期化 (new, drop, etc.)
                 coreHandles.forEach { suffix ->
-                    val desc = if (suffix == "drop") {
-                        CodeBlock.of("%T.ofVoid(%T.ADDRESS)", FunctionDescriptor::class, ValueLayout::class)
-                    } else {
-                        CodeBlock.of("%T.of(%T.ADDRESS)", FunctionDescriptor::class, ValueLayout::class)
+                    val desc = when (suffix) {
+                        "drop" -> CodeBlock.of("%T.ofVoid(ValueLayout.ADDRESS)", FunctionDescriptor::class)
+                        "new" -> {
+                            val constructorArgs =
+                                constructorMethod?.args?.map { CodeBlock.of("%M", it.ty.layoutMember) } ?: emptyList()
+                            CodeBlock.of(
+                                "%T.of(ValueLayout.ADDRESS, %L)",
+                                FunctionDescriptor::class,
+                                constructorArgs.joinToCode(", ")
+                            )
+                        }
+
+                        else -> CodeBlock.of("%T.of(ValueLayout.ADDRESS)", FunctionDescriptor::class)
                     }
-                    // apply内なので直接 addStatement を呼ぶ
                     addStatement(
                         "${suffix}Handle = linker.downcallHandle(lookup.find(%S).get(), %L)",
                         "${meta.symbolPrefix}_$suffix",
@@ -79,41 +111,32 @@ object XrossGenerator {
                     )
                 }
 
-                // カスタムメソッドのハンドルの初期化
                 meta.methods.filter { !it.isConstructor }.forEach { method ->
-                    val argLayoutBlocks = mutableListOf<CodeBlock>()
-
-                    // self (ポインタ)
-                    argLayoutBlocks.add(CodeBlock.of("%T.ADDRESS", ValueLayout::class))
-
-                    // 各引数
-                    method.args.forEach { arg ->
-                        argLayoutBlocks.add(CodeBlock.of("%M", arg.ty.layoutMember))
-                    }
-
-                    val argsJoined = argLayoutBlocks.joinToCode(", ")
-
+                    val argLayouts = mutableListOf(CodeBlock.of("ValueLayout.ADDRESS"))
+                    method.args.forEach { arg -> argLayouts.add(CodeBlock.of("%M", arg.ty.layoutMember)) }
                     if (method.ret == XrossType.Void) {
-                        // 直接 addStatement を呼ぶ (%L を使って CodeBlock を埋め込む)
                         addStatement(
-                            "${method.name}Handle = linker.downcallHandle(lookup.find(%S).get(), %T.ofVoid($argsJoined))",
-                            method.symbol,
-                            FunctionDescriptor::class
+                            "${method.name}Handle = linker.downcallHandle(lookup.find(%S).get(), %T.ofVoid(${
+                                argLayouts.joinToCode(
+                                    ", "
+                                )
+                            }))", method.symbol, FunctionDescriptor::class
                         )
                     } else {
                         addStatement(
-                            "${method.name}Handle = linker.downcallHandle(lookup.find(%S).get(), %T.of(%T.%M, $argsJoined))",
-                            method.symbol,
-                            FunctionDescriptor::class,
-                            ValueLayout::class,
-                            method.ret.layoutMember
+                            "${method.name}Handle = linker.downcallHandle(lookup.find(%S).get(), %T.of(%T.%M, ${
+                                argLayouts.joinToCode(
+                                    ", "
+                                )
+                            }))", method.symbol, FunctionDescriptor::class, ValueLayout::class, method.ret.layoutMember
                         )
                     }
                 }
             }
             .beginControlFlow("try")
             .addStatement("val layoutRaw = layoutHandle.invokeExact() as MemorySegment")
-            .addStatement("val layoutStr = layoutRaw.getString(0)")
+            // ★ メタデータ読み込みも reinterpret
+            .addStatement("val layoutStr = if (layoutRaw == MemorySegment.NULL) \"\" else layoutRaw.reinterpret(1024 * 1024).getString(0)")
             .addStatement("val tempMap = layoutStr.split(';').filter { it.isNotBlank() }.associate { part ->")
             .addStatement("    val bits = part.split(':')")
             .addStatement("    bits[0] to FieldMemoryInfo(bits[1].toLong(), bits[2].toLong())")
@@ -127,16 +150,18 @@ object XrossGenerator {
                     )
                 }
             }
+            // ★ 構造体全体のサイズを計算（最後のフィールドの offset + size）
+            .addStatement("STRUCT_SIZE = tempMap.values.maxOfOrNull { it.offset + 8 } ?: 0L") // 簡易的に最大オフセット+8バイト
             .nextControlFlow("catch (e: Throwable)")
             .addStatement("throw RuntimeException(%S, e)", "Failed to initialize Rust layout")
             .endControlFlow()
 
         companionBuilder.addInitializerBlock(companionInit.build())
 
-        // --- ゲッター / セッター ---
+        // --- フィールド (ゲッター/セッター) ---
         meta.fields.forEach { field ->
             classBuilder.addProperty(
-                PropertySpec.builder(field.name, field.ty.kotlinType).mutable(true)
+                PropertySpec.builder(field.escapeName(), field.ty.kotlinType).mutable(true)
                     .getter(
                         FunSpec.getterBuilder().addStatement(
                             "return segment.get(%T.%M, OFFSET_${field.name}.offset)",
@@ -152,54 +177,33 @@ object XrossGenerator {
                                 field.ty.layoutMember
                             ).build()
                     )
-                    .addKdoc(field.docs.joinToString("\n")).build()
+                    .build()
             )
         }
 
-        // --- メソッド実装 ---
-        meta.methods.forEach { method ->
-            if (method.isConstructor) {
-                // Constructor: static factory method in companion
-                val factory = FunSpec.builder(method.name).returns(ClassName(targetPackage, className))
-                    .addKdoc(method.docs.joinToString("\n"))
-                    .beginControlFlow("try")
-                    .addStatement("val instance = %T()", ClassName(targetPackage, className))
-                    .addStatement("instance.segment = newHandle.invokeExact() as MemorySegment")
-                    .addStatement("return instance")
-                    .nextControlFlow("catch (e: Throwable)")
-                    .addStatement("throw RuntimeException(e)")
-                    .endControlFlow()
-                companionBuilder.addFunction(factory.build())
+        // --- インスタンスメソッド ---
+        meta.methods.filter { !it.isConstructor }.forEach { method ->
+            val funBuilder = FunSpec.builder(method.name).returns(method.ret.kotlinType)
+            method.args.forEach { arg -> funBuilder.addParameter(arg.escapeName(), arg.ty.kotlinType) }
+            val invokeArgs = (listOf("segment") + method.args.map { it.escapeName() }).joinToString(", ")
+            funBuilder.beginControlFlow("try")
+            if (method.ret == XrossType.Void) {
+                funBuilder.addStatement("${method.name}Handle.invokeExact($invokeArgs)")
             } else {
-                // Instance Method
-                val funBuilder = FunSpec.builder(method.name).returns(method.ret.kotlinType)
-                    .addKdoc(method.docs.joinToString("\n"))
-
-                method.args.forEach { arg -> funBuilder.addParameter(arg.name, arg.ty.kotlinType) }
-
-                val invokeArgs = mutableListOf("segment") // self
-                method.args.forEach { invokeArgs.add(it.name) }
-
-                funBuilder.beginControlFlow("try")
-                if (method.ret == XrossType.Void) {
-                    funBuilder.addStatement("${method.name}Handle.invokeExact(${invokeArgs.joinToString(", ")})")
-                } else {
-                    funBuilder.addStatement(
-                        "return ${method.name}Handle.invokeExact(${invokeArgs.joinToString(", ")}) as %T",
-                        method.ret.kotlinType
-                    )
-                }
-                funBuilder.nextControlFlow("catch (e: Throwable)")
-                    .addStatement("throw RuntimeException(e)")
-                funBuilder.endControlFlow()
-
-                classBuilder.addFunction(funBuilder.build())
+                funBuilder.addStatement(
+                    "return ${method.name}Handle.invokeExact($invokeArgs) as %T",
+                    method.ret.kotlinType
+                )
             }
+            funBuilder.nextControlFlow("catch (e: Throwable)")
+                .addStatement("throw RuntimeException(e)")
+            funBuilder.endControlFlow()
+            classBuilder.addFunction(funBuilder.build())
         }
 
         classBuilder.addType(companionBuilder.build())
 
-        // --- close メソッド ---
+        // --- Close ---
         classBuilder.addFunction(
             FunSpec.builder("close").addModifiers(KModifier.OVERRIDE)
                 .beginControlFlow("if (segment != MemorySegment.NULL)")
@@ -213,6 +217,44 @@ object XrossGenerator {
         )
 
         FileSpec.builder(targetPackage, className).indent("    ")
+            .addImport(
+                "java.lang.foreign",
+                "ValueLayout",
+                "FunctionDescriptor",
+                "MemorySegment",
+                "Linker",
+                "SymbolLookup"
+            )
             .addType(classBuilder.build()).build().writeTo(outputDir)
     }
 }
+
+private val KOTLIN_KEYWORDS = setOf(
+    "package",
+    "as",
+    "typealias",
+    "class",
+    "this",
+    "super",
+    "val",
+    "var",
+    "fun",
+    "for",
+    "is",
+    "in",
+    "throw",
+    "return",
+    "break",
+    "continue",
+    "object",
+    "if",
+    "else",
+    "while",
+    "do",
+    "try",
+    "when",
+    "interface",
+    "typeof"
+)
+
+private fun XrossField.escapeName(): String = if (this.name in KOTLIN_KEYWORDS) "`${this.name}`" else this.name
