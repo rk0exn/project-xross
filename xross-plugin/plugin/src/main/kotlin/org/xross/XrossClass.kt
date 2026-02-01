@@ -6,7 +6,9 @@ import kotlinx.serialization.Serializable
 data class XrossClass(
     val packageName: String,
     val structName: String,
-    val docs: List<String> = emptyList(), // 新しく追加
-    val fields: List<XrossField> = emptyList(), // 新しく追加
+    val size: Long,        // 構造体全体のサイズ (sizeof)
+    val align: Long,       // 構造体のアライメント (alignof)
+    val docs: List<String> = emptyList(),
+    val fields: List<XrossField> = emptyList(),
     val methods: List<XrossMethod>
 )

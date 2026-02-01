@@ -16,6 +16,32 @@ pub enum XrossType {
     Slice(Box<XrossType>), // Vec<T> / &[T]
 }
 
+impl XrossType {
+    /// 型ごとのバイトサイズを返す
+    pub fn size(&self) -> usize {
+        match self {
+            XrossType::Void => 0,
+            XrossType::Bool | XrossType::I8 => 1,
+            XrossType::I16 | XrossType::U16 => 2,
+            XrossType::I32 | XrossType::F32 => 4,
+            XrossType::I64 | XrossType::F64 | XrossType::Pointer | XrossType::String => 8,
+            XrossType::Slice(_) => 16, // Pointer(8) + Length(8)
+        }
+    }
+
+    /// 型ごとのアライメントを返す
+    pub fn align(&self) -> usize {
+        match self {
+            XrossType::Void => 1,
+            XrossType::Bool | XrossType::I8 => 1,
+            XrossType::I16 | XrossType::U16 => 2,
+            XrossType::I32 | XrossType::F32 => 4,
+            XrossType::I64 | XrossType::F64 | XrossType::Pointer | XrossType::String => 8,
+            XrossType::Slice(_) => 8,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum XrossMethodType {
     /// staticな関数 (selfを取らない)
@@ -39,7 +65,6 @@ pub struct XrossMethod {
     pub ret: XrossType,
     pub docs: Vec<String>,
 }
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct XrossField {
@@ -53,7 +78,7 @@ pub struct XrossField {
 pub struct XrossClass {
     pub package_name: String,
     pub struct_name: String,
-    pub docs: Vec<String>,       // 新しく追加
-    pub fields: Vec<XrossField>, // 新しく追加
+    pub docs: Vec<String>,
+    pub fields: Vec<XrossField>,
     pub methods: Vec<XrossMethod>,
 }
