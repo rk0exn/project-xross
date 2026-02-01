@@ -68,17 +68,8 @@ pub fn jvm_class_derive(input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn jvm_export_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut input_impl = parse_macro_input!(item as ItemImpl);
-    let crate_name = std::env::var("CARGO_PKG_NAME")
-        .unwrap_or_default()
-        .replace("-", "_");
-
     // 属性からパッケージ名を取得（なければcrate名）
-    let attr_str = attr.to_string().replace(" ", "").replace("\"", "");
-    let package_name = if attr_str.is_empty() {
-        crate_name.clone()
-    } else {
-        attr_str
-    };
+    let package_name = attr.to_string().replace(" ", "").replace("\"", "");
 
     let struct_name_ident = if let Type::Path(tp) = &*input_impl.self_ty {
         &tp.path.segments.last().unwrap().ident
