@@ -158,7 +158,6 @@ dependencies = [
  "heck",
  "quote",
  "regex",
- "serde",
  "serde_json",
  "syn",
  "xross-metadata",
@@ -169,7 +168,6 @@ name = "xross-metadata"
 version = "0.1.0"
 dependencies = [
  "serde",
- "serde_json",
 ]
 
 [[package]]

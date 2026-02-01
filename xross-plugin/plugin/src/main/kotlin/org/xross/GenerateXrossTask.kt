@@ -28,11 +28,8 @@ abstract class GenerateXrossTask @Inject constructor(private val workerExecutor:
         val outDir = outputDir.get().asFile
         outDir.deleteRecursively()
         outDir.mkdirs()
-        println(metadataDir.get().asFile.absolutePath)
         val jsonFiles = metadataDir.asFileTree.files.filter { it.extension == "json" }
-        // WorkerExecutor を使って並列処理をキューイング
         val queue = workerExecutor.noIsolation() // プロセス分離が必要なら classLoaderIsolation()
-        println("${jsonFiles.size}")
         jsonFiles.forEach { file ->
             queue.submit(GenerateAction::class.java) { params ->
                 params.jsonFile.set(file)

@@ -8,8 +8,9 @@ abstract class GenerateAction : WorkAction<GenerateParameters> {
 
     override fun execute() {
         val file = parameters.jsonFile.get()
-        val meta = json.decodeFromString<XrossClass>(file.readText())
-
+        val fileText = file.readText()
+        val meta = json.decodeFromString<XrossClass>(fileText)
+        println(meta.toString())
         // 1. ベースパッケージ (org.example)
         val basePackage = parameters.packageName.get()
 

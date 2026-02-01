@@ -21,14 +21,13 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="f975a9a1-e29b-4a10-834b-aa32ce0e2a24" name="変更" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/modules/xross-example.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules/xross-example.iml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-example/rust/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/rust/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-example/rust/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/rust/Cargo.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-macros/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-macros/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/src/lib.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-macros/tests/test.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/tests/test.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-metadata/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-metadata/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-metadata/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/xross-metadata/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/GenerateAction.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/GenerateAction.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/GenerateXrossTask.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/GenerateXrossTask.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossClass.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossClass.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossField.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossField.kt" afterDir="false" />
     </list>
@@ -164,7 +163,7 @@
       <option name="presentableId" value="Default" />
       <updated>1769839797497</updated>
       <workItem from="1769839799702" duration="20474000" />
-      <workItem from="1769911717018" duration="12484000" />
+      <workItem from="1769911717018" duration="13117000" />
     </task>
     <servers />
   </component>
