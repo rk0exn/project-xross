@@ -1,5 +1,6 @@
 package org.example
 
+import org.example.test.test2.MyService2
 import java.io.File
 import java.nio.file.Files
 
@@ -43,8 +44,8 @@ fun executeTest() {
     val myService = MyService()
     myService.use { service ->
         // 100万回実行してメモリが増え続けないか確認
-        val iterations = 1_000_000_000
-        val reportInterval = 100_000_000
+        val iterations = 1_000_000_00
+        val reportInterval = 100_000_0
 
         println("Running str_test() $iterations times...")
 
@@ -58,7 +59,15 @@ fun executeTest() {
             }
         }
     }
-
+    val myService20 = MyService2(2)
+    myService20.`val` = 3
+    val myService21 = myService20.clone()
+    myService21.`val` = 4
+    val myService22 = myService20.clone()
+    myService22.`val` = 5
+    println("MyService20: ${myService20.`val`}")
+    println("MyService21: ${myService21.`val`}")
+    println("MyService22: ${myService22.`val`}")
     println("--- Memory Leak Test Finished ---")
     println("Check your OS process monitor (Task Manager / top) to see if 'RSS' is stable.")
 }

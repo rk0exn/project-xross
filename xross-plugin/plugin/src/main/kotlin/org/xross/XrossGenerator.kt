@@ -18,16 +18,37 @@ object XrossGenerator {
 
         classBuilder.addType(buildFieldMemoryInfoType())
 
+        // 1. プライマリコンストラクタを private constructor(raw: MemorySegment) に設定
+        // これにより init { ... } は全てのルートで共通して実行される
+        classBuilder.primaryConstructor(
+            FunSpec.constructorBuilder()
+                .addModifiers(KModifier.PRIVATE)
+                .addParameter("raw", MemorySegment::class)
+                .build()
+        )
+
         classBuilder.addProperty(
             PropertySpec.builder("segment", MemorySegment::class)
                 .addModifiers(KModifier.PRIVATE).mutable(true)
-                .initializer("%T.NULL", MemorySegment::class).build()
+                .initializer("MemorySegment.NULL")
+                .build()
         )
 
-        generateConstructor(classBuilder, meta)
-        generateFields(classBuilder, meta.fields)
+        // initブロックでセグメントの reinterpret を行う
+        classBuilder.addInitializerBlock(
+            CodeBlock.builder()
+                .addStatement("this.segment = if (raw != MemorySegment.NULL && STRUCT_SIZE > 0) raw.reinterpret(STRUCT_SIZE) else raw")
+                .build()
+        )
+
+        // 2. 公開用のセカンダリコンストラクタ (newを叩く)
+        generatePublicConstructor(classBuilder, meta)
 
         val companionBuilder = generateCompanionBuilder(meta)
+        generateClone(classBuilder, meta)
+
+        // 4. フィールドとメソッド
+        generateFields(classBuilder, meta.fields)
         generateMethods(classBuilder, companionBuilder, meta)
 
         classBuilder.addType(companionBuilder.build())
@@ -51,21 +72,42 @@ object XrossGenerator {
             .writeTo(outputDir)
     }
 
-    private fun generateConstructor(classBuilder: TypeSpec.Builder, meta: XrossClass) {
-        val constructor = meta.methods.find { it.isConstructor } ?: return
+    private fun generatePublicConstructor(classBuilder: TypeSpec.Builder, meta: XrossClass) {
+        val ctorMeta = meta.methods.find { it.isConstructor } ?: return
         val builder = FunSpec.constructorBuilder()
-
-        constructor.args.forEach { builder.addParameter(it.name.toCamelCase(), it.ty.kotlinType) }
-        val invokeArgs = constructor.args.joinToString(", ") { it.name.toCamelCase().escapeName() }
-
-        builder.beginControlFlow("try")
-            .addStatement("val raw = newHandle.invokeExact($invokeArgs) as MemorySegment")
-            .addStatement("this.segment = if (STRUCT_SIZE > 0) raw.reinterpret(STRUCT_SIZE) else raw")
-            .nextControlFlow("catch (e: Throwable)")
-            .addStatement("throw RuntimeException(%S, e)", "Failed to allocate ${meta.structName}")
+        ctorMeta.args.forEach { builder.addParameter(it.name.toCamelCase(), it.ty.kotlinType) }
+        val invokeArgs = ctorMeta.args.joinToString(", ") { it.name.toCamelCase().escapeName() }
+        builder.callThisConstructor(
+            CodeBlock.of(
+                "(newHandle.invokeExact($invokeArgs) as %T)",
+                MemorySegment::class
+            )
+        )
+        // もしアロケーション失敗時の独自メッセージを出したい場合は、
+        // 以下のような「staticな一括生成メソッド」を挟むのが最もクリーンです
+        classBuilder.addFunction(builder.build())
+    }
+    private fun generateClone(
+        classBuilder: TypeSpec.Builder,
+        meta: XrossClass
+    ) {
+        val className = meta.structName
+        // clone: インスタンスを複製
+        val cloneFun = FunSpec.builder("clone")
+            .returns(ClassName("", className))
+            .addKdoc("Creates a copy of this instance using the underlying native clone function.")
+            .addStatement("val currentSegment = segment")
+            .beginControlFlow("if (currentSegment == MemorySegment.NULL)")
+            .addStatement("throw NullPointerException(%S)", "Cannot clone a dropped object")
             .endControlFlow()
-
-        classBuilder.primaryConstructor(builder.build())
+            .beginControlFlow("try")
+            .addStatement("val newRaw = cloneHandle.invokeExact(currentSegment) as MemorySegment")
+            .addStatement("return $className(newRaw)")
+            .nextControlFlow("catch (e: Throwable)")
+            .addStatement("throw RuntimeException(%S, e)", "Failed to clone $className")
+            .endControlFlow()
+            .build()
+        classBuilder.addFunction(cloneFun)
     }
 
     private fun generateFields(classBuilder: TypeSpec.Builder, fields: List<XrossField>) {
@@ -104,12 +146,12 @@ object XrossGenerator {
             val returnType = if (isStringRet) String::class.asTypeName() else method.ret.kotlinType
             val funBuilder = FunSpec.builder(method.name.toCamelCase()).returns(returnType)
 
-            method.args.forEach { funBuilder.addParameter(it.name.toCamelCase(), it.asKotlinType()) }
+            method.args.forEach { funBuilder.addParameter(it.name.toCamelCase(), it.ty.kotlinType) }
 
             val body = CodeBlock.builder()
             if (method.methodType != XrossMethodType.Static) {
                 body.addStatement("val currentSegment = segment")
-                body.beginControlFlow("if (currentSegment == %T.NULL)", MemorySegment::class)
+                body.beginControlFlow("if (currentSegment == MemorySegment.NULL)")
                     .addStatement("throw NullPointerException(%S)", "Object has been dropped or ownership transferred")
                     .endControlFlow()
             }
@@ -130,7 +172,6 @@ object XrossGenerator {
                     }
 
                     is XrossType.Slice -> {
-                        body.addStatement("//Construct Fat Pointer for Slice")
                         body.addStatement("val ${argCamel}Data = arena.allocateArray(${ty.elementType.layoutMember}, $argCamel.size.toLong())")
                         body.addStatement("MemorySegment.copy($argCamel, 0, ${argCamel}Data, 0, $argCamel.byteSize())")
                         body.addStatement("val ${argCamel}Slice = arena.allocate(16, 8)")
@@ -164,9 +205,7 @@ object XrossGenerator {
             }
 
             if (needsArena) body.endControlFlow()
-            if (method.methodType == XrossMethodType.OwnedInstance) {
-                body.addStatement("segment = %T.NULL", MemorySegment::class)
-            }
+            if (method.methodType == XrossMethodType.OwnedInstance) body.addStatement("segment = MemorySegment.NULL")
             body.nextControlFlow("catch (e: Throwable)").addStatement("throw RuntimeException(e)").endControlFlow()
 
             funBuilder.addCode(body.build())
@@ -209,8 +248,21 @@ object XrossGenerator {
                         "drop" -> CodeBlock.of("%T.ofVoid(ValueLayout.ADDRESS)", FunctionDescriptor::class)
                         "new" -> {
                             val ctor = meta.methods.find { it.isConstructor }
-                            val args = ctor?.args?.map { CodeBlock.of("%M", it.ty.layoutMember) }?.joinToCode() ?: ""
+                            val args =
+                                ctor?.args?.map { CodeBlock.of("%M", it.ty.layoutMember) }?.joinToCode() ?: ""
                             CodeBlock.of("%T.of(ValueLayout.ADDRESS, %L)", FunctionDescriptor::class, args)
+                        }
+
+                        "clone" -> {
+                            // 修正: clone は自身のポインタ (ADDRESS) を引数に取り、新しいポインタを返す
+                            CodeBlock.of(
+                                "%T.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS)",
+                                FunctionDescriptor::class
+                            )
+                        }
+
+                        "layout" -> {
+                            CodeBlock.of("%T.of(ValueLayout.ADDRESS)", FunctionDescriptor::class)
                         }
 
                         else -> CodeBlock.of("%T.of(ValueLayout.ADDRESS)", FunctionDescriptor::class)
@@ -225,16 +277,17 @@ object XrossGenerator {
                     val argLayouts = mutableListOf<CodeBlock>()
                     if (method.methodType != XrossMethodType.Static) argLayouts.add(CodeBlock.of("ValueLayout.ADDRESS"))
                     method.args.forEach { arg -> argLayouts.add(CodeBlock.of("%M", arg.ty.layoutMember)) }
-                    val desc = if (method.ret is XrossType.Void) {
-                        CodeBlock.of("%T.ofVoid(%L)", FunctionDescriptor::class, argLayouts.joinToCode())
-                    } else {
-                        CodeBlock.of(
-                            "%T.of(%M, %L)",
-                            FunctionDescriptor::class,
-                            method.ret.layoutMember,
-                            argLayouts.joinToCode()
-                        )
-                    }
+                    val desc = if (method.ret is XrossType.Void) CodeBlock.of(
+                        "%T.ofVoid(%L)",
+                        FunctionDescriptor::class,
+                        argLayouts.joinToCode()
+                    )
+                    else CodeBlock.of(
+                        "%T.of(%M, %L)",
+                        FunctionDescriptor::class,
+                        method.ret.layoutMember,
+                        argLayouts.joinToCode()
+                    )
                     addStatement(
                         "${method.name}Handle = linker.downcallHandle(lookup.find(%S).get(), %L)",
                         method.symbol,
@@ -276,12 +329,11 @@ object XrossGenerator {
 
     private fun buildFieldMemoryInfoType() = TypeSpec.classBuilder("FieldMemoryInfo")
         .addModifiers(KModifier.PRIVATE).primaryConstructor(
-            FunSpec.constructorBuilder().addParameter("offset", Long::class).addParameter("size", Long::class).build()
+            FunSpec.constructorBuilder().addParameter("offset", Long::class).addParameter("size", Long::class)
+                .build()
         )
         .addProperty(PropertySpec.builder("offset", Long::class).initializer("offset").build())
         .addProperty(PropertySpec.builder("size", Long::class).initializer("size").build()).build()
-
-    // --- Utility Extensions ---
 
     private fun String.toCamelCase(): String {
         val parts = this.split("_")
@@ -289,12 +341,6 @@ object XrossGenerator {
     }
 
     private fun String.escapeName(): String = if (this in KOTLIN_KEYWORDS) "`$this`" else this
-
-    private fun XrossField.asKotlinType(): TypeName = when (this.ty) {
-        is XrossType.StringType -> String::class.asTypeName()
-        is XrossType.Slice -> MemorySegment::class.asTypeName()
-        else -> this.ty.kotlinType
-    }
 
     private val KOTLIN_KEYWORDS = setOf(
         "package",
