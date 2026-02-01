@@ -42,8 +42,8 @@ fun executeTest() {
     val myService = MyService()
     myService.use { service ->
         // 100万回実行してメモリが増え続けないか確認
-        val iterations = 1_000_000
-        val reportInterval = 100_000
+        val iterations = 1_000_000_000
+        val reportInterval = 100_000_000
 
         println("Running str_test() $iterations times...")
 
