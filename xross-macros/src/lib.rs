@@ -338,6 +338,7 @@ pub fn jvm_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     // 最終メタデータの書き出し
     let class_meta = XrossClass {
         package_name: package_name.clone(),
+        symbol_prefix: symbol_base,
         struct_name: struct_name_ident.to_string(),
         docs: struct_docs,
         fields: struct_fields_meta,

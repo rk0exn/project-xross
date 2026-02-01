@@ -22,14 +22,13 @@
   <component name="ChangeListManager">
     <list default="true" id="f975a9a1-e29b-4a10-834b-aa32ce0e2a24" name="変更" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-example/rust/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/rust/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-macros/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-metadata/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/xross-metadata/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-macros/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-metadata/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-metadata/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/gradle/libs.versions.toml" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/gradle/libs.versions.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/GenerateAction.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/GenerateAction.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/GenerateXrossTask.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/GenerateXrossTask.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossClass.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossClass.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossField.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossField.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossGenerator.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossMethod.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossMethod.kt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -89,9 +88,12 @@
     &quot;accountId&quot;: &quot;a3884603-a52f-4bfc-9058-2d3e470c5c53&quot;
   }
 }</component>
-  <component name="GradleScriptDefinitionsStorage" workingDir="$PROJECT_DIR$/xross-example" gradleHome="$USER_HOME$/.gradle/wrapper/dists/gradle-9.3.0-bin/79n14ral3mx1ozqr3csh2u872/gradle-9.3.0" javaHome="$USER_HOME$/.jdks/openjdk-25.0.2" gradleVersion="9.3.0" />
+  <component name="GradleScriptDefinitionsStorage" workingDir="$PROJECT_DIR$/xross-plugin" gradleHome="$USER_HOME$/.gradle/wrapper/dists/gradle-9.3.0-bin/79n14ral3mx1ozqr3csh2u872/gradle-9.3.0" javaHome="$USER_HOME$/.jdks/openjdk-25.0.2" gradleVersion="9.3.0" />
   <component name="MacroExpansionManager">
     <option name="directoryName" value="pi1NlfLH" />
+  </component>
+  <component name="ProblemsViewState">
+    <option name="selectedTabId" value="CurrentFile" />
   </component>
   <component name="ProjectColorInfo">{
   &quot;customColor&quot;: &quot;&quot;,
@@ -163,7 +165,7 @@
       <option name="presentableId" value="Default" />
       <updated>1769839797497</updated>
       <workItem from="1769839799702" duration="20474000" />
-      <workItem from="1769911717018" duration="13117000" />
+      <workItem from="1769911717018" duration="18703000" />
     </task>
     <servers />
   </component>

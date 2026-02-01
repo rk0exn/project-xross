@@ -2,7 +2,7 @@
 # Kotlin & Plugins
 kotlin = "2.3.0" # 2.3.0はまだ先なので安定版の最新付近を指定
 serialization = "1.7.3"
-kotlinpoet = "2.0.0"
+kotlinpoet = "2.2.0"
 gradle = "9.3.0"
 kotlin-gradle = "1.9.20"
 [libraries]

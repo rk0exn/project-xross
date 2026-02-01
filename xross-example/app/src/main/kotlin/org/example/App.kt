@@ -1,11 +1,9 @@
 package org.example
 
-import java.lang.foreign.Arena
+import org.example.test.test2.MyService2
+
 
 fun main() {
-    // 1. 最初の一回だけ実行（DLL/SOのロードとシンボル解決
-    // 2. Panama APIのメモリ管理スコープ
-    Arena.ofConfined().use { arena ->
-        val hello = HelloStruct.new(arena, 10, 20)
-    }
+    val myService = MyService()
+    val myService2 = MyService2()
 }

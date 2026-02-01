@@ -10,7 +10,6 @@ abstract class GenerateAction : WorkAction<GenerateParameters> {
         val file = parameters.jsonFile.get()
         val fileText = file.readText()
         val meta = json.decodeFromString<XrossClass>(fileText)
-        println(meta.toString())
         // 1. ベースパッケージ (org.example)
         val basePackage = parameters.packageName.get()
 
