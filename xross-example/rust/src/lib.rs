@@ -29,6 +29,10 @@ impl MyService {
     pub fn consume_self(self) -> i32 {
         self._boxes.len() as i32
     }
+    #[jvm_method]
+    pub fn get_mut_ref(&mut self) -> &mut Self {
+        self
+    }
 }
 
 pub mod test {

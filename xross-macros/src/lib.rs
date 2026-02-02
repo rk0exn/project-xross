@@ -67,9 +67,13 @@ pub fn jvm_class(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let package_name = attr.to_string().replace(" ", "").replace("\"", "");
     let symbol_base = format!(
-        "{}_{}_{}",
+        "{}{}_{}",
         crate_name,
-        package_name.replace(".", "_"),
+        if !package_name.is_empty() {
+            format!("_{}", package_name.replace(".", "_"))
+        } else {
+            "".to_string()
+        },
         struct_name_ident.to_string().to_snake_case()
     );
 
@@ -81,6 +85,8 @@ pub fn jvm_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     let drop_ident = format_ident!("{}_drop", symbol_base);
     let clone_ident = format_ident!("{}_clone", symbol_base);
     let layout_export_ident = format_ident!("{}_layout", symbol_base);
+    let ref_ident = format_ident!("{}_ref", symbol_base);
+    let ref_mut_ident = format_ident!("{}_refMut", symbol_base);
     let marker_name = format_ident!("XrossJvmMarker{}", struct_name_ident);
 
     extra_functions.push(quote! {
@@ -96,6 +102,15 @@ pub fn jvm_class(attr: TokenStream, item: TokenStream) -> TokenStream {
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn #layout_export_ident() -> *mut std::ffi::c_char {
             unsafe { <#struct_name_ident as #marker_name>::layout() }
+        }
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn #ref_ident(ptr: *const #struct_name_ident) -> *const std::ffi::c_void {
+            ptr as *const std::ffi::c_void
+        }
+
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn #ref_mut_ident(ptr: *mut #struct_name_ident) -> *mut std::ffi::c_void {
+            ptr as *mut std::ffi::c_void
         }
     });
 

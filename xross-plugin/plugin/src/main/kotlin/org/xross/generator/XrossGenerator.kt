@@ -10,14 +10,11 @@ object XrossGenerator {
         val className = meta.structName
         val classBuilder = TypeSpec.classBuilder(className)
             .addSuperinterface(AutoCloseable::class)
-
         // 1. 基礎構造 (StructureGenerator)
         StructureGenerator.buildBase(classBuilder, meta)
-
         // 2. ハンドル定義 (HandleGenerator)
         val companionBuilder = TypeSpec.companionObjectBuilder()
         HandleGenerator.generateHandles(companionBuilder, meta)
-
         // 3. メソッド (MethodGenerator)
         MethodGenerator.generateMethods(classBuilder, companionBuilder, meta)
 
