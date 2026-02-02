@@ -13,7 +13,6 @@ object XrossGenerator {
     fun generate(meta: XrossClass, outputDir: File, targetPackage: String) {
         val className = meta.structName
         val classBuilder = TypeSpec.classBuilder(className)
-            .addModifiers(KModifier.INTERNAL)
             .addSuperinterface(AutoCloseable::class)
 
         classBuilder.addType(buildFieldMemoryInfoType())
@@ -33,28 +32,25 @@ object XrossGenerator {
                 .initializer("MemorySegment.NULL")
                 .build()
         )
-
-        // initブロックでセグメントの reinterpret を行う
-        classBuilder.addInitializerBlock(
-            CodeBlock.builder()
-                .addStatement("this.segment = if (raw != MemorySegment.NULL && STRUCT_SIZE > 0) raw.reinterpret(STRUCT_SIZE) else raw")
-                .build()
-        )
-
+        val initializerBuilder = CodeBlock.builder()
+            .addStatement("this.segment = if (raw != MemorySegment.NULL && STRUCT_SIZE > 0) raw.reinterpret(STRUCT_SIZE) else raw")
         // 2. 公開用のセカンダリコンストラクタ (newを叩く)
         generatePublicConstructor(classBuilder, meta)
 
         val companionBuilder = generateCompanionBuilder(meta)
         generateClone(classBuilder, meta)
-
-        // 4. フィールドとメソッド
-        generateFields(classBuilder, meta.fields)
+        generateCleaner(classBuilder, companionBuilder, initializerBuilder, targetPackage)
         generateMethods(classBuilder, companionBuilder, meta)
+        generateFields(classBuilder, meta.fields)
 
         classBuilder.addType(companionBuilder.build())
         generateCloseMethod(classBuilder)
+        // initブロックでセグメントの reinterpret を行う
+        classBuilder.addInitializerBlock(
+            initializerBuilder.build()
+        )
 
-        FileSpec.builder(targetPackage, className)
+        val fileSpec = FileSpec.builder(targetPackage, className)
             .indent("    ")
             .addImport(
                 "java.lang.foreign",
@@ -63,13 +59,23 @@ object XrossGenerator {
                 "MemorySegment",
                 "Linker",
                 "SymbolLookup",
-                "Arena"
             )
             .addImport("java.util.concurrent.locks", "ReentrantLock")
             .addImport("kotlin.concurrent", "withLock")
             .addType(classBuilder.build())
-            .build()
-            .writeTo(outputDir)
+        val fileContext = fileSpec
+            .build().toString()
+            .replace("public class", "class")
+            .replace("public fun", "fun")
+            .replace("public val", "val")
+            .replace("public var", "var")
+            .replace("public constructor", "constructor")
+            .replace("public companion object", "companion object")
+        val fileDir = outputDir.resolve(
+            targetPackage.replace('.', '/')
+        )
+        fileDir.mkdirs()
+        fileDir.resolve("$className.kt").writeText(fileContext)
     }
 
     private fun generatePublicConstructor(classBuilder: TypeSpec.Builder, meta: XrossClass) {
@@ -86,6 +92,59 @@ object XrossGenerator {
         // もしアロケーション失敗時の独自メッセージを出したい場合は、
         // 以下のような「staticな一括生成メソッド」を挟むのが最もクリーンです
         classBuilder.addFunction(builder.build())
+    }
+
+    private fun generateCleaner(
+        classBuilder: TypeSpec.Builder,
+        companionBuilder: TypeSpec.Builder,
+        initializerBuilder: CodeBlock.Builder,
+        targetPackage: String // パッケージ名を受け取る
+    ) {
+        val stateClassName = ClassName(targetPackage, "Deallocator")
+
+        companionBuilder.addProperty(
+            PropertySpec.builder("CLEANER", ClassName("java.lang.ref", "Cleaner"))
+                .addModifiers(KModifier.PRIVATE)
+                .initializer("java.lang.ref.Cleaner.create()") // 直接文字列で指定するか型を明示
+                .build()
+        )
+
+        val stateClass = TypeSpec.classBuilder(stateClassName)
+            .addModifiers(KModifier.PRIVATE)
+            .addSuperinterface(Runnable::class)
+            .primaryConstructor(
+                FunSpec.constructorBuilder()
+                    .addParameter("segment", MemorySegment::class)
+                    .addParameter("dropHandle", HANDLE_TYPE)
+                    .build()
+            )
+            .addProperty(
+                PropertySpec.builder("segment", MemorySegment::class, KModifier.PRIVATE).initializer("segment").build()
+            )
+            .addProperty(
+                PropertySpec.builder("dropHandle", HANDLE_TYPE, KModifier.PRIVATE).initializer("dropHandle").build()
+            )
+            .addFunction(
+                FunSpec.builder("run")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .beginControlFlow("if (segment != MemorySegment.NULL)")
+                    .beginControlFlow("try")
+                    .addStatement("dropHandle.invokeExact(segment)")
+                    .nextControlFlow("catch (e: Throwable)")
+                    .addStatement("System.err.println(%S + e.message)", "Xross: Failed to drop native object: ")
+                    .endControlFlow()
+                    .endControlFlow()
+                    .build()
+            )
+            .build()
+        classBuilder.addProperty(
+            PropertySpec.builder("cleanable", ClassName("java.lang.ref.Cleaner", "Cleanable"), KModifier.PRIVATE)
+                .build()
+        )
+
+        initializerBuilder
+            .addStatement("this.cleanable = CLEANER.register(this, Deallocator(this.segment, dropHandle))")
+        classBuilder.addType(stateClass)
     }
 
     private fun generateClone(
@@ -193,7 +252,14 @@ object XrossGenerator {
             }
 
             when {
-                method.ret is XrossType.Void -> body.addStatement("%L", executeBlock)
+                method.ret is XrossType.Void -> {
+                    if (method.methodType == XrossMethodType.MutInstance) {
+                        body.addStatement("lock.withLock { %L as Unit }", call)
+                    } else {
+                        body.addStatement("%L", call)
+                    }
+                }
+
                 isStringRet -> {
                     body.addStatement("val res = %L as MemorySegment", executeBlock)
                     body.addStatement("if (res == MemorySegment.NULL) return \"\"")
@@ -320,16 +386,19 @@ object XrossGenerator {
 
     private fun generateCloseMethod(classBuilder: TypeSpec.Builder) {
         classBuilder.addFunction(
-            FunSpec.builder("close").addModifiers(KModifier.OVERRIDE)
+            FunSpec.builder("close")
+                .addModifiers(KModifier.OVERRIDE)
                 .beginControlFlow("if (segment != MemorySegment.NULL)")
-                .addStatement("try { dropHandle.invokeExact(segment) } catch (e: Throwable) { throw RuntimeException(e) }")
+                // 直接 dropHandle を呼ばず、cleanable に任せる
+                .addStatement("cleanable.clean()")
                 .addStatement("segment = MemorySegment.NULL")
-                .endControlFlow().build()
+                .endControlFlow()
+                .build()
         )
     }
 
     private fun buildFieldMemoryInfoType() = TypeSpec.classBuilder("FieldMemoryInfo")
-        .addModifiers(KModifier.PRIVATE).primaryConstructor(
+        .addModifiers(KModifier.PRIVATE, KModifier.DATA).primaryConstructor(
             FunSpec.constructorBuilder().addParameter("offset", Long::class).addParameter("size", Long::class)
                 .build()
         )

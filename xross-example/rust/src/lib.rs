@@ -2,13 +2,16 @@ use xross_core::{JvmClass, jvm_class};
 
 #[derive(JvmClass, Clone)]
 /// This is my service struct.
-struct MyService;
+struct MyService {
+    _boxes: Vec<i32>,
+}
 
 #[jvm_class] // これで impl ブロック全体をスキャンする
 impl MyService {
     #[jvm_new]
     pub fn new() -> Self {
-        MyService
+        let boxes = vec![0; 1000000];
+        MyService { _boxes: boxes }
     }
     #[jvm_method]
     pub fn execute(&self, data: i32) -> i32 {
@@ -38,6 +41,10 @@ pub mod test {
         #[jvm_method]
         pub fn execute(&self) -> i32 {
             self.val * 2
+        }
+        #[jvm_method]
+        pub fn mut_test(&mut self) {
+            self.val += 1;
         }
     }
 }

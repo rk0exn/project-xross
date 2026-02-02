@@ -39,35 +39,38 @@ fun main() {
 }
 
 fun executeTest() {
-    println("--- Starting Memory Leak Test ---")
+    println("--- Starting mutTest() Memory Leak Test ---")
 
-    val myService = MyService()
-    myService.use { service ->
-        // 100万回実行してメモリが増え続けないか確認
-        val iterations = 1_000_000_00
-        val reportInterval = 100_000_0
+    val myService2 = MyService2(0)
 
-        println("Running str_test() $iterations times...")
+    // 1億回など、大きな回数でもRSSが安定するかチェック
+    val iterations = 1_000_000
+    val reportInterval = iterations / 10
 
-        for (i in 1..iterations) {
-            val s = MyService.strTest()
-            val x = service.execute(i)
-            // 文字列が正しく取得できているか時々チェック
+    println("Running mutTest() and clone() $iterations times...")
+
+    for (i in 1..iterations) {
+        // 1. 生成した瞬間に use で保護する（これが最強のリーク対策）
+        myService2.clone().use { clone ->
+
+            // 2. フィールドに直接アクセスして値をセット
+            clone.`val` = i
+
+            // 3. mutTest を実行（内部で Lock がかかる）
+            clone.mutTest()
+
+            // 4. 結果の確認（必要に応じて）
+            val result = clone.execute()
+
             if (i % reportInterval == 0) {
                 val mem = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()
-                println("Iteration $i: String sample = '$s, x = $x', JVM Used Memory: ${mem / 1024 / 1024} MB")
+                println("Iteration $i: Val = ${clone.`val`}, Result = $result, JVM Memory: ${mem / 1024 / 1024} MB")
             }
-        }
+        } // ここで確実に Rust 側の drop が呼ばれる
     }
-    val myService20 = MyService2(2)
-    myService20.`val` = 3
-    val myService21 = myService20.clone()
-    myService21.`val` = 4
-    val myService22 = myService20.clone()
-    myService22.`val` = 5
-    println("MyService20: ${myService20.`val`}")
-    println("MyService21: ${myService21.`val`}")
-    println("MyService22: ${myService22.`val`}")
-    println("--- Memory Leak Test Finished ---")
-    println("Check your OS process monitor (Task Manager / top) to see if 'RSS' is stable.")
+
+    // 最後に親オブジェクトも閉じるなら
+    myService2.close()
+
+    println("--- Test Finished. Check RSS stability. ---")
 }
