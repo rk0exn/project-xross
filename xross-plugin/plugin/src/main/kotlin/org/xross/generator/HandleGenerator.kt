@@ -1,9 +1,9 @@
 package org.xross.generator
 
 import com.squareup.kotlinpoet.*
-import org.xross.XrossClass
-import org.xross.XrossMethodType
-import org.xross.XrossType
+import org.xross.structures.XrossClass
+import org.xross.structures.XrossMethodType
+import org.xross.structures.XrossType
 import java.lang.invoke.MethodHandle
 
 object HandleGenerator {

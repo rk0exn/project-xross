@@ -1,4 +1,4 @@
-package org.xross
+package org.xross.structures
 
 import kotlinx.serialization.Serializable
 
@@ -6,5 +6,6 @@ import kotlinx.serialization.Serializable
 data class XrossField(
     val name: String,
     val ty: XrossType,
+    val safety: XrossThreadSafety,
     val docs: List<String> = emptyList()
 )

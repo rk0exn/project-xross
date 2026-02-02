@@ -1,8 +1,20 @@
-package org.xross
+package org.xross.structures
 
-import com.squareup.kotlinpoet.*
+import com.squareup.kotlinpoet.BOOLEAN
+import com.squareup.kotlinpoet.BYTE
+import com.squareup.kotlinpoet.CHAR
+import com.squareup.kotlinpoet.ClassName
+import com.squareup.kotlinpoet.DOUBLE
+import com.squareup.kotlinpoet.FLOAT
+import com.squareup.kotlinpoet.INT
+import com.squareup.kotlinpoet.LONG
+import com.squareup.kotlinpoet.MemberName
+import com.squareup.kotlinpoet.SHORT
+import com.squareup.kotlinpoet.TypeName
+import com.squareup.kotlinpoet.UNIT
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import org.xross.XrossTypeSerializer
 
 @Serializable(with = XrossTypeSerializer::class)
 sealed class XrossType {
@@ -34,7 +46,8 @@ sealed class XrossType {
     ) : XrossType()
 
     /** KotlinPoet 用の型取得 */
-    val kotlinType: TypeName get() = when (this) {
+    val kotlinType: TypeName
+        get() = when (this) {
         I32 -> INT
         I64 -> LONG
         F32 -> FLOAT
@@ -50,7 +63,8 @@ sealed class XrossType {
     }
 
     /** FFM API (ValueLayout) へのマッピング */
-    val layoutMember: MemberName get() = when (this) {
+    val layoutMember: MemberName
+        get() = when (this) {
         I32 -> ValueLayouts.JAVA_INT
         I64 -> ValueLayouts.JAVA_LONG
         F32 -> ValueLayouts.JAVA_FLOAT

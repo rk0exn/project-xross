@@ -1,8 +1,8 @@
 package org.xross.generator
 
 import com.squareup.kotlinpoet.*
-import org.xross.XrossClass
-import org.xross.XrossMethodType
+import org.xross.structures.XrossClass
+import org.xross.structures.XrossMethodType
 import java.io.File
 
 object XrossGenerator {
@@ -50,15 +50,18 @@ object XrossGenerator {
 
         // 文字列として書き出し、不要な修飾子を置換
         val rawContent = fileSpec.toString()
-        val cleanedContent = rawContent
-            .replace("public class", "class")
-            .replace("public fun", "fun")
-            .replace("public constructor", "constructor")
-            .replace("public val", "val")
-            .replace("public companion object", "companion object")
-            // KotlinPoetが時折生成する冗長なUnit戻り値を整理
-            .replace(": Unit {", " {")
-
+        val cleanedContent = rawContent.let { content ->
+            val publicKeywords = listOf("class", "fun", "constructor", "val", "var", "companion object", "typealias")
+            val stage1 = publicKeywords.fold(content) { acc, keyword ->
+                acc.replace(Regex("""\bpublic\s+$keyword\b"""), keyword)
+            }
+            // 2. 冗長な Unit 戻り値の削除
+            // メソッド定義の末尾にある ": Unit" を削除
+            val stage2 = stage1.replace(Regex(""":\s*Unit\s*\{"""), " {")
+            // 3. (オプション) ゲッター/セッターの public も整理する場合
+            stage2.replace(Regex("""\bpublic\s+get\b\(\)"""), "get()")
+                .replace(Regex("""\bpublic\s+set\b"""), "set")
+        }
         // ファイル書き出し
         val fileDir = outputDir.resolve(targetPackage.replace('.', '/'))
         if (!fileDir.exists()) fileDir.mkdirs()

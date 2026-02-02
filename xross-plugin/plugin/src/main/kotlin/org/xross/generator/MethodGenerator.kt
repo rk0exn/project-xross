@@ -1,9 +1,13 @@
 package org.xross.generator
 
 import com.squareup.kotlinpoet.*
-import org.xross.*
-import org.xross.helper.StringHelper.toCamelCase
 import org.xross.helper.StringHelper.escapeKotlinKeyword
+import org.xross.helper.StringHelper.toCamelCase
+import org.xross.structures.XrossClass
+import org.xross.structures.XrossMethod
+import org.xross.structures.XrossMethodType
+import org.xross.structures.XrossThreadSafety
+import org.xross.structures.XrossType
 import java.lang.foreign.MemorySegment
 
 object MethodGenerator {
@@ -92,43 +96,50 @@ object MethodGenerator {
         isStructRet: Boolean,
         returnType: TypeName
     ) {
-        val lockType = when (method.methodType) {
-            XrossMethodType.MutInstance, XrossMethodType.OwnedInstance -> "writeLock().withLock"
-            XrossMethodType.ConstInstance -> "readLock().withLock"
+        // --- ロック戦略の決定 ---
+        val safety = method.safety
+
+        val lockType = when {
+            // Unsafe または Atomic 指定の場合は JVM レベルの Lock をスキップ
+            // (Atomic メソッドは Rust 内部で原子性を担保している、あるいは CAS 命令であることを想定)
+            safety == XrossThreadSafety.Unsafe || safety == XrossThreadSafety.Atomic -> null
+
+            // それ以外 (Lock) は従来通り methodType に基づいてロック
+            method.methodType == XrossMethodType.MutInstance || method.methodType == XrossMethodType.OwnedInstance -> "writeLock().withLock"
+            method.methodType == XrossMethodType.ConstInstance -> "readLock().withLock"
             else -> null
         }
 
         if (lockType != null) body.beginControlFlow("lock.%L", lockType)
 
+        // --- 戻り値の処理 ---
         when {
             method.ret is XrossType.Void -> {
                 body.addStatement("$call as Unit")
-                if (method.methodType == XrossMethodType.OwnedInstance) body.addStatement(
-                    "segment = %T.NULL",
-                    MemorySegment::class
-                )
+                // OwnedInstance (self 消費) の場合はセグメントを無効化
+                if (method.methodType == XrossMethodType.OwnedInstance) {
+                    body.addStatement("segment = %T.NULL", MemorySegment::class)
+                }
             }
 
             isStringRet -> {
                 body.addStatement("val res = $call as %T", MemorySegment::class)
                 body.addStatement(
                     "val str = if (res == %T.NULL) \"\" else res.reinterpret(%T.MAX_VALUE).getString(0)",
-                    MemorySegment::class,
-                    Long::class
+                    MemorySegment::class, Long::class
                 )
+                // Rust 側で malloc された文字列を解放
                 body.addStatement("if (res != %T.NULL) xross_free_stringHandle.invokeExact(res)", MemorySegment::class)
-                if (method.methodType == XrossMethodType.OwnedInstance) body.addStatement(
-                    "segment = %T.NULL",
-                    MemorySegment::class
-                )
+
+                if (method.methodType == XrossMethodType.OwnedInstance) {
+                    body.addStatement("segment = %T.NULL", MemorySegment::class)
+                }
                 body.addStatement("str")
             }
 
-            // isStructRet の分岐内
             isStructRet -> {
                 val struct = method.ret as XrossType.Struct
-                // コンパニオンのプロパティを指すように明示
-                val structSize = "Companion.STRUCT_SIZE"
+                val structSize = "STRUCT_SIZE"
 
                 body.addStatement("val resRaw = $call as %T", MemorySegment::class)
                 body.addStatement(
@@ -139,10 +150,13 @@ object MethodGenerator {
                 if (method.methodType == XrossMethodType.OwnedInstance) {
                     body.addStatement("segment = %T.NULL", MemorySegment::class)
                 }
+                // 返り値の構造体に親の生存フラグ（aliveFlag）を渡すことで、
+                // 親が close されたらこの戻り値も無効になるようにする設計が望ましい
                 body.addStatement("%T(res, isBorrowed = ${struct.isReference})", returnType)
             }
 
             else -> {
+                // プリミティブ型などの処理
                 if (method.methodType == XrossMethodType.OwnedInstance) {
                     body.addStatement("val res = $call as %T", returnType)
                     body.addStatement("segment = %T.NULL", MemorySegment::class)
@@ -155,7 +169,6 @@ object MethodGenerator {
 
         if (lockType != null) body.endControlFlow()
     }
-
     private fun generatePublicConstructor(classBuilder: TypeSpec.Builder, method: XrossMethod) {
         val builder = FunSpec.constructorBuilder()
 
@@ -168,7 +181,7 @@ object MethodGenerator {
             .add("(\n") // 改行して読みやすく
             .indent()
             .add("(newHandle.invokeExact($args) as %T).let { raw ->\n", MemorySegment::class)
-            .add("    if (raw == %T.NULL) raw else raw.reinterpret(Companion.STRUCT_SIZE)\n", MemorySegment::class)
+            .add("    if (raw == %T.NULL) raw else raw.reinterpret(STRUCT_SIZE)\n", MemorySegment::class)
             .add("}),\n")
             .unindent()
             .add("false")

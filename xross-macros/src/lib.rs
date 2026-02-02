@@ -9,7 +9,9 @@ use std::path::Path;
 use syn::{FnArg, ImplItem, ItemImpl, ItemStruct, Pat, ReturnType, Type, parse_macro_input};
 use type_mapping::map_type;
 use utils::*;
-use xross_metadata::{XrossClass, XrossField, XrossMethod, XrossMethodType, XrossType};
+use xross_metadata::{
+    ThreadSafety, XrossClass, XrossField, XrossMethod, XrossMethodType, XrossType,
+};
 
 #[proc_macro_derive(JvmClass, attributes(jvm_field))]
 pub fn jvm_class_derive(input: TokenStream) -> TokenStream {
@@ -23,9 +25,11 @@ pub fn jvm_class_derive(input: TokenStream) -> TokenStream {
             if field.attrs.iter().any(|a| a.path().is_ident("jvm_field")) {
                 let f_ident = field.ident.as_ref().unwrap();
                 let ty = map_type(&field.ty);
+                let safety = extract_safety_attr(&field.attrs, ThreadSafety::Lock);
                 fields_meta.push(XrossField {
                     name: f_ident.to_string(),
-                    ty: ty.clone(),
+                    ty,
+                    safety,
                     docs: extract_docs(&field.attrs),
                 });
                 let field_type = &field.ty;
@@ -168,10 +172,11 @@ pub fn jvm_class(attr: TokenStream, item: TokenStream) -> TokenStream {
                         };
                         let arg_ident = format_ident!("{}", arg_name);
                         let xross_ty = map_type(&pat_type.ty);
-
+                        let safety = extract_safety_attr(&pat_type.attrs, ThreadSafety::Lock);
                         args_meta.push(XrossField {
                             name: arg_name.clone(),
                             ty: xross_ty.clone(),
+                            safety,
                             docs: vec![],
                         });
 
@@ -205,16 +210,18 @@ pub fn jvm_class(attr: TokenStream, item: TokenStream) -> TokenStream {
                 }
             };
 
+            // Safety の抽出 (デフォルト: Lock)
+            let safety = extract_safety_attr(&method.attrs, ThreadSafety::Lock);
             methods_meta.push(XrossMethod {
                 name: rust_fn_name.to_string(),
                 symbol: symbol_name.clone(),
                 method_type,
+                safety, // メタデータに追加
                 is_constructor: is_new,
                 args: args_meta,
                 ret: ret_ty.clone(),
                 docs: extract_docs(&method.attrs),
             });
-
             // C互換の戻り値の型を定義
             let c_ret_type = match &ret_ty {
                 XrossType::Void => quote! { () },

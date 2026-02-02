@@ -1,4 +1,4 @@
-package org.xross
+package org.xross.structures
 
 import kotlinx.serialization.Serializable
 
@@ -14,5 +14,6 @@ data class XrossMethod(
     val isConstructor: Boolean,
     val args: List<XrossField>,
     val ret: XrossType,
+    val safety: XrossThreadSafety,
     val docs: List<String> = emptyList()
 )

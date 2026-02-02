@@ -3,6 +3,7 @@ package org.xross
 import kotlinx.serialization.json.Json
 import org.gradle.workers.WorkAction
 import org.xross.generator.XrossGenerator
+import org.xross.structures.XrossClass
 
 abstract class GenerateAction : WorkAction<GenerateParameters> {
     private val json = Json { ignoreUnknownKeys = true }

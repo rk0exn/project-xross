@@ -5,6 +5,7 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.*
+import org.xross.structures.XrossType
 
 object XrossTypeSerializer : JsonContentPolymorphicSerializer<XrossType>(XrossType::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<XrossType> {
