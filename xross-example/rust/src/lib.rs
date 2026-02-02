@@ -6,7 +6,7 @@ pub struct MyService {
     _boxes: Vec<i32>,
 }
 
-#[jvm_class] // パッケージなし (デフォルト)
+#[jvm_class]
 impl MyService {
     #[jvm_new]
     pub fn new() -> Self {
@@ -14,7 +14,13 @@ impl MyService {
         MyService { _boxes: boxes }
     }
 
+    /// Defaultトレイトの代わりに、Java側から利用しやすいよう明示的に統合
     #[jvm_method]
+    pub fn default() -> Self {
+        Self::new()
+    }
+
+    #[jvm_method(safety = Unsafe)] // 計算のみなのでLock不要
     pub fn execute(&self, data: i32) -> i32 {
         data * 2
     }
@@ -24,11 +30,12 @@ impl MyService {
         "Hello from Rust!".to_string()
     }
 
-    /// 所有権を消費して自分自身を消滅させる（OwnedInstanceのテスト）
+    /// 所有権を消費して自分自身を消滅させる
     #[jvm_method]
     pub fn consume_self(self) -> i32 {
         self._boxes.len() as i32
     }
+
     #[jvm_method]
     pub fn get_mut_ref(&mut self) -> &mut Self {
         self
@@ -40,34 +47,33 @@ pub mod test {
 
     #[derive(JvmClass, Clone)]
     pub struct MyService2 {
-        #[jvm_field]
+        /// safety = Atomic を指定することで、Java側での VarHandle 生成を促す
+        #[jvm_field(safety = Atomic)]
         pub val: i32,
     }
 
-    #[jvm_class(test.test2)] // org.example.test.test2 相当のパス
+    #[jvm_class(test.test2)]
     impl MyService2 {
         #[jvm_new]
         pub fn new(val: i32) -> Self {
             MyService2 { val }
         }
 
-        #[jvm_method]
+        #[jvm_method(safety = Atomic)] // Atomic指定でLockをスキップ
         pub fn execute(&self) -> i32 {
             self.val * 2
         }
 
-        #[jvm_method]
+        #[jvm_method(safety = Atomic)] // 同様にAtomic指定
         pub fn mut_test(&mut self) {
             self.val += 1;
         }
 
-        /// 参照を返すテスト (&Self を XrossType::Struct { is_reference: true } として返す)
         #[jvm_method]
         pub fn get_self_ref(&self) -> &Self {
             self
         }
 
-        /// 明示的なクローン作成
         #[jvm_method]
         pub fn create_clone(&self) -> Self {
             self.clone()

@@ -9,18 +9,22 @@ import org.xross.structures.XrossThreadSafety
 object PropertyGenerator {
     fun generateFields(classBuilder: TypeSpec.Builder, meta: XrossClass) {
         meta.fields.forEach { field ->
-            val camelName = field.name.toCamelCase().escapeKotlinKeyword()
+            // エスケープ前の生の名前（VH_ などの接頭辞用）
+            val baseCamelName = field.name.toCamelCase()
+            // キーワードを考慮したエスケープ済みの名前（プロパティ公開用）
+            val escapedName = baseCamelName.escapeKotlinKeyword()
+
             val propType = field.ty.kotlinType
             val offsetName = "OFFSET_${field.name}"
             val safety = field.safety
 
-            // 1. Atomic の場合は VarHandle を Companion に用意し、専用メソッドを生成
+            // 1. Atomic の場合は VarHandle を Companion に用意
             if (safety == XrossThreadSafety.Atomic) {
-                generateAtomicProperty(classBuilder, camelName, propType, offsetName)
+                generateAtomicProperty(classBuilder, baseCamelName, escapedName, propType, offsetName)
                 return@forEach
             }
 
-            // 2. 通常の Property (Unsafe, Lock, Immutable) の生成
+            // 2. 通常の Property (Unsafe, Lock, Immutable)
             val getterBuilder = FunSpec.getterBuilder()
             val setterBuilder = FunSpec.setterBuilder().addParameter("value", propType)
 
@@ -35,12 +39,11 @@ object PropertyGenerator {
                 }
                 XrossThreadSafety.Immutable -> {
                     getterBuilder.addStatement("return segment.get(%M, $offsetName.offset)", field.ty.layoutMember)
-                    // setter は生成しない
                 }
             }
 
-            val prop = PropertySpec.builder(camelName, propType)
-                .mutable(safety != XrossThreadSafety.Immutable) // Immutable は val
+            val prop = PropertySpec.builder(escapedName, propType)
+                .mutable(safety != XrossThreadSafety.Immutable)
                 .getter(getterBuilder.build())
                 .apply {
                     if (safety != XrossThreadSafety.Immutable) setter(setterBuilder.build())
@@ -53,45 +56,50 @@ object PropertyGenerator {
 
     private fun generateAtomicProperty(
         classBuilder: TypeSpec.Builder,
-        camelName: String,
+        baseName: String,     // エスケープなし (val)
+        escapedName: String,  // エスケープあり (`val`)
         propType: TypeName,
         offsetName: String
     ) {
-        // VarHandle を使った get/set プロパティ
+        val vhName = "VH_$baseName" // VH_val となり安全
+
+        // VarHandle を使った get/set
+        // %N を使うことで、プロパティ名にバッククォートが必要なら自動で付けてくれる
         val getter = FunSpec.getterBuilder()
-            .addStatement("return VH_$camelName.getVolatile(segment, $offsetName.offset) as %T", propType)
+            .addStatement("return $vhName.getVolatile(segment, $offsetName.offset) as %T", propType)
             .build()
 
         val setter = FunSpec.setterBuilder()
             .addParameter("value", propType)
-            .addStatement("VH_$camelName.setVolatile(segment, $offsetName.offset, value)")
+            .addStatement("$vhName.setVolatile(segment, $offsetName.offset, value)")
             .build()
 
         classBuilder.addProperty(
-            PropertySpec.builder(camelName, propType)
+            PropertySpec.builder(escapedName, propType)
                 .mutable(true)
                 .getter(getter)
                 .setter(setter)
                 .build()
         )
 
-        // Atomic 特有のヘルパーメソッド (CASなど) を追加
+        val capitalized = baseName.replaceFirstChar { it.uppercase() }
+
+        // Atomic ヘルパー
         classBuilder.addFunction(
-            FunSpec.builder("compareAndSet${camelName.replaceFirstChar { it.uppercase() }}")
+            FunSpec.builder("compareAndSet$capitalized")
                 .addParameter("expected", propType)
                 .addParameter("newValue", propType)
                 .returns(Boolean::class)
-                .addStatement("return VH_$camelName.compareAndSet(segment, $offsetName.offset, expected, newValue)")
+                .addStatement("return $vhName.compareAndSet(segment, $offsetName.offset, expected, newValue)")
                 .build()
         )
 
-        // 数値型なら getAndAdd も追加したいところ
         if (propType == INT || propType == LONG) {
             classBuilder.addFunction(
-                FunSpec.builder("getAndAdd${camelName.replaceFirstChar { it.uppercase() }}")
+                FunSpec.builder("getAndAdd$capitalized")
                     .addParameter("delta", propType)
                     .returns(propType)
-                    .addStatement("return VH_$camelName.getAndAdd(segment, $offsetName.offset, delta) as %T", propType)
+                    .addStatement("return $vhName.getAndAdd(segment, $offsetName.offset, delta) as %T", propType)
                     .build()
             )
         }

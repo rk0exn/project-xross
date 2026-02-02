@@ -21,9 +21,12 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="f975a9a1-e29b-4a10-834b-aa32ce0e2a24" name="変更" comment="">
-      <change beforePath="$PROJECT_DIR$/xross-macros/src/type_mapping.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/src/type_mapping.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-macros/src/utils.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/src/utils.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-metadata/src/metadata/safety.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-metadata/src/metadata/safety.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-example/app/src/main/resources/libxross_example.so" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/app/src/main/resources/libxross_example.so" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-example/rust/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/rust/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/gradle.properties" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/gradle.properties" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/HandleGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/HandleGenerator.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/PropertyGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/PropertyGenerator.kt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -168,7 +171,7 @@
       <workItem from="1769911717018" duration="37158000" />
       <workItem from="1769993109541" duration="4423000" />
       <workItem from="1769998329451" duration="6147000" />
-      <workItem from="1770006976454" duration="11264000" />
+      <workItem from="1770006976454" duration="12135000" />
     </task>
     <servers />
   </component>
