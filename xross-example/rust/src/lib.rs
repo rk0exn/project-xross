@@ -60,8 +60,8 @@ pub mod test {
         }
 
         #[jvm_method(safety = Atomic)] // Atomic指定でLockをスキップ
-        pub fn execute(&self) -> i32 {
-            self.val * 2
+        pub fn execute(&self) -> i64 {
+            self.val as i64 * 2i64
         }
 
         #[jvm_method(safety = Atomic)] // 同様にAtomic指定
