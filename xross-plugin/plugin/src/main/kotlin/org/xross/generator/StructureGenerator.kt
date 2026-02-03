@@ -7,24 +7,10 @@ import java.lang.foreign.MemorySegment
 
 object StructureGenerator {
     fun buildBase(classBuilder: TypeSpec.Builder, meta: XrossClass) {
-        // FieldMemoryInfo: 内部データ構造
-        classBuilder.addType(
-            TypeSpec.classBuilder("FieldMemoryInfo")
-                .addModifiers(KModifier.INTERNAL, KModifier.DATA)
-                .primaryConstructor(
-                    FunSpec.constructorBuilder()
-                        .addParameter("offset", Long::class)
-                        .addParameter("size", Long::class).build()
-                )
-                .addProperty(PropertySpec.builder("offset", Long::class).initializer("offset").build())
-                .addProperty(PropertySpec.builder("size", Long::class).initializer("size").build())
-                .build()
-        )
-
-        // AliveFlag: 生存確認フラグ
+        // --- AliveFlag: 生存確認フラグ ---
         classBuilder.addType(
             TypeSpec.classBuilder("AliveFlag")
-                .addModifiers(KModifier.INTERNAL)
+                .addModifiers(KModifier.PRIVATE)
                 .primaryConstructor(FunSpec.constructorBuilder().addParameter("initial", Boolean::class).build())
                 .addProperty(PropertySpec.builder("isValid", Boolean::class).mutable().initializer("initial").build())
                 .build()
@@ -57,7 +43,6 @@ object StructureGenerator {
         )
 
         // --- StampedLock (sl) の定義 ---
-        // メソッドやフィールドが存在する場合、同期用の StampedLock を追加
         if (meta.methods.any { it.methodType != XrossMethodType.Static } || meta.fields.isNotEmpty()) {
             classBuilder.addProperty(
                 PropertySpec.builder("sl", ClassName("java.util.concurrent.locks", "StampedLock"))
@@ -67,7 +52,6 @@ object StructureGenerator {
             )
         }
     }
-
     fun addFinalBlocks(classBuilder: TypeSpec.Builder, meta: XrossClass) {
         val deallocatorName = "Deallocator"
         val handleType = ClassName("java.lang.invoke", "MethodHandle")

@@ -21,12 +21,16 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="f975a9a1-e29b-4a10-834b-aa32ce0e2a24" name="変更" comment="">
+      <change afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/collections/RustCollection.kt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/collections/RustSlice.kt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/collections/RustVec.kt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/collections/RustVecDeque.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/HandleGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/CompanionGenerator.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/MethodGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/MethodGenerator.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-example/app/src/main/kotlin/org/example/App.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/app/src/main/kotlin/org/example/App.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/CompanionGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/CompanionGenerator.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/PropertyGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/PropertyGenerator.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/StructureGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/StructureGenerator.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/XrossGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/XrossGenerator.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/structures/XrossType.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/structures/XrossType.kt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -172,6 +176,7 @@
       <workItem from="1769993109541" duration="4423000" />
       <workItem from="1769998329451" duration="6147000" />
       <workItem from="1770006976454" duration="19105000" />
+      <workItem from="1770048238394" duration="4855000" />
     </task>
     <servers />
   </component>

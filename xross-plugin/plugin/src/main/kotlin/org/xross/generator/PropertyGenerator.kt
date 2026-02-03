@@ -3,64 +3,147 @@ package org.xross.generator
 import com.squareup.kotlinpoet.*
 import org.xross.helper.StringHelper.escapeKotlinKeyword
 import org.xross.helper.StringHelper.toCamelCase
-import org.xross.structures.XrossClass
-import org.xross.structures.XrossThreadSafety
+import org.xross.structures.*
+import java.lang.foreign.MemorySegment
 
 object PropertyGenerator {
     fun generateFields(classBuilder: TypeSpec.Builder, meta: XrossClass) {
         meta.fields.forEach { field ->
             val baseCamelName = field.name.toCamelCase()
             val escapedName = baseCamelName.escapeKotlinKeyword()
-            val propType = field.ty.kotlinType
-            val offsetName = "OFFSET_${field.name}"
-            val safety = field.safety
+            val vhName = "VH_$baseCamelName"
 
-            when (safety) {
-                // 1. Atomic: VarHandle を使用した完全マルチスレッド (CAS, GetAndAdd 等を提供)
-                XrossThreadSafety.Atomic -> {
-                    generateAtomicProperty(classBuilder, baseCamelName, escapedName, propType, offsetName)
-                }
-
-                // 2. Lock: StampedLock を使用した楽観的読み取り
-                XrossThreadSafety.Lock -> {
-                    generateLockProperty(classBuilder, escapedName, propType, offsetName)
-                }
-
-                // 3. Unsafe: 防御なし、最速アクセス
-                XrossThreadSafety.Unsafe -> {
-                    generateUnsafeProperty(classBuilder, escapedName, propType, offsetName)
-                }
-
-                // 4. Immutable: 不変参照、Getter のみ提供
-                XrossThreadSafety.Immutable -> {
-                    generateImmutableProperty(classBuilder, escapedName, propType, offsetName)
+            // 1. Atomic の場合は、専用の内部クラス + そのプロパティを生成
+            if (field.safety == XrossThreadSafety.Atomic) {
+                generateAtomicProperty(classBuilder, field, baseCamelName, escapedName, vhName)
+            } else {
+                // 2. それ以外は、通常のプロパティとして生成
+                when (field.ty) {
+                    is XrossType.RustString -> generateStringProperty(classBuilder, field, escapedName, vhName)
+                    is XrossType.Slice -> generateSliceProperty(classBuilder, field, escapedName, vhName)
+                    else -> {
+                        when (field.safety) {
+                            XrossThreadSafety.Lock -> generateLockProperty(classBuilder, field, escapedName, vhName)
+                            XrossThreadSafety.Unsafe -> generateUnsafeProperty(classBuilder, field, escapedName, vhName)
+                            XrossThreadSafety.Immutable -> generateImmutableProperty(
+                                classBuilder,
+                                field,
+                                escapedName,
+                                vhName
+                            )
+                        }
+                    }
                 }
             }
         }
     }
 
-    private fun generateUnsafeProperty(classBuilder: TypeSpec.Builder, name: String, type: TypeName, offset: String) {
-        val getter = FunSpec.getterBuilder()
-            .addStatement("return segment.get(java.lang.foreign.ValueLayout.JAVA_INT, $offset.offset)") // 型に応じたレイアウトが必要ですが簡易化
-            .build()
-        val setter = FunSpec.setterBuilder()
-            .addParameter("value", type)
-            .addStatement("segment.set(java.lang.foreign.ValueLayout.JAVA_INT, $offset.offset, value)")
+    private fun generateAtomicProperty(
+        classBuilder: TypeSpec.Builder,
+        field: XrossField,
+        baseName: String,
+        escapedName: String,
+        vhName: String
+    ) {
+        val type = field.ty.kotlinType
+        val innerClassName = "AtomicField_${baseName.replaceFirstChar { it.uppercase() }}"
+
+        val innerClass = TypeSpec.classBuilder(innerClassName)
+            .addModifiers(KModifier.INNER)
+            // 明示的な取得: .get()
+            .addFunction(
+                FunSpec.builder("get")
+                    .returns(type)
+                    .addStatement("return $vhName.getVolatile(segment, 0L) as %T", type)
+                    .build()
+            )
+            // 明示的な代入: .set(value)
+            .addFunction(
+                FunSpec.builder("set")
+                    .addParameter("value", type)
+                    .addStatement("$vhName.setVolatile(segment, 0L, value)")
+                    .build()
+            )
+            // ラムダによるアトミック更新: .set { it + 1 }
+            .addFunction(
+                FunSpec.builder("set")
+                    .addParameter(
+                        "block",
+                        LambdaTypeName.get(parameters = listOf(ParameterSpec.unnamed(type)), returnType = type)
+                    )
+                    .beginControlFlow("while (true)")
+                    .addStatement("val expect = get()")
+                    .addStatement("val update = block(expect)")
+                    .beginControlFlow("if (compareAndSet(expect, update))")
+                    .addStatement("break")
+                    .endControlFlow()
+                    .endControlFlow()
+                    .build()
+            )
+            // 数値型用の高速な増減: .add(delta)
+            .apply {
+                if (field.ty.isNumber) {
+                    addFunction(
+                        FunSpec.builder("add")
+                            .addParameter("delta", type)
+                            .addStatement("$vhName.getAndAdd(segment, 0L, delta)")
+                            .build()
+                    )
+                }
+            }
+            // CAS操作
+            .addFunction(
+                FunSpec.builder("compareAndSet")
+                    .addParameter("expected", type)
+                    .addParameter("newValue", type)
+                    .returns(BOOLEAN)
+                    .addStatement("return $vhName.compareAndSet(segment, 0L, expected, newValue)")
+                    .build()
+            )
+            // toStringで現在の値を表示
+            .addFunction(
+                FunSpec.builder("toString")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .returns(String::class)
+                    .addStatement("return get().toString()")
+                    .build()
+            )
             .build()
 
-        classBuilder.addProperty(PropertySpec.builder(name, type).mutable(true).getter(getter).setter(setter).build())
+        classBuilder.addType(innerClass)
+
+        // プロパティとして露出 (val で不変にし、AtomicFieldオブジェクト自体が置き換わらないようにする)
+        classBuilder.addProperty(
+            PropertySpec.builder(escapedName, ClassName("", innerClassName))
+                .initializer("%L()", innerClassName)
+                .build()
+        )
     }
 
-    private fun generateLockProperty(classBuilder: TypeSpec.Builder, name: String, type: TypeName, offset: String) {
-        // Getter: 楽観読み取り
+    private fun generateUnsafeProperty(
+        classBuilder: TypeSpec.Builder,
+        field: XrossField,
+        name: String,
+        vhName: String
+    ) {
+        val type = field.ty.kotlinType
+        val prop = PropertySpec.builder(name, type)
+            .mutable(true)
+            .getter(FunSpec.getterBuilder().addStatement("return $vhName.get(segment, 0L) as %T", type).build())
+            .setter(FunSpec.setterBuilder().addParameter("v", type).addStatement("$vhName.set(segment, 0L, v)").build())
+            .build()
+        classBuilder.addProperty(prop)
+    }
+
+    private fun generateLockProperty(classBuilder: TypeSpec.Builder, field: XrossField, name: String, vhName: String) {
+        val type = field.ty.kotlinType
         val getter = FunSpec.getterBuilder()
             .addStatement("var stamp = sl.tryOptimisticRead()")
-            // 読み取り対象。VarHandle があれば getVolatile、なければ get (ValueLayout)
-            .addStatement("var res = segment.get(java.lang.foreign.ValueLayout.JAVA_INT, $offset.offset)")
+            .addStatement("var res = $vhName.get(segment, 0L) as %T", type)
             .beginControlFlow("if (!sl.validate(stamp))")
             .addStatement("stamp = sl.readLock()")
             .beginControlFlow("try")
-            .addStatement("res = segment.get(java.lang.foreign.ValueLayout.JAVA_INT, $offset.offset)")
+            .addStatement("res = $vhName.get(segment, 0L) as %T", type)
             .nextControlFlow("finally")
             .addStatement("sl.unlockRead(stamp)")
             .endControlFlow()
@@ -68,12 +151,11 @@ object PropertyGenerator {
             .addStatement("return res")
             .build()
 
-        // Setter: WriteLock
         val setter = FunSpec.setterBuilder()
-            .addParameter("value", type)
+            .addParameter("v", type)
             .addStatement("val stamp = sl.writeLock()")
             .beginControlFlow("try")
-            .addStatement("segment.set(java.lang.foreign.ValueLayout.JAVA_INT, $offset.offset, value)")
+            .addStatement("$vhName.set(segment, 0L, v)")
             .nextControlFlow("finally")
             .addStatement("sl.unlockWrite(stamp)")
             .endControlFlow()
@@ -82,48 +164,38 @@ object PropertyGenerator {
         classBuilder.addProperty(PropertySpec.builder(name, type).mutable(true).getter(getter).setter(setter).build())
     }
 
-    private fun generateAtomicProperty(classBuilder: TypeSpec.Builder, baseName: String, escapedName: String, type: TypeName, offset: String) {
-        val vhName = "VH_$baseName"
-
-        val getter = FunSpec.getterBuilder()
-            .addStatement("return $vhName.getVolatile(segment, $offset.offset) as %T", type)
-            .build()
-
-        val setter = FunSpec.setterBuilder()
-            .addParameter("value", type)
-            .addStatement("$vhName.setVolatile(segment, $offset.offset, value)")
-            .build()
-
-        classBuilder.addProperty(PropertySpec.builder(escapedName, type).mutable(true).getter(getter).setter(setter).build())
-
-        // Atomic Helpers
-        val capitalized = baseName.replaceFirstChar { it.uppercase() }
-        classBuilder.addFunction(
-            FunSpec.builder("compareAndSet$capitalized")
-                .addParameter("expected", type)
-                .addParameter("newValue", type)
-                .returns(Boolean::class)
-                .addStatement("return $vhName.compareAndSet(segment, $offset.offset, expected, newValue)")
-                .build()
-        )
-
-        if (type == INT || type == LONG) {
-            classBuilder.addFunction(
-                FunSpec.builder("getAndAdd$capitalized")
-                    .addParameter("delta", type)
-                    .returns(type)
-                    .addStatement("return $vhName.getAndAdd(segment, $offset.offset, delta) as %T", type)
-                    .build()
-            )
-        }
+    private fun generateImmutableProperty(
+        classBuilder: TypeSpec.Builder,
+        field: XrossField,
+        name: String,
+        vhName: String
+    ) {
+        val getter =
+            FunSpec.getterBuilder().addStatement("return $vhName.get(segment, 0L) as %T", field.ty.kotlinType).build()
+        classBuilder.addProperty(PropertySpec.builder(name, field.ty.kotlinType).mutable(false).getter(getter).build())
     }
 
-    private fun generateImmutableProperty(classBuilder: TypeSpec.Builder, name: String, type: TypeName, offset: String) {
-        // Immutable は val (Setterなし)。不変参照なので楽観読み取りすら不要（一度決まれば変わらない前提、または writeLock 側で整合性を取る）
+    private fun generateStringProperty(
+        classBuilder: TypeSpec.Builder,
+        field: XrossField,
+        name: String,
+        vhName: String
+    ) {
         val getter = FunSpec.getterBuilder()
-            .addStatement("return segment.get(java.lang.foreign.ValueLayout.JAVA_INT, $offset.offset)")
+            .addStatement("val ptr = $vhName.get(segment, 0L) as %T", MemorySegment::class)
+            .addStatement(
+                "return if (ptr == %T.NULL) %T.NULL else ptr.reinterpret(%T.MAX_VALUE)",
+                MemorySegment::class,
+                MemorySegment::class,
+                Long::class
+            )
             .build()
+        classBuilder.addProperty(PropertySpec.builder(name, field.ty.kotlinType).getter(getter).build())
+    }
 
-        classBuilder.addProperty(PropertySpec.builder(name, type).mutable(false).getter(getter).build())
+    private fun generateSliceProperty(classBuilder: TypeSpec.Builder, field: XrossField, name: String, vhName: String) {
+        val getter =
+            FunSpec.getterBuilder().addStatement("return $vhName.get(segment, 0L) as %T", MemorySegment::class).build()
+        classBuilder.addProperty(PropertySpec.builder(name, field.ty.kotlinType).getter(getter).build())
     }
 }

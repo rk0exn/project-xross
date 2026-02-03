@@ -4,141 +4,124 @@ import com.squareup.kotlinpoet.*
 import org.xross.helper.StringHelper.toCamelCase
 import org.xross.structures.XrossClass
 import org.xross.structures.XrossMethodType
-import org.xross.structures.XrossThreadSafety
 import org.xross.structures.XrossType
+import java.lang.foreign.*
 import java.lang.invoke.MethodHandle
 import java.lang.invoke.VarHandle
+import java.util.concurrent.locks.StampedLock
 
 object CompanionGenerator {
     private val HANDLE_TYPE = MethodHandle::class.asClassName()
     private val VH_TYPE = VarHandle::class.asClassName()
+    private val LAYOUT_TYPE = StructLayout::class.asClassName()
     private val ADDRESS = MemberName("java.lang.foreign.ValueLayout", "ADDRESS")
 
     fun generateCompanions(companionBuilder: TypeSpec.Builder, meta: XrossClass) {
         val coreHandles = listOf("new", "drop", "clone", "layout", "ref", "refMut")
 
-        // 1. ハンドルプロパティの定義 (MethodHandle)
+        // 1. プロパティ定義 (MethodHandle, Layout, VarHandle, etc.)
         (coreHandles + "xross_free_string").forEach {
             companionBuilder.addProperty(PropertySpec.builder("${it}Handle", HANDLE_TYPE, KModifier.PRIVATE).build())
         }
         meta.methods.filter { !it.isConstructor }.forEach {
-            companionBuilder.addProperty(
-                PropertySpec.builder("${it.name}Handle", HANDLE_TYPE, KModifier.PRIVATE).build()
-            )
+            companionBuilder.addProperty(PropertySpec.builder("${it.name}Handle", HANDLE_TYPE, KModifier.PRIVATE).build())
         }
-
-        // --- 追加: Atomic フィールド用の VarHandle プロパティ ---
-        meta.fields.filter { it.safety == XrossThreadSafety.Atomic }.forEach { field ->
-            companionBuilder.addProperty(
-                PropertySpec.builder("VH_${field.name.toCamelCase()}", VH_TYPE).build()
-            )
+        companionBuilder.addProperty(PropertySpec.builder("LAYOUT", LAYOUT_TYPE, KModifier.PRIVATE).build())
+        meta.fields.forEach { field ->
+            companionBuilder.addProperty(PropertySpec.builder("VH_${field.name.toCamelCase()}", VH_TYPE, KModifier.PRIVATE).build())
         }
+        companionBuilder.addProperty(PropertySpec.builder("STRUCT_SIZE", Long::class, KModifier.PRIVATE).mutable().initializer("0L").build())
 
-        // 2. 共通定数
-        companionBuilder.addProperty(
-            PropertySpec.builder("CLEANER", ClassName("java.lang.ref", "Cleaner"), KModifier.PRIVATE)
-                .initializer("Cleaner.create()").build()
-        )
-        companionBuilder.addProperty(
-            PropertySpec.builder("STRUCT_SIZE", Long::class, KModifier.PRIVATE).mutable().initializer("0L").build()
-        )
-
-        meta.fields.forEach {
-            companionBuilder.addProperty(
-                PropertySpec.builder("OFFSET_${it.name}", ClassName("", "FieldMemoryInfo"), KModifier.PRIVATE).build()
-            )
-        }
         if (meta.methods.any { it.methodType == XrossMethodType.Static }) {
-            companionBuilder.addProperty(
-                PropertySpec.builder("sl", ClassName("java.util.concurrent.locks", "StampedLock"), KModifier.PRIVATE)
-                    .initializer("StampedLock()")
-                    .build()
-            )
+            companionBuilder.addProperty(PropertySpec.builder("sl", StampedLock::class, KModifier.PRIVATE).initializer("%T()", StampedLock::class).build())
         }
-        // 3. init ブロック
-        val init = CodeBlock.builder()
-            .addStatement("val linker = Linker.nativeLinker()")
-            .addStatement("val lookup = SymbolLookup.loaderLookup()")
-            .apply {
-                // xross_free_string (文字列解放用)
-                addStatement(
-                    "xross_free_stringHandle = linker.downcallHandle(lookup.find(\"xross_free_string\").get(), FunctionDescriptor.ofVoid(%M))",
-                    ADDRESS
-                )
+        companionBuilder.addProperty(PropertySpec.builder("CLEANER", ClassName("java.lang.ref", "Cleaner"), KModifier.PRIVATE).initializer("Cleaner.create()").build())
 
-                // Core Handles (ライフサイクル・参照管理)
+        // 4. init ブロック
+        val init = CodeBlock.builder()
+            .addStatement("val linker = %T.nativeLinker()", Linker::class)
+            .addStatement("val lookup = %T.loaderLookup()", SymbolLookup::class)
+            .apply {
+                // xross_free_string
+                addStatement("xross_free_stringHandle = linker.downcallHandle(lookup.find(\"xross_free_string\").get(), %T.ofVoid(%M))", FunctionDescriptor::class, ADDRESS)
+
+                // Core Handles
                 coreHandles.forEach { suffix ->
                     val symbol = "${meta.symbolPrefix}_$suffix"
                     val desc = when (suffix) {
-                        "drop" -> CodeBlock.of("FunctionDescriptor.ofVoid(%M)", ADDRESS)
-                        "layout" -> CodeBlock.of("FunctionDescriptor.of(%M)", ADDRESS)
-                        "clone", "ref", "refMut" -> CodeBlock.of("FunctionDescriptor.of(%M, %M)", ADDRESS, ADDRESS)
+                        "drop" -> CodeBlock.of("%T.ofVoid(%M)", FunctionDescriptor::class, ADDRESS)
+                        "layout" -> CodeBlock.of("%T.of(%M)", FunctionDescriptor::class, ADDRESS)
+                        "clone", "ref", "refMut" -> CodeBlock.of("%T.of(%M, %M)", FunctionDescriptor::class, ADDRESS, ADDRESS)
                         "new" -> {
                             val ctor = meta.methods.find { it.isConstructor }
                             val args = ctor?.args?.map { CodeBlock.of("%M", it.ty.layoutMember) } ?: emptyList()
-                            if (args.isEmpty()) CodeBlock.of("FunctionDescriptor.of(%M)", ADDRESS)
-                            else CodeBlock.of("FunctionDescriptor.of(%M, %L)", ADDRESS, args.joinToCode(", "))
+                            if (args.isEmpty()) CodeBlock.of("%T.of(%M)", FunctionDescriptor::class, ADDRESS)
+                            else CodeBlock.of("%T.of(%M, %L)", FunctionDescriptor::class, ADDRESS, args.joinToCode(", "))
                         }
-
-                        else -> CodeBlock.of("FunctionDescriptor.ofVoid()")
+                        else -> CodeBlock.of("%T.ofVoid()", FunctionDescriptor::class)
                     }
-                    // シンボルが存在しない場合に備えて try-catch や Optional チェックを入れることも可能
                     addStatement("${suffix}Handle = linker.downcallHandle(lookup.find(%S).get(), %L)", symbol, desc)
                 }
 
-                // Custom Methods
+                // Custom Methods (末尾コンマ対策)
                 meta.methods.filter { !it.isConstructor }.forEach { method ->
                     val argLayouts = mutableListOf<CodeBlock>()
-                    // インスタンスメソッドの場合は第一引数に Self のポインタ (ADDRESS) を追加
-                    if (method.methodType != XrossMethodType.Static) {
-                        argLayouts.add(CodeBlock.of("%M", ADDRESS))
-                    }
+                    if (method.methodType != XrossMethodType.Static) argLayouts.add(CodeBlock.of("%M", ADDRESS))
                     method.args.forEach { argLayouts.add(CodeBlock.of("%M", it.ty.layoutMember)) }
 
                     val desc = if (method.ret is XrossType.Void) {
-                        if (argLayouts.isEmpty()) CodeBlock.of("FunctionDescriptor.ofVoid()")
-                        else CodeBlock.of("FunctionDescriptor.ofVoid(%L)", argLayouts.joinToCode(", "))
+                        if (argLayouts.isEmpty()) CodeBlock.of("%T.ofVoid()", FunctionDescriptor::class)
+                        else CodeBlock.of("%T.ofVoid(%L)", FunctionDescriptor::class, argLayouts.joinToCode(", "))
                     } else {
-                        if (argLayouts.isEmpty()) CodeBlock.of("FunctionDescriptor.of(%M)", method.ret.layoutMember)
-                        else CodeBlock.of(
-                            "FunctionDescriptor.of(%M, %L)",
-                            method.ret.layoutMember,
-                            argLayouts.joinToCode(", ")
-                        )
+                        if (argLayouts.isEmpty()) CodeBlock.of("%T.of(%M)", FunctionDescriptor::class, method.ret.layoutMember)
+                        else CodeBlock.of("%T.of(%M, %L)", FunctionDescriptor::class, method.ret.layoutMember, argLayouts.joinToCode(", "))
                     }
-                    addStatement(
-                        "${method.name}Handle = linker.downcallHandle(lookup.find(%S).get(), %L)",
-                        method.symbol,
-                        desc
-                    )
+                    addStatement("${method.name}Handle = linker.downcallHandle(lookup.find(%S).get(), %L)", method.symbol, desc)
                 }
             }
             .beginControlFlow("try")
-            .addStatement("val layoutRaw = layoutHandle.invokeExact() as MemorySegment")
-            .addStatement("val layoutStr = if (layoutRaw == MemorySegment.NULL) \"\" else layoutRaw.reinterpret(Long.MAX_VALUE).getString(0)")
-            .addStatement("val tempMap = layoutStr.split(';').filter { it.isNotBlank() }.associate { part -> val bits = part.split(':'); bits[0] to FieldMemoryInfo(bits[1].toLong(), bits[2].toLong()) }")
-            .apply {
-                meta.fields.forEach {
-                    addStatement(
-                        "OFFSET_${it.name} = tempMap[%S] ?: throw IllegalStateException(%S)",
-                        it.name,
-                        "Field ${it.name} not found"
-                    )
+            .addStatement("val layoutRaw = layoutHandle.invokeExact() as %T", MemorySegment::class)
+            .addStatement("val layoutStr = if (layoutRaw == %T.NULL) \"\" else layoutRaw.reinterpret(%T.MAX_VALUE).getString(0)", MemorySegment::class, Long::class)
+            .addStatement("val parts = layoutStr.split(';').filter { it.isNotBlank() }")
+            .addStatement("data class TempField(val name: String, val offset: Long, val size: Long)")
+            .addStatement("val tempFields = parts.map { val b = it.split(':'); TempField(b[0], b[1].toLong(), b[2].toLong()) }")
+            .addStatement("val selfInfo = tempFields.find { it.name == \"__self\" } ?: throw %T(\"Missing __self metadata\")", IllegalStateException::class)
+            .addStatement("STRUCT_SIZE = selfInfo.size")
+            .addStatement("val sortedFields = tempFields.filter { it.name != \"__self\" }.sortedBy { it.offset }")
 
-                    // --- VarHandle の初期化 ---
-                    if (it.safety == XrossThreadSafety.Atomic) {
-                        val vhName = "VH_${it.name.toCamelCase()}"
-                        // ValueLayout (例: JAVA_INT) は既に varHandle() メソッドを持っています
-                        addStatement(
-                            "$vhName = %M.varHandle()",
-                            it.ty.layoutMember // JAVA_INT, JAVA_LONG などの MemberName
-                        )
-                    }
+            .addStatement("val layouts = mutableListOf<%T>()", MemoryLayout::class)
+            .addStatement("var currentOffsetPos = 0L") // 警告回避のため名前を変更し、確実に更新
+            .beginControlFlow("for (f in sortedFields)")
+            .beginControlFlow("if (f.offset > currentOffsetPos)")
+            .addStatement("layouts.add(%T.paddingLayout(f.offset - currentOffsetPos))", MemoryLayout::class)
+            .endControlFlow()
+            .apply {
+                // フィールドごとの型を決定し、currentOffsetPos を更新するロジック
+                // if-else ではなく、名前解決を確実に行う
+                meta.fields.forEach { field ->
+                    beginControlFlow("if (f.name == %S)", field.name)
+                    addStatement("layouts.add(%M.withName(%S))", field.ty.layoutMember, field.name)
+                    // ここで currentOffsetPos を更新
+                    addStatement("currentOffsetPos = f.offset + f.size")
+                    endControlFlow()
                 }
             }
-            .addStatement("STRUCT_SIZE = tempMap[\"__self\"]?.size ?: 0L")
+            // meta.fields にない、Rust 側だけの内部フィールドがある場合も currentOffsetPos を進める必要がある
+            .addStatement("if (currentOffsetPos < f.offset + f.size) currentOffsetPos = f.offset + f.size")
+            .endControlFlow()
+
+            .beginControlFlow("if (currentOffsetPos < STRUCT_SIZE)")
+            .addStatement("layouts.add(%T.paddingLayout(STRUCT_SIZE - currentOffsetPos))", MemoryLayout::class)
+            .endControlFlow()
+            .addStatement("LAYOUT = %T.structLayout(*layouts.toTypedArray())", MemoryLayout::class)
+
+            .apply {
+                meta.fields.forEach { field ->
+                    addStatement("VH_${field.name.toCamelCase()} = LAYOUT.varHandle(%T.PathElement.groupElement(%S))", MemoryLayout::class, field.name)
+                }
+            }
             .nextControlFlow("catch (e: Throwable)")
-            .addStatement("throw RuntimeException(e)")
+            .addStatement("throw %T(e)", RuntimeException::class)
             .endControlFlow()
 
         companionBuilder.addInitializerBlock(init.build())

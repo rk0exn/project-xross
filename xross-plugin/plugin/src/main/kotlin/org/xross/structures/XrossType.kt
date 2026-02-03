@@ -45,37 +45,48 @@ sealed class XrossType {
         val isReference: Boolean
     ) : XrossType()
 
+    val isNumber: Boolean
+        get() = when (this) {
+            I8, I16, I32, I64, U16, F32, F64 -> true
+            else -> false
+        }
+
+    val isInteger: Boolean
+        get() = when (this) {
+            I8, I16, I32, I64, U16 -> true
+            else -> false
+        }
     /** KotlinPoet 用の型取得 */
     val kotlinType: TypeName
         get() = when (this) {
-        I32 -> INT
-        I64 -> LONG
-        F32 -> FLOAT
-        F64 -> DOUBLE
-        Bool -> BOOLEAN
-        I8 -> BYTE
-        I16 -> SHORT
-        U16 -> CHAR
-        Void -> UNIT
-        Pointer, RustString -> ClassName("java.lang.foreign", "MemorySegment")
-        is Struct -> ClassName("", name) // パッケージ名は生成時に解決
-        is Slice -> ClassName("java.lang.foreign", "MemorySegment") // ポインタ+長さ
-    }
+            I32 -> INT
+            I64 -> LONG
+            F32 -> FLOAT
+            F64 -> DOUBLE
+            Bool -> BOOLEAN
+            I8 -> BYTE
+            I16 -> SHORT
+            U16 -> CHAR
+            Void -> UNIT
+            Pointer, RustString -> ClassName("java.lang.foreign", "MemorySegment")
+            is Struct -> ClassName("", name) // パッケージ名は生成時に解決
+            is Slice -> ClassName("java.lang.foreign", "MemorySegment") // ポインタ+長さ
+        }
 
     /** FFM API (ValueLayout) へのマッピング */
     val layoutMember: MemberName
         get() = when (this) {
-        I32 -> ValueLayouts.JAVA_INT
-        I64 -> ValueLayouts.JAVA_LONG
-        F32 -> ValueLayouts.JAVA_FLOAT
-        F64 -> ValueLayouts.JAVA_DOUBLE
-        Bool -> ValueLayouts.JAVA_BOOLEAN
-        I8 -> ValueLayouts.JAVA_BYTE
-        I16 -> ValueLayouts.JAVA_SHORT
-        U16 -> ValueLayouts.JAVA_CHAR
-        Void -> throw IllegalStateException("Void has no layout")
-        Pointer, RustString, is Struct, is Slice -> ValueLayouts.ADDRESS
-    }
+            I32 -> ValueLayouts.JAVA_INT
+            I64 -> ValueLayouts.JAVA_LONG
+            F32 -> ValueLayouts.JAVA_FLOAT
+            F64 -> ValueLayouts.JAVA_DOUBLE
+            Bool -> ValueLayouts.JAVA_BOOLEAN
+            I8 -> ValueLayouts.JAVA_BYTE
+            I16 -> ValueLayouts.JAVA_SHORT
+            U16 -> ValueLayouts.JAVA_CHAR
+            Void -> throw IllegalStateException("Void has no layout")
+            Pointer, RustString, is Struct, is Slice -> ValueLayouts.ADDRESS
+        }
 
     private object ValueLayouts {
         private const val PKG = "java.lang.foreign.ValueLayout"

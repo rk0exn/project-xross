@@ -48,7 +48,7 @@ fun executeMemoryLeakTest() {
 
     for (i in 1..iterations) {
         service.createClone().use { clone ->
-            clone.`val` = i
+            clone.`val`.set { i }
             val res = clone.execute()
             if (i % reportInterval == 0) {
                 val usedMem = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024
@@ -97,7 +97,7 @@ fun executeConcurrencyTest() {
         executor.submit {
             repeat(opsPerThread) {
                 // 生成された Atomic ヘルパーを使用
-                shared.getAndAddVal(1)
+                shared.`val`.set { it + 1 }
             }
         }
     }
@@ -105,7 +105,7 @@ fun executeConcurrencyTest() {
     executor.shutdown()
     if (executor.awaitTermination(1, TimeUnit.MINUTES)) {
         val end = System.currentTimeMillis()
-        val finalVal = shared.`val`
+        val finalVal = shared.`val`.get()
         println("Concurrency test finished in ${end - start}ms")
         println("Final shared value: $finalVal (Expected: $expectedFinalValue)")
 
