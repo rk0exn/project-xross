@@ -21,15 +21,15 @@ object OpaqueGenerator {
             FunSpec.constructorBuilder()
                 .addParameter("raw", MemorySegment::class)
                 .addParameter(
-                    ParameterSpec.builder("isBorrowed", Boolean::class)
-                        .defaultValue("false")
+                    ParameterSpec.builder("parent", ANY.copy(nullable = true))
+                        .defaultValue("null")
                         .build()
                 )
                 .build()
         )
         classBuilder.addProperty(
-            PropertySpec.builder("isBorrowed", Boolean::class, KModifier.PRIVATE)
-                .initializer("isBorrowed")
+            PropertySpec.builder("parent",ANY.copy(nullable = true), KModifier.PRIVATE)
+                .initializer("parent")
                 .build()
         )
         classBuilder.addProperty(
@@ -43,7 +43,7 @@ object OpaqueGenerator {
         val cleanableType = Cleaner.Cleanable::class.asClassName().copy(nullable = true)
         classBuilder.addProperty(
             PropertySpec.builder("cleanable", cleanableType, KModifier.PRIVATE)
-                .initializer("if (isBorrowed || raw == MemorySegment.NULL) null else CLEANER.register(this, Deallocator(raw, dropHandle))")
+                .initializer("if (parent !=null || raw == MemorySegment.NULL) null else CLEANER.register(this, Deallocator(raw, dropHandle))")
                 .build()
         )
 
@@ -66,7 +66,7 @@ object OpaqueGenerator {
         classBuilder.addFunction(
             FunSpec.builder("close")
                 .addModifiers(KModifier.OVERRIDE)
-                .beginControlFlow("if (segment != MemorySegment.NULL && !isBorrowed)")
+                .beginControlFlow("if (segment != MemorySegment.NULL && parent == null)")
                 .addStatement("cleanable?.clean()")
                 .addStatement("segment = MemorySegment.NULL")
                 .endControlFlow()

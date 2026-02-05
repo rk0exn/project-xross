@@ -103,6 +103,7 @@ object MethodGenerator {
                     ClassName(fqn.substring(0, lastDot), fqn.substring(lastDot + 1))
                 }
             }
+
             else -> type.kotlinType
         }
     }
@@ -115,11 +116,12 @@ object MethodGenerator {
         isComplexRet: Boolean
     ) {
         val isVoid = method.ret is XrossType.Void
-        val safety = if (method.methodType == XrossMethodType.MutInstance || method.methodType == XrossMethodType.OwnedInstance) {
-            XrossThreadSafety.Immutable // 書き込みロック強制
-        } else {
-            method.safety
-        }
+        val safety =
+            if (method.methodType == XrossMethodType.MutInstance || method.methodType == XrossMethodType.OwnedInstance) {
+                XrossThreadSafety.Immutable // 書き込みロック強制
+            } else {
+                method.safety
+            }
 
         when (safety) {
             XrossThreadSafety.Lock -> {
@@ -139,6 +141,7 @@ object MethodGenerator {
                 body.endControlFlow()
                 if (!isVoid) body.addStatement("resValue")
             }
+
             else -> generateInvokeLogic(body, method, call, returnType, isComplexRet)
         }
     }
@@ -153,21 +156,33 @@ object MethodGenerator {
         when {
             method.ret is XrossType.Void -> {
                 body.addStatement("$call as Unit")
-                if (method.methodType == XrossMethodType.OwnedInstance) body.addStatement("this.segment = %T.NULL", MemorySegment::class)
+                if (method.methodType == XrossMethodType.OwnedInstance) body.addStatement(
+                    "this.segment = %T.NULL",
+                    MemorySegment::class
+                )
             }
+
             method.ret is XrossType.RustString -> {
                 // ... (既存の文字列処理) ...
                 body.beginControlFlow("run")
                 body.addStatement("val res = $call as %T", MemorySegment::class)
-                body.addStatement("val str = if (res == %T.NULL) \"\" else res.reinterpret(%T.MAX_VALUE).getString(0)", MemorySegment::class, Long::class)
+                body.addStatement(
+                    "val str = if (res == %T.NULL) \"\" else res.reinterpret(%T.MAX_VALUE).getString(0)",
+                    MemorySegment::class,
+                    Long::class
+                )
                 body.addStatement("if (res != %T.NULL) xross_free_stringHandle.invokeExact(res)", MemorySegment::class)
                 body.addStatement("str")
                 body.endControlFlow()
             }
+
             isComplexRet -> {
                 body.beginControlFlow("run")
                 body.addStatement("val resRaw = $call as %T", MemorySegment::class)
-                body.addStatement("val res = if (resRaw == %T.NULL) resRaw else resRaw.reinterpret(STRUCT_SIZE)", MemorySegment::class)
+                body.addStatement(
+                    "val res = if (resRaw == %T.NULL) resRaw else resRaw.reinterpret(STRUCT_SIZE)",
+                    MemorySegment::class
+                )
 
                 // --- ここが修正箇所 ---
                 // メタデータの Ownership を判定
@@ -177,24 +192,33 @@ object MethodGenerator {
                     is XrossType.Object -> retType.ownership != XrossType.Ownership.Owned
                     else -> false
                 }
+                val parent = if (isBorrowed) {
+                    "this"
+                } else {
+                    "null"
+                }
 
                 // 動的に isBorrowed の値を埋め込む
-                body.addStatement("%T(res, isBorrowed = $isBorrowed)", returnType)
+                body.addStatement("%T(res, parent=$parent)", returnType)
                 // ----------------------
 
                 body.endControlFlow()
             }
+
             else -> body.addStatement("$call as %T", returnType)
         }
     }
+
     private fun generatePublicConstructor(classBuilder: TypeSpec.Builder, method: XrossMethod) {
         val builder = FunSpec.constructorBuilder()
         method.args.forEach { builder.addParameter(it.name.toCamelCase().escapeKotlinKeyword(), it.ty.kotlinType) }
         val args = method.args.joinToString(", ") { it.name.toCamelCase().escapeKotlinKeyword() }
 
         builder.callThisConstructor(
-            CodeBlock.of("((newHandle.invokeExact($args) as %T).let { raw -> if (raw == %T.NULL) raw else raw.reinterpret(STRUCT_SIZE) }), false",
-                MemorySegment::class, MemorySegment::class)
+            CodeBlock.of(
+                "((newHandle.invokeExact($args) as %T).let { raw -> if (raw == %T.NULL) raw else raw.reinterpret(STRUCT_SIZE) }), false",
+                MemorySegment::class, MemorySegment::class
+            )
         )
         classBuilder.addFunction(builder.build())
     }

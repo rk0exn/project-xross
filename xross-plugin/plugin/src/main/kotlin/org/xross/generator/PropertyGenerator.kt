@@ -49,7 +49,11 @@ object PropertyGenerator {
 
     private fun buildGetter(field: XrossField, vhName: String, isLocked: Boolean, fqn: String): FunSpec {
 
-        val isBorrowed = !field.ty.isCopy
+        val parent = if (field.ty.isCopy) {
+            "null"
+        } else {
+            "this"
+        }
         // 内部クラスからのアクセスの場合は this@Parent.segment、そうでない場合は segment
         val segmentRef =
             "segment"
@@ -61,7 +65,7 @@ object PropertyGenerator {
             is XrossType.Bool -> "($vhRef.get($segmentRef, 0L) as kotlin.Byte) != (0).toByte()"
             is XrossType.RustString -> "(($vhRef.get($segmentRef, 0L) as java.lang.foreign.MemorySegment).let { if (it == java.lang.foreign.MemorySegment.NULL) it else it.reinterpret(kotlin.Long.MAX_VALUE) })"
             is XrossType.RustStruct, is XrossType.RustEnum, is XrossType.Object ->
-                "$fqn($vhRef.get($segmentRef, 0L) as java.lang.foreign.MemorySegment, isBorrowed = $isBorrowed)"
+                "$fqn($vhRef.get($segmentRef, 0L) as java.lang.foreign.MemorySegment, parent = $parent)"
 
             else -> "$vhRef.get($segmentRef, 0L) as $fqn"
         }

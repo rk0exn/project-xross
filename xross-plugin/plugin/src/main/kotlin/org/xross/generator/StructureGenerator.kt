@@ -20,7 +20,7 @@ object StructureGenerator {
         val constructorBuilder = FunSpec.constructorBuilder()
             .addModifiers(KModifier.PRIVATE)
             .addParameter("raw", MemorySegment::class)
-            .addParameter(ParameterSpec.builder("isBorrowed", Boolean::class).defaultValue("false").build())
+            .addParameter(ParameterSpec.builder("parent", ANY.copy(nullable = true)).defaultValue("null").build())
             .addParameter(
                 ParameterSpec.builder("sharedFlag", ClassName("", "AliveFlag").copy(nullable = true))
                     .defaultValue("null").build()
@@ -89,7 +89,7 @@ object StructureGenerator {
             )
                 .mutable()
                 .initializer(
-                    "if (isBorrowed || segment == %T.NULL) null else CLEANER.register(this, %L(segment, dropHandle))",
+                    "if (parent != null || segment == %T.NULL) null else CLEANER.register(this, %L(segment, dropHandle))",
                     MemorySegment::class, deallocatorName
                 )
                 .build()

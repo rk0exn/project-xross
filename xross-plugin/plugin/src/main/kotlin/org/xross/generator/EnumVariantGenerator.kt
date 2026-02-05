@@ -100,14 +100,18 @@ object EnumVariantGenerator {
     }
 
     private fun buildVariantGetter(field: XrossField, vhName: String, fqn: String): FunSpec {
-        val isBorrowed = !field.ty.isOwned
+        val parent = if (field.ty.isCopy){
+            "null"
+        }else{
+            "this"
+        }
 
         val segRef = "segment"
 
         val rawReadExpr = when (field.ty) {
             is XrossType.Bool -> "($vhName.get($segRef, 0L) as Byte) != (0).toByte()"
             is XrossType.RustStruct, is XrossType.RustEnum, is XrossType.Object ->
-                "$fqn($vhName.get($segRef, 0L) as java.lang.foreign.MemorySegment, isBorrowed = $isBorrowed)"
+                "$fqn($vhName.get($segRef, 0L) as java.lang.foreign.MemorySegment, parent = $parent)"
             else -> "$vhName.get($segRef, 0L) as $fqn"
         }
 
