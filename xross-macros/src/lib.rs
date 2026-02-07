@@ -123,8 +123,6 @@ pub fn jvm_class_derive(input: TokenStream) -> TokenStream {
                         );
                     } else if matches!(
                         ty,
-                        XrossType::RustStruct { .. }
-                            | XrossType::RustEnum { .. }
                             | XrossType::Object { .. }
                     ) {
                         // 参照(&T)の場合
@@ -214,7 +212,7 @@ pub fn jvm_class(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut definition = load_definition(type_name_ident)
         .expect("JvmClass definition not found. Apply #[derive(JvmClass)] first.");
 
-    let (package_name, symbol_base, is_struct) = match &definition {
+    let (package_name, symbol_base, _is_struct) = match &definition {
         XrossDefinition::Struct(s) => (s.package_name.clone(), s.symbol_prefix.clone(), true),
         XrossDefinition::Enum(e) => (e.package_name.clone(), e.symbol_prefix.clone(), false),
         XrossDefinition::Opaque(_) => {
@@ -313,9 +311,7 @@ pub fn jvm_class(_attr: TokenStream, item: TokenStream) -> TokenStream {
                                 });
                                 call_args.push(quote! { #arg_ident });
                             }
-                            XrossType::RustStruct { .. }
-                            | XrossType::RustEnum { .. }
-                            | XrossType::Object { .. } => {
+                            XrossType::Object { .. } => {
                                 let raw_ty = &pat_type.ty;
                                 c_args.push(quote! { #arg_ident: *mut std::ffi::c_void });
                                 // 値渡し or 参照渡しをシグネチャから判断して deref する
@@ -344,16 +340,9 @@ pub fn jvm_class(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     format!("{}.{}", package_name, type_name_ident)
                 };
                 // コンストラクタ(jvm_new)は常に所有権を返す
-                if is_struct {
-                    XrossType::RustStruct {
-                        signature: sig,
-                        ownership: Ownership::Owned,
-                    }
-                } else {
-                    XrossType::RustEnum {
-                        signature: sig,
-                        ownership: Ownership::Owned,
-                    }
+                XrossType::Object {
+                    signature: sig,
+                    ownership: Ownership::Owned,
                 }
             } else {
                 match &method.sig.output {
@@ -382,8 +371,6 @@ pub fn jvm_class(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
                         // 3. XrossTypeが構造体やオブジェクトの場合、判定したOwnershipを上書きする
                         match &mut xross_ty {
-                            XrossType::RustStruct { ownership: o, .. }
-                            | XrossType::RustEnum { ownership: o, .. }
                             | XrossType::Object { ownership: o, .. } => {
                                 *o = ownership;
                             }
@@ -411,8 +398,6 @@ pub fn jvm_class(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     quote! { *mut std::ffi::c_char },
                     quote! { std::ffi::CString::new(#inner_call).unwrap_or_default().into_raw() },
                 ),
-                XrossType::RustStruct { ownership, .. }
-                | XrossType::RustEnum { ownership, .. }
                 | XrossType::Object { ownership, .. } => {
                     // Ownership 列挙型に基づいて処理を分岐
                     match ownership {

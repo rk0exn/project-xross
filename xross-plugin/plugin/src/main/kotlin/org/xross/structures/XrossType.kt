@@ -20,8 +20,6 @@ sealed class XrossType {
 
     enum class Ownership { Owned, Ref, MutRef }
 
-    data class RustStruct(val signature: String, val ownership: Ownership = Ownership.Owned) : XrossType()
-    data class RustEnum(val signature: String, val ownership: Ownership = Ownership.Owned) : XrossType()
     data class Object(val signature: String, val ownership: Ownership = Ownership.Owned) : XrossType()
 
     /** KotlinPoet 用の型取得 */
@@ -36,7 +34,7 @@ sealed class XrossType {
             I16 -> SHORT
             U16 -> CHAR
             Void -> UNIT
-            Pointer, RustString, is RustStruct, is RustEnum, is Object ->
+            Pointer, RustString, is Object ->
                 ClassName("java.lang.foreign", "MemorySegment")
         }
 
@@ -52,12 +50,12 @@ sealed class XrossType {
             I16 -> ValueLayouts.JAVA_SHORT
             U16 -> ValueLayouts.JAVA_CHAR
             Void -> throw IllegalStateException("Void has no layout")
-            Pointer, RustString, is RustStruct, is RustEnum, is Object -> ValueLayouts.ADDRESS
+            Pointer, RustString, is Object -> ValueLayouts.ADDRESS
         }
 
     private object ValueLayouts {
         private const val PKG = "java.lang.foreign.ValueLayout"
-        val JAVA_INT = MemberName(PKG, "JAVA_INT")
+        val JAVA_INT:MemberName = MemberName(PKG, "JAVA_INT")
         val JAVA_LONG = MemberName(PKG, "JAVA_LONG")
         val JAVA_FLOAT = MemberName(PKG, "JAVA_FLOAT")
         val JAVA_DOUBLE = MemberName(PKG, "JAVA_DOUBLE")
@@ -69,8 +67,6 @@ sealed class XrossType {
 
     val isOwned: Boolean
         get() = when (this) {
-            is RustStruct -> ownership == Ownership.Owned
-            is RustEnum -> ownership == Ownership.Owned
             is Object -> ownership == Ownership.Owned
             else -> false
         }
@@ -85,7 +81,7 @@ sealed class XrossType {
             Pointer -> isOwned
             // 構造体、Enum、不透明オブジェクトは参照（MemorySegment）として
             // 扱うためコピーではない
-            is RustStruct, is RustEnum, is Object -> false
+            is Object -> false
             // Voidはデータがない
             Void -> true
         }

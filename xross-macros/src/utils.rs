@@ -180,12 +180,12 @@ pub fn resolve_type_with_attr(
         if attr.path().is_ident("xross") {
             let _ = attr.parse_nested_meta(|meta| {
                 if meta.path.is_ident("struct") {
-                    xross_ty = Some(XrossType::RustStruct {
+                    xross_ty = Some(XrossType::Object {
                         signature: meta.value()?.parse::<syn::LitStr>()?.value(),
                         ownership: ownership.clone(), // 判定した所有権を適用
                     });
                 } else if meta.path.is_ident("enum") {
-                    xross_ty = Some(XrossType::RustEnum {
+                    xross_ty = Some(XrossType::Object {
                         signature: meta.value()?.parse::<syn::LitStr>()?.value(),
                         ownership: ownership.clone(),
                     });
@@ -226,17 +226,7 @@ pub fn resolve_type_with_attr(
 
     // --- 5. Ownership の反映と Object(Unknown) のフォールバック ---
     match &mut final_ty {
-        XrossType::RustStruct {
-            ownership: o,
-            signature,
-            ..
-        }
-        | XrossType::RustEnum {
-            ownership: o,
-            signature,
-            ..
-        }
-        | XrossType::Object {
+        XrossType::Object {
             ownership: o,
             signature,
             ..

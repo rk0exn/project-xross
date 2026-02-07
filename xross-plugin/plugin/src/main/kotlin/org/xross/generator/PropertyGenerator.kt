@@ -8,8 +8,6 @@ import org.xross.structures.*
 object PropertyGenerator {
     private fun resolveFqn(type: XrossType, meta: XrossDefinition, targetPackage: String): String {
         val signature = when (type) {
-            is XrossType.RustStruct -> type.signature
-            is XrossType.RustEnum -> type.signature
             is XrossType.Object -> type.signature
             else -> return (type.kotlinType as ClassName).canonicalName
         }
@@ -48,30 +46,53 @@ object PropertyGenerator {
     }
 
     private fun buildGetter(field: XrossField, vhName: String, isLocked: Boolean, fqn: String): FunSpec {
-        val parent = if (field.ty.isCopy) { "null" } else { "this" }
+        val parent = if (field.ty.isCopy) {
+            "null"
+        } else {
+            "this"
+        }
         val segmentRef = "segment"
-        val vhRef = vhName
         val memSegmentClass = ClassName("java.lang.foreign", "MemorySegment")
         val nullPointerExceptionClass = NullPointerException::class
         val longClass = Long::class
 
         fun buildReadLogic(builder: CodeBlock.Builder, resultVarName: String) {
             if (!field.ty.isCopy) { // Check if the instance itself is NULL for non-copy types
-                builder.addStatement("if ($segmentRef == %T.NULL) throw %T(%S)", memSegmentClass, nullPointerExceptionClass, "Attempted to access field '${field.name}' on a NULL native object")
+                builder.addStatement(
+                    "if ($segmentRef == %T.NULL) throw %T(%S)",
+                    memSegmentClass,
+                    nullPointerExceptionClass,
+                    "Attempted to access field '${field.name}' on a NULL native object"
+                )
             }
 
             when (field.ty) {
-                is XrossType.Bool -> builder.addStatement("$resultVarName = ($vhRef.get($segmentRef, 0L) as %T) != (0).toByte()", Byte::class)
+                is XrossType.Bool -> builder.addStatement(
+                    "$resultVarName = ($vhName.get($segmentRef, 0L) as %T) != (0).toByte()",
+                    Byte::class
+                )
+
                 is XrossType.RustString -> {
-                    builder.addStatement("val rawSegment = $vhRef.get($segmentRef, 0L) as %T", memSegmentClass)
-                    builder.addStatement("$resultVarName = if (rawSegment == %T.NULL) \"\" else rawSegment.reinterpret(%T.MAX_VALUE).getString(0)", memSegmentClass, longClass)
+                    builder.addStatement("val rawSegment = $vhName.get($segmentRef, 0L) as %T", memSegmentClass)
+                    builder.addStatement(
+                        "$resultVarName = if (rawSegment == %T.NULL) \"\" else rawSegment.reinterpret(%T.MAX_VALUE).getString(0)",
+                        memSegmentClass,
+                        longClass
+                    )
                 }
-                is XrossType.RustStruct, is XrossType.RustEnum, is XrossType.Object -> {
-                    builder.addStatement("val rawSegment = $vhRef.get($segmentRef, 0L) as %T", memSegmentClass)
-                    builder.addStatement("if (rawSegment == %T.NULL) throw %T(%S)", memSegmentClass, nullPointerExceptionClass, "Native reference for field '${field.name}' is NULL")
+
+                is XrossType.Object -> {
+                    builder.addStatement("val rawSegment = $vhName.get($segmentRef, 0L) as %T", memSegmentClass)
+                    builder.addStatement(
+                        "if (rawSegment == %T.NULL) throw %T(%S)",
+                        memSegmentClass,
+                        nullPointerExceptionClass,
+                        "Native reference for field '${field.name}' is NULL"
+                    )
                     builder.addStatement("$resultVarName = %L(rawSegment, parent = $parent)", fqn)
                 }
-                else -> builder.addStatement("$resultVarName = $vhRef.get($segmentRef, 0L) as %L", fqn)
+
+                else -> builder.addStatement("$resultVarName = $vhName.get($segmentRef, 0L) as %L", fqn)
             }
         }
 
@@ -113,15 +134,26 @@ object PropertyGenerator {
 
         fun buildWriteLogic(builder: CodeBlock.Builder) {
             if (!field.ty.isCopy) { // Check if the instance itself is NULL for non-copy types
-                builder.addStatement("if ($segmentRef == %T.NULL) throw %T(%S)", memSegmentClass, nullPointerExceptionClass, "Attempted to set field '${field.name}' on a NULL native object")
+                builder.addStatement(
+                    "if ($segmentRef == %T.NULL) throw %T(%S)",
+                    memSegmentClass,
+                    nullPointerExceptionClass,
+                    "Attempted to set field '${field.name}' on a NULL native object"
+                )
             }
 
             when (field.ty) {
                 is XrossType.Bool -> builder.addStatement("$vhName.set($segmentRef, 0L, if (v) 1.toByte() else 0.toByte())")
-                is XrossType.RustStruct, is XrossType.RustEnum, is XrossType.Object -> {
-                    builder.addStatement("if (v.segment == %T.NULL) throw %T(%S)", memSegmentClass, nullPointerExceptionClass, "Cannot set field '${field.name}' with a NULL native reference")
+                is XrossType.Object -> {
+                    builder.addStatement(
+                        "if (v.segment == %T.NULL) throw %T(%S)",
+                        memSegmentClass,
+                        nullPointerExceptionClass,
+                        "Cannot set field '${field.name}' with a NULL native reference"
+                    )
                     builder.addStatement("$vhName.set($segmentRef, 0L, v.segment)")
                 }
+
                 else -> builder.addStatement("$vhName.set($segmentRef, 0L, v)")
             }
         }

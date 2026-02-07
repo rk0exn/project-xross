@@ -13,8 +13,6 @@ object EnumVariantGenerator {
 
     private fun resolveFqn(type: XrossType, meta: XrossDefinition, targetPackage: String): String {
         val signature = when (type) {
-            is XrossType.RustStruct -> type.signature
-            is XrossType.RustEnum -> type.signature
             is XrossType.Object -> type.signature
             else -> return (type.kotlinType as ClassName).canonicalName
         }
@@ -59,7 +57,7 @@ object EnumVariantGenerator {
 
                     // 型に応じた引数変換
                     val argExpr = when (field.ty) {
-                        is XrossType.RustStruct, is XrossType.RustEnum, is XrossType.Object -> "$camelName.segment"
+                        is XrossType.Object -> "$camelName.segment"
                         is XrossType.Bool -> "if ($camelName) 1.toByte() else 0.toByte()"
                         else -> camelName
                     }
@@ -100,9 +98,9 @@ object EnumVariantGenerator {
     }
 
     private fun buildVariantGetter(field: XrossField, vhName: String, fqn: String): FunSpec {
-        val parent = if (field.ty.isCopy){
+        val parent = if (field.ty.isCopy) {
             "null"
-        }else{
+        } else {
             "this"
         }
 
@@ -114,24 +112,41 @@ object EnumVariantGenerator {
         val readCodeBuilder = CodeBlock.builder()
 
         if (!field.ty.isCopy) {
-            readCodeBuilder.addStatement("if ($segRef == %T.NULL) throw %T(%S)", memSegmentClass, nullPointerExceptionClass, "Attempted to access field '${field.name}' on a NULL native object")
+            readCodeBuilder.addStatement(
+                "if ($segRef == %T.NULL) throw %T(%S)",
+                memSegmentClass,
+                nullPointerExceptionClass,
+                "Attempted to access field '${field.name}' on a NULL native object"
+            )
         }
 
         when (field.ty) {
             is XrossType.Bool -> readCodeBuilder.addStatement("res = ($vhName.get($segRef, 0L) as Byte) != (0).toByte()")
             is XrossType.RustString -> {
                 readCodeBuilder.addStatement("val rawSegment = $vhName.get($segRef, 0L) as %T", memSegmentClass)
-                readCodeBuilder.addStatement("res = if (rawSegment == %T.NULL) \"\" else rawSegment.reinterpret(%T.MAX_VALUE).getString(0)", memSegmentClass, longClass)
+                readCodeBuilder.addStatement(
+                    "res = if (rawSegment == %T.NULL) \"\" else rawSegment.reinterpret(%T.MAX_VALUE).getString(0)",
+                    memSegmentClass,
+                    longClass
+                )
             }
-            is XrossType.RustStruct, is XrossType.RustEnum, is XrossType.Object -> {
+
+            is XrossType.Object -> {
                 readCodeBuilder.addStatement("val rawSegment = $vhName.get($segRef, 0L) as %T", memSegmentClass)
-                readCodeBuilder.addStatement("if (rawSegment == %T.NULL) throw %T(%S)", memSegmentClass, nullPointerExceptionClass, "Native reference for field '${field.name}' is NULL")
+                readCodeBuilder.addStatement(
+                    "if (rawSegment == %T.NULL) throw %T(%S)",
+                    memSegmentClass,
+                    nullPointerExceptionClass,
+                    "Native reference for field '${field.name}' is NULL"
+                )
                 readCodeBuilder.addStatement("res = %L(rawSegment, parent = $parent)", fqn)
             }
+
             else -> readCodeBuilder.addStatement("res = $vhName.get($segRef, 0L) as %L", fqn)
         }
 
-        return FunSpec.getterBuilder().addCode("""
+        return FunSpec.getterBuilder().addCode(
+            """
             var stamp = sl.tryOptimisticRead()
             var res: %T
             
@@ -146,7 +161,8 @@ object EnumVariantGenerator {
                 } finally { sl.unlockRead(stamp) }
             }
             return res
-        """.trimIndent(), TypeVariableName(" $fqn"), readCodeBuilder.build(), readCodeBuilder.build()).build()
+        """.trimIndent(), TypeVariableName(" $fqn"), readCodeBuilder.build(), readCodeBuilder.build()
+        ).build()
     }
 
     private fun buildVariantSetter(field: XrossField, vhName: String, fqn: String): FunSpec {
@@ -157,22 +173,35 @@ object EnumVariantGenerator {
         val writeCodeBuilder = CodeBlock.builder()
 
         if (!field.ty.isCopy) {
-            writeCodeBuilder.addStatement("if ($segRef == %T.NULL) throw %T(%S)", memSegmentClass, nullPointerExceptionClass, "Attempted to set field '${field.name}' on a NULL native object")
+            writeCodeBuilder.addStatement(
+                "if ($segRef == %T.NULL) throw %T(%S)",
+                memSegmentClass,
+                nullPointerExceptionClass,
+                "Attempted to set field '${field.name}' on a NULL native object"
+            )
         }
 
         when (field.ty) {
             is XrossType.Bool -> writeCodeBuilder.addStatement("$vhName.set($segRef, 0L, if (v) 1.toByte() else 0.toByte())")
-            is XrossType.RustStruct, is XrossType.RustEnum, is XrossType.Object -> {
-                writeCodeBuilder.addStatement("if (v.segment == %T.NULL) throw %T(%S)", memSegmentClass, nullPointerExceptionClass, "Cannot set field '${field.name}' with a NULL native reference")
+            is XrossType.Object -> {
+                writeCodeBuilder.addStatement(
+                    "if (v.segment == %T.NULL) throw %T(%S)",
+                    memSegmentClass,
+                    nullPointerExceptionClass,
+                    "Cannot set field '${field.name}' with a NULL native reference"
+                )
                 writeCodeBuilder.addStatement("$vhName.set($segRef, 0L, v.segment)")
             }
+
             else -> writeCodeBuilder.addStatement("$vhName.set($segRef, 0L, v)")
         }
 
-        return FunSpec.setterBuilder().addParameter("v", TypeVariableName(" $fqn")).addCode("""
+        return FunSpec.setterBuilder().addParameter("v", TypeVariableName(" $fqn")).addCode(
+            """
             val stamp = sl.writeLock()
             try { %L } finally { sl.unlockWrite(stamp) }
-        """.trimIndent(), writeCodeBuilder.build()).build()
+        """.trimIndent(), writeCodeBuilder.build()
+        ).build()
     }
 
     private fun generateAtomicPropertyInVariant(
@@ -186,20 +215,26 @@ object EnumVariantGenerator {
         val segRef = "segment"
 
         val innerClass = TypeSpec.classBuilder(innerClassName).addModifiers(KModifier.INNER)
-            .addProperty(PropertySpec.builder("value", kType)
-                .getter(FunSpec.getterBuilder()
-                    .addStatement("return $vhName.getVolatile($segRef, 0L) as $fqn").build())
-                .build())
-            .addFunction(FunSpec.builder("update")
-                .addParameter("block", LambdaTypeName.get(null, kType, returnType = kType))
-                .returns(kType)
-                .beginControlFlow("while (true)")
-                .addStatement("val current = value")
-                .addStatement("val next = block(current)")
-                .beginControlFlow("if ($vhName.compareAndSet($segRef, 0L, current, next))")
-                .addStatement("return next")
-                .endControlFlow()
-                .endControlFlow().build())
+            .addProperty(
+                PropertySpec.builder("value", kType)
+                    .getter(
+                        FunSpec.getterBuilder()
+                            .addStatement("return $vhName.getVolatile($segRef, 0L) as $fqn").build()
+                    )
+                    .build()
+            )
+            .addFunction(
+                FunSpec.builder("update")
+                    .addParameter("block", LambdaTypeName.get(null, kType, returnType = kType))
+                    .returns(kType)
+                    .beginControlFlow("while (true)")
+                    .addStatement("val current = value")
+                    .addStatement("val next = block(current)")
+                    .beginControlFlow("if ($vhName.compareAndSet($segRef, 0L, current, next))")
+                    .addStatement("return next")
+                    .endControlFlow()
+                    .endControlFlow().build()
+            )
             .build()
 
         builder.addType(innerClass)

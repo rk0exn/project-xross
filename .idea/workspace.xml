@@ -21,13 +21,22 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="f975a9a1-e29b-4a10-834b-aa32ce0e2a24" name="変更" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/compiler.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/kotlinc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/kotlinc.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-example/app/src/main/resources/libxross_example.so" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/app/src/main/resources/libxross_example.so" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-example/rust/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/rust/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-example/app/build.gradle.kts" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/app/build.gradle.kts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-macros/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/src/lib.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-macros/src/utils.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/src/utils.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/CompanionGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/CompanionGenerator.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/StructureGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/StructureGenerator.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-metadata/src/metadata/types.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-metadata/src/metadata/types.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/build.gradle.kts" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/build.gradle.kts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossTypeSerializer.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossTypeSerializer.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/EnumVariantGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/EnumVariantGenerator.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/MethodGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/MethodGenerator.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/PropertyGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/PropertyGenerator.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/structures/XrossType.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/structures/XrossType.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/settings.gradle.kts" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/settings.gradle.kts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -113,7 +122,7 @@
     &quot;SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
     &quot;git-widget-placeholder&quot;: &quot;dev/The-Infinitys&quot;,
     &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;/home/the-infinitys/github/xross&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/home/the-infinitys/github/minecraft.infinite-client&quot;,
     &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
     &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
     &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
@@ -178,6 +187,7 @@
       <workItem from="1770121144591" duration="8042000" />
       <workItem from="1770165539728" duration="25205000" />
       <workItem from="1770205276867" duration="4067000" />
+      <workItem from="1770450261945" duration="1095000" />
     </task>
     <servers />
   </component>

@@ -10,8 +10,8 @@ plugins {
     `java-gradle-plugin`
     `maven-publish`
     // Apply the Kotlin JVM plugin to add support for Kotlin.
-    alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
+    kotlin("jvm") version "2.3.10"
 }
 
 repositories {
@@ -25,6 +25,7 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     implementation(libs.kotlinpoet)
     implementation(libs.kotlinx.serialization.json)
+    implementation(kotlin("stdlib-jdk8"))
 }
 
 gradlePlugin {
@@ -81,3 +82,6 @@ project.tasks.withType(JavaExec::class.java).configureEach {
 }
 group = "org.xross"
 version = "0.1.0"
+kotlin {
+    jvmToolchain(25)
+}

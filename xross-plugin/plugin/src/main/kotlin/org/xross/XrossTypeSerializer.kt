@@ -44,8 +44,6 @@ object XrossTypeSerializer : KSerializer<XrossType> {
                 val ownership = XrossType.Ownership.valueOf(ownershipStr)
 
                 when (typeKey) {
-                    "RustStruct" -> XrossType.RustStruct(signature, ownership)
-                    "RustEnum" -> XrossType.RustEnum(signature, ownership)
                     "Object" -> XrossType.Object(signature, ownership)
                     else -> throw IllegalArgumentException("Unknown type: $typeKey")
                 }
@@ -58,20 +56,6 @@ object XrossTypeSerializer : KSerializer<XrossType> {
     override fun serialize(encoder: Encoder, value: XrossType) {
         val jsonOutput = encoder as? JsonEncoder ?: throw IllegalStateException("Only JSON is supported")
         val element = when (value) {
-            is XrossType.RustStruct -> buildJsonObject {
-                putJsonObject("RustStruct") {
-                    put("signature", value.signature)
-                    put("ownership", value.ownership.name)
-                }
-            }
-
-            is XrossType.RustEnum -> buildJsonObject {
-                putJsonObject("RustEnum") {
-                    put("signature", value.signature)
-                    put("ownership", value.ownership.name)
-                }
-            }
-
             is XrossType.Object -> buildJsonObject {
                 putJsonObject("Object") {
                     put("signature", value.signature)

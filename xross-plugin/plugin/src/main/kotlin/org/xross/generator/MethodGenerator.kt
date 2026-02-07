@@ -5,12 +5,9 @@ import org.xross.helper.StringHelper.escapeKotlinKeyword
 import org.xross.helper.StringHelper.toCamelCase
 import org.xross.structures.*
 import java.lang.foreign.MemorySegment
-import java.util.concurrent.ConcurrentHashMap
 
 object MethodGenerator {
     // 収集した不透明オブジェクトの型（signature）を保存する
-    val opaqueObjects: ConcurrentHashMap.KeySetView<String, Boolean> = ConcurrentHashMap.newKeySet()
-
     fun generateMethods(classBuilder: TypeSpec.Builder, companionBuilder: TypeSpec.Builder, meta: XrossDefinition) {
         meta.methods.forEach { method ->
             if (method.isConstructor) {
@@ -20,9 +17,7 @@ object MethodGenerator {
 
             // 戻り値の型判定
             val returnType = resolveReturnType(method.ret, meta)
-            val isComplexRet = method.ret is XrossType.RustStruct ||
-                    method.ret is XrossType.RustEnum ||
-                    method.ret is XrossType.Object
+            val isComplexRet = method.ret is XrossType.Object
 
             val funBuilder = FunSpec.builder(method.name.toCamelCase().escapeKotlinKeyword())
                 .returns(returnType)
@@ -57,10 +52,16 @@ object MethodGenerator {
                         argPreparationBody.addStatement("val ${name}Memory = arena.allocateFrom($name)")
                         callArgs.add("${name}Memory")
                     }
-                    is XrossType.RustStruct, is XrossType.RustEnum, is XrossType.Object -> {
-                        argPreparationBody.addStatement("if ($name.segment == %T.NULL) throw %T(%S)", MemorySegment::class, NullPointerException::class, "Argument '${arg.name}' cannot be NULL")
+ is XrossType.Object -> {
+                        argPreparationBody.addStatement(
+                            "if ($name.segment == %T.NULL) throw %T(%S)",
+                            MemorySegment::class,
+                            NullPointerException::class,
+                            "Argument '${arg.name}' cannot be NULL"
+                        )
                         callArgs.add("$name.segment")
                     }
+
                     else -> callArgs.add(name)
                 }
             }
@@ -73,7 +74,7 @@ object MethodGenerator {
             } else {
                 body.add(argPreparationBody.build())
             }
-            
+
             val call = "${method.name}Handle.invokeExact(${callArgs.joinToString(", ")})"
             applyMethodCall(body, method, call, returnType, isComplexRet)
 
@@ -93,17 +94,8 @@ object MethodGenerator {
     private fun resolveReturnType(type: XrossType, meta: XrossDefinition): TypeName {
         return when (type) {
             is XrossType.RustString -> String::class.asTypeName()
-            is XrossType.RustStruct, is XrossType.RustEnum, is XrossType.Object -> {
-                val signature = when (type) {
-                    is XrossType.RustStruct -> type.signature
-                    is XrossType.RustEnum -> type.signature
-                    is XrossType.Object -> {
-                        opaqueObjects.add(type.signature) // Opaque型として記録
-                        type.signature
-                    }
-
-                }
-
+            is XrossType.Object -> {
+                val signature = type.signature
                 if (signature == "Self" || signature == meta.name || signature == "${meta.packageName}.${meta.name}") {
                     // 自分自身なら単純名
                     ClassName("", meta.name)
@@ -190,13 +182,16 @@ object MethodGenerator {
             isComplexRet -> {
                 body.beginControlFlow("run")
                 body.addStatement("val resRaw = $call as %T", MemorySegment::class)
-                body.addStatement("if (resRaw == %T.NULL) throw %T(%S)", MemorySegment::class, NullPointerException::class, "Native method '${method.name}' returned a NULL reference for type '$returnType'")
+                body.addStatement(
+                    "if (resRaw == %T.NULL) throw %T(%S)",
+                    MemorySegment::class,
+                    NullPointerException::class,
+                    "Native method '${method.name}' returned a NULL reference for type '$returnType'"
+                )
                 body.addStatement("val res = resRaw.reinterpret(STRUCT_SIZE)") // No need for 'if (resRaw == NULL)' here anymore
 
                 // メタデータの Ownership を判定
                 val isBorrowed = when (val retType = method.ret) {
-                    is XrossType.RustStruct -> retType.ownership != XrossType.Ownership.Owned
-                    is XrossType.RustEnum -> retType.ownership != XrossType.Ownership.Owned
                     is XrossType.Object -> retType.ownership != XrossType.Ownership.Owned
                     else -> false
                 }
