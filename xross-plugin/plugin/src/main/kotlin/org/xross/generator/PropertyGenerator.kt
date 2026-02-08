@@ -3,7 +3,12 @@ package org.xross.generator
 import com.squareup.kotlinpoet.*
 import org.xross.helper.StringHelper.escapeKotlinKeyword
 import org.xross.helper.StringHelper.toCamelCase
-import org.xross.structures.*
+import org.xross.structures.XrossDefinition
+import org.xross.structures.XrossField
+import org.xross.structures.XrossThreadSafety
+import org.xross.structures.XrossType
+import java.lang.foreign.MemoryLayout
+import java.lang.foreign.MemorySegment
 
 object PropertyGenerator {
     private fun resolveFqn(type: XrossType, meta: XrossDefinition, targetPackage: String): String {
@@ -16,9 +21,6 @@ object PropertyGenerator {
             .joinToString(".")
     }
 
-    /**
-     * Struct用のフィールド生成
-     */
     fun generateFields(classBuilder: TypeSpec.Builder, meta: XrossDefinition.Struct, targetPackage: String) {
         meta.fields.forEach { field ->
             val baseName = field.name.toCamelCase()
@@ -26,154 +28,123 @@ object PropertyGenerator {
             val vhName = "VH_$baseName"
             val fqn = resolveFqn(field.ty, meta, targetPackage)
 
+            // --- 修正箇所: バッキングフィールドの追加 (Object型の場合のみ) ---
+            var backingFieldName: String? = null
+            if (field.ty is XrossType.Object) {
+                backingFieldName = "_$baseName"
+                val backingProp = PropertySpec.builder(backingFieldName, TypeVariableName("$fqn?"))
+                    .mutable(true)
+                    .addModifiers(KModifier.PRIVATE)
+                    .initializer("null")
+                    .build()
+                classBuilder.addProperty(backingProp)
+            }
+
             if (field.safety == XrossThreadSafety.Atomic) {
                 generateAtomicProperty(classBuilder, baseName, escapedName, vhName, fqn)
             } else {
                 val kType = TypeVariableName(" $fqn")
-                val isLocked = field.safety == XrossThreadSafety.Lock
                 val isMutable = field.safety != XrossThreadSafety.Immutable
 
                 val propBuilder = PropertySpec.builder(escapedName, kType)
                     .mutable(isMutable)
-                    .getter(buildGetter(field, vhName, isLocked, fqn))
+                    .getter(buildGetter(field, vhName, fqn, backingFieldName)) // 引数追加
 
-                if (isMutable) {
-                    propBuilder.setter(buildSetter(field, vhName, isLocked, fqn))
-                }
+                if (isMutable) propBuilder.setter(buildSetter(field, vhName, fqn))
                 classBuilder.addProperty(propBuilder.build())
             }
         }
     }
+    private fun buildGetter(field: XrossField, vhName: String, fqn: String, backingFieldName: String?): FunSpec {
+        val readCodeBuilder = CodeBlock.builder()
+        readCodeBuilder.addStatement("if (this.segment == %T.NULL || !this.aliveFlag.isValid) throw %T(%S)", MemorySegment::class, NullPointerException::class, "Access error")
 
-    private fun buildGetter(field: XrossField, vhName: String, isLocked: Boolean, fqn: String): FunSpec {
-        val parent = if (field.ty.isCopy) {
-            "null"
-        } else {
-            "this"
-        }
-        val segmentRef = "segment"
-        val memSegmentClass = ClassName("java.lang.foreign", "MemorySegment")
-        val nullPointerExceptionClass = NullPointerException::class
-        val longClass = Long::class
+        when (field.ty) {
+            is XrossType.Object -> {
+                // キャッシュチェック
+                readCodeBuilder.beginControlFlow("if (this.$backingFieldName != null && this.$backingFieldName!!.aliveFlag.isValid)")
+                readCodeBuilder.addStatement("res = this.$backingFieldName!!")
+                readCodeBuilder.nextControlFlow("else")
 
-        fun buildReadLogic(builder: CodeBlock.Builder, resultVarName: String) {
-            if (!field.ty.isCopy) { // Check if the instance itself is NULL for non-copy types
-                builder.addStatement(
-                    "if ($segmentRef == %T.NULL) throw %T(%S)",
-                    memSegmentClass,
-                    nullPointerExceptionClass,
-                    "Attempted to access field '${field.name}' on a NULL native object"
+                if (field.ty.ownership == XrossType.Ownership.Owned) {
+                    // インライン構造体
+                    readCodeBuilder.addStatement("val offset = Companion.LAYOUT.byteOffset(%T.PathElement.groupElement(%S))", MemoryLayout::class, field.name)
+                    readCodeBuilder.addStatement("val resSeg = this.segment.asSlice(offset, %L.Companion.STRUCT_SIZE)", fqn)
+                    readCodeBuilder.addStatement("res = %L(resSeg, arena = this.arena, isArenaOwner = false)", fqn)
+                } else {
+                    // Boxed または Ref (両方とも親のアリーナを利用し、ドロップしない設定に統合)
+                    readCodeBuilder.addStatement("val rawSegment = Companion.$vhName.get(this.segment, 0L) as %T", MemorySegment::class)
+                    readCodeBuilder.addStatement("val resSeg = if (rawSegment == %T.NULL) %T.NULL else rawSegment.reinterpret(%L.Companion.STRUCT_SIZE)", MemorySegment::class, MemorySegment::class, fqn)
+                    readCodeBuilder.addStatement("res = %L(resSeg, arena = this.arena, isArenaOwner = false)", fqn)
+                }
+                // キャッシュに保存
+                readCodeBuilder.addStatement("this.$backingFieldName = res")
+                readCodeBuilder.endControlFlow()
+            }
+            is XrossType.Bool -> readCodeBuilder.addStatement("res = (Companion.$vhName.get(this.segment, 0L) as Byte) != (0).toByte()")
+            is XrossType.RustString -> {
+                readCodeBuilder.addStatement(
+                    "val rawSegment = Companion.$vhName.get(this.segment, 0L) as %T",
+                    MemorySegment::class
+                )
+                readCodeBuilder.addStatement(
+                    "res = if (rawSegment == %T.NULL) \"\" else rawSegment.reinterpret(%T.MAX_VALUE).getString(0)",
+                    MemorySegment::class,
+                    Long::class
                 )
             }
 
-            when (field.ty) {
-                is XrossType.Bool -> builder.addStatement(
-                    "$resultVarName = ($vhName.get($segmentRef, 0L) as %T) != (0).toByte()",
-                    Byte::class
-                )
-
-                is XrossType.RustString -> {
-                    builder.addStatement("val rawSegment = $vhName.get($segmentRef, 0L) as %T", memSegmentClass)
-                    builder.addStatement(
-                        "$resultVarName = if (rawSegment == %T.NULL) \"\" else rawSegment.reinterpret(%T.MAX_VALUE).getString(0)",
-                        memSegmentClass,
-                        longClass
-                    )
-                }
-
-                is XrossType.Object -> {
-                    builder.addStatement("val rawSegment = $vhName.get($segmentRef, 0L) as %T", memSegmentClass)
-                    builder.addStatement(
-                        "if (rawSegment == %T.NULL) throw %T(%S)",
-                        memSegmentClass,
-                        nullPointerExceptionClass,
-                        "Native reference for field '${field.name}' is NULL"
-                    )
-                    builder.addStatement("$resultVarName = %L(rawSegment, parent = $parent)", fqn)
-                }
-
-                else -> builder.addStatement("$resultVarName = $vhName.get($segmentRef, 0L) as %L", fqn)
-            }
+            else -> readCodeBuilder.addStatement("res = Companion.$vhName.get(this.segment, 0L) as %L", fqn)
         }
 
-        return FunSpec.getterBuilder().apply {
-            if (!isLocked) {
-                val bodyBuilder = CodeBlock.builder()
-                buildReadLogic(bodyBuilder, "val value")
-                addCode(bodyBuilder.build())
-                addStatement("return value")
-            } else {
-                addStatement("var stamp = sl.tryOptimisticRead()")
-                addStatement("var res: %T", TypeVariableName(" $fqn")) // Declare res with appropriate type
-
-                addComment("Optimistic read")
-                val optimisticReadBody = CodeBlock.builder()
-                buildReadLogic(optimisticReadBody, "res")
-                addCode(optimisticReadBody.build())
-
-                beginControlFlow("if (!sl.validate(stamp))")
-                addStatement("stamp = sl.readLock()")
-                beginControlFlow("try")
-                addComment("Pessimistic read")
-                val pessimisticReadBody = CodeBlock.builder()
-                buildReadLogic(pessimisticReadBody, "res")
-                addCode(pessimisticReadBody.build())
-                nextControlFlow("finally")
-                addStatement("sl.unlockRead(stamp)")
-                endControlFlow()
-                endControlFlow()
-                addStatement("return res")
+        return FunSpec.getterBuilder().addCode(
+            """
+            var stamp = this.sl.tryOptimisticRead()
+            var res: %T
+            // Optimistic read
+            %L
+            if (!this.sl.validate(stamp)) {
+                stamp = this.sl.readLock()
+                try { 
+                    // Pessimistic read
+                    %L
+                } finally { this.sl.unlockRead(stamp) }
             }
-        }.build()
+            return res
+        """.trimIndent(), TypeVariableName(" $fqn"), readCodeBuilder.build(), readCodeBuilder.build()
+        ).build()
     }
 
-    private fun buildSetter(field: XrossField, vhName: String, isLocked: Boolean, fqn: String): FunSpec {
-        val segmentRef = "segment"
-        val memSegmentClass = ClassName("java.lang.foreign", "MemorySegment")
-        val nullPointerExceptionClass = NullPointerException::class
+    private fun buildSetter(field: XrossField, vhName: String, fqn: String): FunSpec {
+        val writeCodeBuilder = CodeBlock.builder()
+        writeCodeBuilder.addStatement(
+            "if (this.segment == %T.NULL || !this.aliveFlag.isValid) throw %T(%S)",
+            MemorySegment::class,
+            NullPointerException::class,
+            "Attempted to set field '${field.name}' on a NULL or invalid native object"
+        )
 
-        fun buildWriteLogic(builder: CodeBlock.Builder) {
-            if (!field.ty.isCopy) { // Check if the instance itself is NULL for non-copy types
-                builder.addStatement(
-                    "if ($segmentRef == %T.NULL) throw %T(%S)",
-                    memSegmentClass,
-                    nullPointerExceptionClass,
-                    "Attempted to set field '${field.name}' on a NULL native object"
+        when (field.ty) {
+            is XrossType.Bool -> writeCodeBuilder.addStatement("Companion.$vhName.set(this.segment, 0L, if (v) 1.toByte() else 0.toByte())")
+            is XrossType.Object -> {
+                writeCodeBuilder.addStatement(
+                    "if (v.segment == %T.NULL || !v.aliveFlag.isValid) throw %T(%S)",
+                    MemorySegment::class,
+                    NullPointerException::class,
+                    "Cannot set field '${field.name}' with a NULL or invalid native reference"
                 )
+                writeCodeBuilder.addStatement("Companion.$vhName.set(this.segment, 0L, v.segment)")
             }
 
-            when (field.ty) {
-                is XrossType.Bool -> builder.addStatement("$vhName.set($segmentRef, 0L, if (v) 1.toByte() else 0.toByte())")
-                is XrossType.Object -> {
-                    builder.addStatement(
-                        "if (v.segment == %T.NULL) throw %T(%S)",
-                        memSegmentClass,
-                        nullPointerExceptionClass,
-                        "Cannot set field '${field.name}' with a NULL native reference"
-                    )
-                    builder.addStatement("$vhName.set($segmentRef, 0L, v.segment)")
-                }
-
-                else -> builder.addStatement("$vhName.set($segmentRef, 0L, v)")
-            }
+            else -> writeCodeBuilder.addStatement("Companion.$vhName.set(this.segment, 0L, v)")
         }
 
-        return FunSpec.setterBuilder().addParameter("v", TypeVariableName(" $fqn")).apply {
-            if (!isLocked) {
-                val bodyBuilder = CodeBlock.builder()
-                buildWriteLogic(bodyBuilder)
-                addCode(bodyBuilder.build())
-            } else {
-                addStatement("val stamp = sl.writeLock()")
-                beginControlFlow("try")
-                val writeBody = CodeBlock.builder()
-                buildWriteLogic(writeBody)
-                addCode(writeBody.build())
-                nextControlFlow("finally")
-                addStatement("sl.unlockWrite(stamp)")
-                endControlFlow()
-            }
-        }.build()
+        return FunSpec.setterBuilder().addParameter("v", TypeVariableName(" $fqn")).addCode(
+            """
+            val stamp = this.sl.writeLock()
+            try { %L } finally { this.sl.unlockWrite(stamp) }
+        """.trimIndent(), writeCodeBuilder.build()
+        ).build()
     }
 
     private fun generateAtomicProperty(
@@ -183,43 +154,38 @@ object PropertyGenerator {
         vhName: String,
         fqn: String
     ) {
-        val innerClassName = "AtomicFieldOf${baseName.replaceFirstChar { it.uppercase() }}"
         val kType = TypeVariableName(" $fqn")
-
+        val innerClassName = "AtomicFieldOf${baseName.replaceFirstChar { it.uppercase() }}"
         val innerClass = TypeSpec.classBuilder(innerClassName).addModifiers(KModifier.INNER)
             .addProperty(
                 PropertySpec.builder("value", kType)
                     .getter(
                         FunSpec.getterBuilder()
-                            .addStatement("return $vhName.getVolatile(segment, 0L) as $fqn").build()
-                    )
-                    .build()
+                            .addStatement("return Companion.$vhName.getVolatile(this@${className(classBuilder)}.segment, 0L) as $fqn")
+                            .build()
+                    ).build()
             )
             .addFunction(
                 FunSpec.builder("update")
-                    .addParameter("block", LambdaTypeName.get(null, kType, returnType = kType))
-                    .returns(kType)
+                    .addParameter("block", LambdaTypeName.get(null, kType, returnType = kType)).returns(kType)
                     .beginControlFlow("while (true)")
+                    .beginControlFlow("try")
                     .addStatement("val current = value")
                     .addStatement("val next = block(current)")
-                    .beginControlFlow("if ($vhName.compareAndSet(segment, 0L, current, next))")
+                    .beginControlFlow("if (Companion.$vhName.compareAndSet(this@${className(classBuilder)}.segment, 0L, current, next))")
                     .addStatement("return next")
+                    .endControlFlow()
+                    .nextControlFlow("catch (e: %T)", Throwable::class)
+                    .addStatement("throw e")
                     .endControlFlow()
                     .endControlFlow().build()
             )
-            .addFunction(
-                FunSpec.builder("compareAndSet")
-                    .addParameter("expected", kType)
-                    .addParameter("newValue", kType)
-                    .returns(BOOLEAN)
-                    .addStatement("return $vhName.compareAndSet(segment, 0L, expected, newValue)").build()
-            )
             .build()
-
         classBuilder.addType(innerClass)
         classBuilder.addProperty(
-            PropertySpec.builder(escapedName, ClassName("", innerClassName))
-                .initializer("%L()", innerClassName).build()
+            PropertySpec.builder(escapedName, ClassName("", innerClassName)).initializer("%L()", innerClassName).build()
         )
     }
+
+    private fun className(builder: TypeSpec.Builder): String = builder.build().name!!
 }

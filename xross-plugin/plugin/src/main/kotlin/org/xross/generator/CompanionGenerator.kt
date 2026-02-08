@@ -3,7 +3,6 @@ package org.xross.generator
 import com.squareup.kotlinpoet.*
 import org.xross.helper.StringHelper.toCamelCase
 import org.xross.structures.*
-import java.util.concurrent.locks.StampedLock
 import java.lang.foreign.*
 import java.lang.invoke.MethodHandle
 import java.lang.invoke.VarHandle
@@ -12,7 +11,6 @@ object CompanionGenerator {
     private val HANDLE_TYPE = MethodHandle::class.asClassName()
     private val VH_TYPE = VarHandle::class.asClassName()
     private val LAYOUT_TYPE = StructLayout::class.asClassName()
-    private val SL_TYPE = StampedLock::class.asClassName()
     private val ADDRESS = MemberName("java.lang.foreign.ValueLayout", "ADDRESS")
 
     fun generateCompanions(companionBuilder: TypeSpec.Builder, meta: XrossDefinition) {
@@ -21,7 +19,6 @@ object CompanionGenerator {
         val init = CodeBlock.builder()
             .addStatement("val linker = %T.nativeLinker()", Linker::class)
             .addStatement("val lookup = %T.loaderLookup()", SymbolLookup::class)
-            .addStatement("this.sl = %T()", SL_TYPE)
 
         resolveAllHandles(init, meta)
 
@@ -61,8 +58,6 @@ object CompanionGenerator {
     }
 
     private fun defineProperties(builder: TypeSpec.Builder, meta: XrossDefinition) {
-        builder.addProperty(PropertySpec.builder("sl", SL_TYPE, KModifier.PRIVATE).mutable().build())
-
         val handles = mutableListOf("dropHandle", "cloneHandle", "layoutHandle", "xross_free_stringHandle")
 
         when (meta) {
@@ -71,7 +66,7 @@ object CompanionGenerator {
                 meta.fields.forEach {
                     builder.addProperty(
                         PropertySpec.builder(
-                            "VH_${it.name.toCamelCase()}", VH_TYPE, KModifier.PRIVATE,
+                            "VH_${it.name.toCamelCase()}", VH_TYPE, KModifier.INTERNAL,
                             KModifier.LATEINIT
                         ).mutable().build()
                     )
@@ -80,15 +75,22 @@ object CompanionGenerator {
 
             is XrossDefinition.Enum -> {
                 handles.add("get_tagHandle")
+                handles.add("get_variant_nameHandle")
                 meta.variants.forEach { v ->
                     handles.add("new_${v.name}Handle")
                     v.fields.forEach { f ->
+                        val baseCamel = f.name.toCamelCase()
+                        builder.addProperty(
+                            PropertySpec.builder("VH_${v.name}_$baseCamel",
+                                VH_TYPE,
+                                KModifier.INTERNAL, KModifier.LATEINIT
+                            ).mutable().build()
+                        )
                         builder.addProperty(
                             PropertySpec.builder(
-                                "VH_${v.name}_${f.name.toCamelCase()}",
-                                VH_TYPE,
-                                KModifier.PRIVATE, KModifier.LATEINIT
-                            ).mutable().build()
+                                "OFFSET_${v.name}_$baseCamel",
+                                Long::class, KModifier.INTERNAL
+                            ).mutable().initializer("0L").build()
                         )
                     }
                 }
@@ -101,7 +103,7 @@ object CompanionGenerator {
         meta.methods.filter { !it.isConstructor }.forEach { handles.add("${it.name}Handle") }
 
         handles.distinct().forEach { name ->
-            builder.addProperty(PropertySpec.builder(name, HANDLE_TYPE, KModifier.PRIVATE).mutable().build())
+            builder.addProperty(PropertySpec.builder(name, HANDLE_TYPE, KModifier.INTERNAL).mutable().build())
         }
 
         builder.addProperty(
@@ -109,11 +111,7 @@ object CompanionGenerator {
                 .build()
         )
         builder.addProperty(
-            PropertySpec.builder("STRUCT_SIZE", Long::class, KModifier.PRIVATE).mutable().initializer("0L").build()
-        )
-        builder.addProperty(
-            PropertySpec.builder("CLEANER", ClassName("java.lang.ref", "Cleaner"), KModifier.PRIVATE)
-                .initializer("%T.create()", ClassName("java.lang.ref", "Cleaner")).build()
+            PropertySpec.builder("STRUCT_SIZE", Long::class, KModifier.INTERNAL).mutable().initializer("0L").build()
         )
     }
 
@@ -149,6 +147,13 @@ object CompanionGenerator {
                 "this.get_tagHandle = linker.downcallHandle(lookup.find(%S).get(), %T.of(JAVA_INT, %M))",
                 "${meta.symbolPrefix}_get_tag",
                 FunctionDescriptor::class,
+                ADDRESS
+            )
+            init.addStatement(
+                "this.get_variant_nameHandle = linker.downcallHandle(lookup.find(%S).get(), %T.of(%M, %M))",
+                "${meta.symbolPrefix}_get_variant_name",
+                FunctionDescriptor::class,
+                ADDRESS,
                 ADDRESS
             )
             meta.variants.forEach { v ->
@@ -204,8 +209,15 @@ object CompanionGenerator {
         meta.fields.forEachIndexed { idx, field ->
             val branch = if (idx == 0) "if" else "else if"
             init.beginControlFlow("$branch (fName == %S)", field.name)
-                .addStatement("layouts.add(%M.withName(%S))", field.ty.layoutMember, field.name)
-                .addStatement("currentOffsetPos = fOffset + fSize")
+            
+            if (field.ty is XrossType.Object && field.ty.ownership == XrossType.Ownership.Owned) {
+                // Inline struct: use padding layout of the reported size
+                init.addStatement("layouts.add(%T.paddingLayout(fSize).withName(%S))", MemoryLayout::class, field.name)
+            } else {
+                init.addStatement("layouts.add(%M.withName(%S))", field.ty.layoutMember, field.name)
+            }
+            
+            init.addStatement("currentOffsetPos = fOffset + fSize")
                 .endControlFlow()
         }
         init.endControlFlow()
@@ -219,10 +231,12 @@ object CompanionGenerator {
 
         // 【重要】各フィールドの VarHandle を初期化するコードを生成
         meta.fields.forEach { field ->
-            init.addStatement(
-                "this.VH_${field.name.toCamelCase()} = LAYOUT.varHandle(%T.PathElement.groupElement(%S))",
-                MemoryLayout::class, field.name
-            )
+            if (!(field.ty is XrossType.Object && field.ty.ownership == XrossType.Ownership.Owned)) {
+                init.addStatement(
+                    "this.VH_${field.name.toCamelCase()} = LAYOUT.varHandle(%T.PathElement.groupElement(%S))",
+                    MemoryLayout::class, field.name
+                )
+            }
         }
     }
 
@@ -246,15 +260,28 @@ object CompanionGenerator {
                     .addStatement("val vLayouts = mutableListOf<%T>()", MemoryLayout::class)
                     // Rust側の offset_of! は Enum 先頭からの絶対オフセットなので、それをそのままパディングに使用
                     .addStatement("if (fOffsetL > 0) vLayouts.add(%T.paddingLayout(fOffsetL))", MemoryLayout::class)
-                    .addStatement("vLayouts.add(%M.withName(fName).withByteAlignment(1))", field.ty.layoutMember)
-                    // Enum全体のサイズに合わせるための末尾パディング
-                    .addStatement("val remaining = STRUCT_SIZE - fOffsetL - fSizeL")
+                
+                if (field.ty is XrossType.Object && field.ty.ownership == XrossType.Ownership.Owned) {
+                    init.addStatement("vLayouts.add(%T.paddingLayout(fSizeL).withName(fName))", MemoryLayout::class)
+                } else {
+                    init.addStatement("vLayouts.add(%M.withName(fName).withByteAlignment(1))", field.ty.layoutMember)
+                }
+                
+                // Enum全体のサイズに合わせるための末尾パディング
+                init.addStatement("val remaining = STRUCT_SIZE - fOffsetL - fSizeL")
                     .addStatement("if (remaining > 0) vLayouts.add(%T.paddingLayout(remaining))", MemoryLayout::class)
                     .addStatement("val vLayout = %T.structLayout(*vLayouts.toTypedArray())", MemoryLayout::class)
-                    .addStatement(
+                
+                if (!(field.ty is XrossType.Object && field.ty.ownership == XrossType.Ownership.Owned)) {
+                    init.addStatement(
                         "this.VH_${variant.name}_${field.name.toCamelCase()} = vLayout.varHandle(%T.PathElement.groupElement(fName))",
                         MemoryLayout::class
                     )
+                }
+                
+                init.addStatement(
+                    "this.OFFSET_${variant.name}_${field.name.toCamelCase()} = fOffsetL"
+                )
                     .endControlFlow()
             }
             init.endControlFlow()

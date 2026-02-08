@@ -161,8 +161,11 @@ pub fn resolve_type_with_attr(
     current_ident: Option<&syn::Ident>,
     strict: bool,
 ) -> XrossType {
-    // 1. まず参照かどうかを判定し、中身の型(inner_ty)を特定する
-    let (inner_ty, ownership) = match ty {
+    // 1. まず通常の型解決を行って、Box などの内部情報を取得する
+    let base_ty = map_type(ty);
+
+    // 2. 基本的な所有権を判定
+    let (inner_ty, mut ownership) = match ty {
         Type::Reference(r) => {
             let ow = if r.mutability.is_some() {
                 Ownership::MutRef
@@ -174,7 +177,14 @@ pub fn resolve_type_with_attr(
         _ => (ty, Ownership::Owned),
     };
 
-    // 2. 属性による明示的な指定をチェック
+    // 3. もし map_type で Boxed と判定されていたら、それを採用する
+    if let XrossType::Object { ownership: base_ow, .. } = &base_ty {
+        if *base_ow == Ownership::Boxed {
+            ownership = Ownership::Boxed;
+        }
+    }
+
+    // 4. 属性による明示的な指定をチェック
     let mut xross_ty = None;
     for attr in attrs {
         if attr.path().is_ident("xross") {
@@ -193,6 +203,11 @@ pub fn resolve_type_with_attr(
                     xross_ty = Some(XrossType::Object {
                         signature: meta.value()?.parse::<syn::LitStr>()?.value(),
                         ownership: ownership.clone(),
+                    });
+                } else if meta.path.is_ident("box") {
+                    xross_ty = Some(XrossType::Object {
+                        signature: meta.value()?.parse::<syn::LitStr>()?.value(),
+                        ownership: Ownership::Boxed,
                     });
                 }
                 Ok(())
@@ -231,7 +246,10 @@ pub fn resolve_type_with_attr(
             signature,
             ..
         } => {
-            *o = ownership; // 冒頭で判定した参照情報を適用
+            // もし ownership が Ref/MutRef なら、map_type での判定(Owned/Boxed)を上書きする
+            if ownership != Ownership::Owned {
+                *o = ownership;
+            }
 
             // 現在解析中の型名そのものを使っている場合 (例: MyService) の補完
             if let Some(ident) = current_ident {

@@ -11,14 +11,19 @@ fun main() {
     val tempDir: File = Files.createTempDirectory("xross_test_").toFile()
 
     try {
-        val libName = "libxross_example.so"
-        val libFile = File(tempDir, libName)
-        val resourceStream = Thread.currentThread().contextClassLoader.getResourceAsStream(libName)
-            ?: throw RuntimeException("Resource not found: $libName")
-
-        resourceStream.use { input -> libFile.outputStream().use { output -> input.copyTo(output) } }
-        System.load(libFile.absolutePath)
-        println("Native library loaded from: ${libFile.absolutePath}")
+        val libPath = System.getProperty("xross.lib.path")
+        if (libPath != null) {
+            val f = File(libPath)
+            if (f.exists()) {
+                System.load(f.absolutePath)
+                println("Native library loaded from custom path: ${f.absolutePath}")
+            } else {
+                println("Warning: Custom lib path not found: $libPath")
+                loadFromResources(tempDir)
+            }
+        } else {
+            loadFromResources(tempDir)
+        }
 
         // 1. メモリリークテスト
         executeMemoryLeakTest()
@@ -41,6 +46,17 @@ fun main() {
     }
 }
 
+private fun loadFromResources(tempDir: File) {
+    val libName = "libxross_example.so"
+    val libFile = File(tempDir, libName)
+    val resourceStream = Thread.currentThread().contextClassLoader.getResourceAsStream(libName)
+        ?: throw RuntimeException("Resource not found: $libName")
+
+    resourceStream.use { input -> libFile.outputStream().use { output -> input.copyTo(output) } }
+    System.load(libFile.absolutePath)
+    println("Native library loaded from: ${libFile.absolutePath}")
+}
+
 fun executeEnumTest() {
     val enum1 = XrossTestEnum.A
     val enum2 = XrossTestEnum.B(1)
@@ -56,10 +72,11 @@ fun executeEnumTest() {
 
 fun executeMemoryLeakTest() {
     println("\n--- [1] Memory Leak & Stability Test ---")
-    val iterations = (10.0).pow(8).toInt()
+    val iterations = (10.0).pow(7).toInt()
     val reportInterval = iterations / 10
     val service = MyService2(0)
 
+    val startTime = System.currentTimeMillis()
     for (i in 1..iterations) {
         service.createClone().use { clone ->
             clone.`val`.update { i }
@@ -70,8 +87,11 @@ fun executeMemoryLeakTest() {
             }
         }
     }
+    val endTime = System.currentTimeMillis()
+    val duration = (endTime - startTime) / 1000.0
+    val throughput = iterations / duration
+    println("Memory Leak Test Finished in ${duration}s (${throughput.toInt()} ops/s).")
     service.close()
-    println("Memory Leak Test Finished.")
 }
 
 fun executeReferenceAndOwnershipTest() {

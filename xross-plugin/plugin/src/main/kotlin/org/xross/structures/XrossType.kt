@@ -18,7 +18,7 @@ sealed class XrossType {
     object Pointer : XrossType()
     object RustString : XrossType() // Rust String
 
-    enum class Ownership { Owned, Ref, MutRef }
+    enum class Ownership { Owned, Boxed, Ref, MutRef }
 
     data class Object(val signature: String, val ownership: Ownership = Ownership.Owned) : XrossType()
 
@@ -67,7 +67,7 @@ sealed class XrossType {
 
     val isOwned: Boolean
         get() = when (this) {
-            is Object -> ownership == Ownership.Owned
+            is Object -> ownership == Ownership.Owned || ownership == Ownership.Boxed
             else -> false
         }
     val isCopy: Boolean

@@ -32,12 +32,8 @@ object XrossGenerator {
             }
 
             is XrossDefinition.Enum -> {
-                if (meta.variants.all { it.fields.isEmpty() }) {
-                    TypeSpec.enumBuilder(className).addSuperinterface(AutoCloseable::class)
-                } else {
-                    TypeSpec.classBuilder(className).addModifiers(KModifier.SEALED)
-                        .addSuperinterface(AutoCloseable::class)
-                }
+                TypeSpec.classBuilder(className).addModifiers(KModifier.SEALED)
+                    .addSuperinterface(AutoCloseable::class)
             }
 
             else -> throw IllegalArgumentException("Unsupported type")
@@ -52,7 +48,7 @@ object XrossGenerator {
         when (meta) {
             is XrossDefinition.Struct -> PropertyGenerator.generateFields(classBuilder, meta, targetPackage)
             is XrossDefinition.Enum -> EnumVariantGenerator.generateVariants(
-                classBuilder, meta, targetPackage
+                classBuilder, companionBuilder, meta, targetPackage
             )
         }
 

@@ -24,25 +24,32 @@ class XrossPluginFunctionalTest {
         metaDir.mkdirs()
         metaDir.resolve("MyStruct.json").writeText("""
             {
-              "package_name": "org.xross.generated",
-              "struct_name": "MyStruct",
+              "kind": "struct",
+              "signature": "org.xross.generated.MyStruct",
+              "symbolPrefix": "lib_mystruct",
+              "packageName": "",
+              "name": "MyStruct",
+              "fields": [],
               "methods": [
                 {
                   "name": "hello",
                   "symbol": "lib_hello",
-                  "method_type": "Static",
-                  "is_constructor": false,
+                  "methodType": "Static",
+                  "isConstructor": false,
                   "args": [
                     {
                       "name": "value",
                       "ty": "I32",
+                      "safety": "Lock",
                       "docs": []
                     }
                   ],
                   "ret": "Void",
+                  "safety": "Lock",
                   "docs": ["Test comment"]
                 }
-              ]
+              ],
+              "docs": []
             }
         """.trimIndent())
 
@@ -72,7 +79,7 @@ class XrossPluginFunctionalTest {
 
         // 2. Kotlinソースコードが生成されたか
         val generatedFile = projectDir.resolve("build/generated/source/xross/main/kotlin/org/xross/generated/MyStruct.kt")
-        assertTrue(generatedFile.exists(), $$"Generated Kotlin file should exist at $generatedFile")
+        assertTrue(generatedFile.exists(), "Generated Kotlin file should exist at $generatedFile")
 
         // 3. 生成されたファイルに意図したシンボルが含まれているか
         val content = generatedFile.readText()

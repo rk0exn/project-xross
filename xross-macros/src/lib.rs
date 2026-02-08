@@ -185,12 +185,32 @@ pub fn jvm_class_derive(input: TokenStream) -> TokenStream {
 
             // 4. Enum タグ取得 FFI
             let tag_fn_id = format_ident!("{}_get_tag", symbol_base);
+            let variant_name_fn_id = format_ident!("{}_get_variant_name", symbol_base);
+            let mut variant_arms = Vec::new();
+            for v in &e.variants {
+                let v_ident = &v.ident;
+                let v_str = v_ident.to_string();
+                variant_arms.push(quote! {
+                    #name::#v_ident { .. } => #v_str,
+                });
+            }
+
             extra_functions.push(quote! {
                 #[unsafe(no_mangle)]
                 pub unsafe extern "C" fn #tag_fn_id(ptr: *const #name) -> i32 {
                     if ptr.is_null() { return -1; }
                     // Rust Enum の判別子は先頭にあることを期待(repr(C, i32)等が推奨)
                     *(ptr as *const i32)
+                }
+
+                #[unsafe(no_mangle)]
+                pub unsafe extern "C" fn #variant_name_fn_id(ptr: *const #name) -> *mut std::ffi::c_char {
+                    if ptr.is_null() { return std::ptr::null_mut(); }
+                    let val = &*ptr;
+                    let name = match val {
+                        #(#variant_arms)*
+                    };
+                    std::ffi::CString::new(name).unwrap().into_raw()
                 }
             });
         }
@@ -413,6 +433,13 @@ pub fn jvm_class(_attr: TokenStream, item: TokenStream) -> TokenStream {
                             (
                                 quote! { *mut std::ffi::c_void },
                                 quote! { Box::into_raw(Box::new(#inner_call)) as *mut std::ffi::c_void },
+                            )
+                        }
+                        Ownership::Boxed => {
+                            // すでに Box 化されている場合は、そのまま生ポインタへ変換して所有権を渡す
+                            (
+                                quote! { *mut std::ffi::c_void },
+                                quote! { Box::into_raw(#inner_call) as *mut std::ffi::c_void },
                             )
                         }
                     }

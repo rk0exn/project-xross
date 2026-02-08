@@ -11,10 +11,25 @@ pub fn map_type(ty: &Type) -> XrossType {
             let segments: Vec<String> = path.segments.iter()
                 .map(|s| s.ident.to_string())
                 .collect();
-            let full_path = segments.join(".");
-            let last_segment = segments.last().unwrap();
+            let last_segment = path.segments.last().unwrap();
+            let last_ident = last_segment.ident.to_string();
 
-            match last_segment.as_str() {
+            // Box<T> の検出
+            if last_ident == "Box" {
+                if let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments {
+                    if let Some(syn::GenericArgument::Type(inner_ty)) = args.args.first() {
+                        let mut inner_xross = map_type(inner_ty);
+                        if let XrossType::Object { ownership, .. } = &mut inner_xross {
+                            *ownership = Ownership::Boxed;
+                        }
+                        return inner_xross;
+                    }
+                }
+            }
+
+            let full_path = segments.join(".");
+
+            match last_ident.as_str() {
                 "i8" => XrossType::I8,
                 "i16" => XrossType::I16,
                 "i32" => XrossType::I32,

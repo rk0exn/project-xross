@@ -3,9 +3,8 @@ package org.xross.generator
 import com.squareup.kotlinpoet.*
 import org.xross.structures.XrossDefinition
 import java.io.File
-import java.lang.foreign.*
+import java.lang.foreign.MemorySegment
 import java.lang.invoke.MethodHandle
-import java.lang.ref.Cleaner
 
 object OpaqueGenerator {
 
@@ -17,33 +16,49 @@ object OpaqueGenerator {
             .addSuperinterface(AutoCloseable::class)
             .addKdoc(meta.docs.joinToString("\n"))
 
+        // --- AliveFlag ---
+        classBuilder.addType(
+            TypeSpec.classBuilder("AliveFlag")
+                .addModifiers(KModifier.INTERNAL)
+                .primaryConstructor(FunSpec.constructorBuilder().addParameter("initial", Boolean::class).build())
+                .addProperty(PropertySpec.builder("isValid", Boolean::class).mutable().initializer("initial").build())
+                .build()
+        )
+
         classBuilder.primaryConstructor(
             FunSpec.constructorBuilder()
+                .addModifiers(KModifier.INTERNAL)
                 .addParameter("raw", MemorySegment::class)
+                .addParameter("arena", ClassName("java.lang.foreign", "Arena"))
                 .addParameter(
-                    ParameterSpec.builder("parent", ANY.copy(nullable = true))
-                        .defaultValue("null")
-                        .build()
+                    ParameterSpec.builder("isArenaOwner", Boolean::class)
+                        .defaultValue("true").build()
+                )
+                .addParameter(
+                    ParameterSpec.builder("sharedFlag", ClassName("", "AliveFlag").copy(nullable = true))
+                        .defaultValue("null").build()
                 )
                 .build()
         )
         classBuilder.addProperty(
-            PropertySpec.builder("parent",ANY.copy(nullable = true), KModifier.PRIVATE)
-                .initializer("parent")
+            PropertySpec.builder("arena", ClassName("java.lang.foreign", "Arena"), KModifier.INTERNAL)
+                .initializer("arena")
+                .build()
+        )
+        classBuilder.addProperty(
+            PropertySpec.builder("isArenaOwner", Boolean::class, KModifier.INTERNAL)
+                .initializer("isArenaOwner")
+                .build()
+        )
+        classBuilder.addProperty(
+            PropertySpec.builder("aliveFlag", ClassName("", "AliveFlag"), KModifier.INTERNAL)
+                .initializer("sharedFlag ?: AliveFlag(true)")
                 .build()
         )
         classBuilder.addProperty(
             PropertySpec.builder("segment", MemorySegment::class, KModifier.INTERNAL)
                 .mutable()
                 .initializer("raw")
-                .build()
-        )
-        // --- Cleaner によるメモリ管理 (Type mismatch 解決) ---
-        // copy(nullable = true) を使用して Cleaner.Cleanable? 型にする
-        val cleanableType = Cleaner.Cleanable::class.asClassName().copy(nullable = true)
-        classBuilder.addProperty(
-            PropertySpec.builder("cleanable", cleanableType, KModifier.PRIVATE)
-                .initializer("if (parent !=null || raw == MemorySegment.NULL) null else CLEANER.register(this, Deallocator(raw, dropHandle))")
                 .build()
         )
 
@@ -53,8 +68,11 @@ object OpaqueGenerator {
                 FunSpec.builder("clone")
                     .returns(ClassName(targetPackage, className))
                     .beginControlFlow("try")
-                    .addStatement("val newPtr = cloneHandle.invokeExact(segment) as MemorySegment")
-                    .addStatement("return %L(newPtr, false)", className)
+                    .addStatement("if (this.segment == %T.NULL || !this.aliveFlag.isValid) throw %T(%S)", MemorySegment::class, NullPointerException::class, "Object dropped or invalid")
+                    .addStatement("val newArena = Arena.ofConfined()")
+                    .addStatement("val raw = %T.Companion.cloneHandle.invokeExact(this.segment) as MemorySegment", ClassName(targetPackage, className))
+                    .addStatement("val res = raw.reinterpret(%T.Companion.STRUCT_SIZE, newArena) { s -> %T.Companion.dropHandle.invokeExact(s) }", ClassName(targetPackage, className), ClassName(targetPackage, className))
+                    .addStatement("return %L(res, newArena, isArenaOwner = true)", className)
                     .nextControlFlow("catch (e: Throwable)")
                     .addStatement("throw RuntimeException(e)")
                     .endControlFlow()
@@ -66,21 +84,25 @@ object OpaqueGenerator {
         classBuilder.addFunction(
             FunSpec.builder("close")
                 .addModifiers(KModifier.OVERRIDE)
-                .beginControlFlow("if (segment != MemorySegment.NULL && parent == null)")
-                .addStatement("cleanable?.clean()")
+                .beginControlFlow("if (segment != MemorySegment.NULL)")
+                .addStatement("aliveFlag.isValid = false")
                 .addStatement("segment = MemorySegment.NULL")
+                .beginControlFlow("if (isArenaOwner)")
+                .beginControlFlow("try")
+                .addStatement("arena.close()")
+                .nextControlFlow("catch (e: UnsupportedOperationException)")
+                .addStatement("// Ignore for non-closeable arenas")
+                .endControlFlow()
+                .endControlFlow()
                 .endControlFlow()
                 .build()
         )
 
         // --- Companion Object ---
         val companion = TypeSpec.companionObjectBuilder()
-            .addProperty(PropertySpec.builder("dropHandle", MethodHandle::class, KModifier.PRIVATE).build())
-            .addProperty(PropertySpec.builder("LAYOUT_SIZE", Long::class).initializer("0L").mutable().build())
-            .addProperty(
-                PropertySpec.builder("CLEANER", Cleaner::class, KModifier.PRIVATE).initializer("Cleaner.create()")
-                    .build()
-            )
+            .addProperty(PropertySpec.builder("dropHandle", MethodHandle::class, KModifier.INTERNAL).build())
+            .addProperty(PropertySpec.builder("STRUCT_SIZE", Long::class, KModifier.INTERNAL).initializer("0L").mutable().build())
+            
         if (meta.isClonable) {
             companion.addProperty(PropertySpec.builder("cloneHandle", MethodHandle::class, KModifier.PRIVATE).build())
         }
@@ -95,47 +117,14 @@ object OpaqueGenerator {
         }
 
         initBlock.addStatement("val sizeHandle = linker.downcallHandle(lookup.find(\"${prefix}_size\").get(), FunctionDescriptor.of(ValueLayout.JAVA_LONG))")
-        initBlock.addStatement("this.LAYOUT_SIZE = sizeHandle.invokeExact() as Long")
+        initBlock.addStatement("this.STRUCT_SIZE = sizeHandle.invokeExact() as Long")
 
         companion.addInitializerBlock(initBlock.build())
         classBuilder.addType(companion.build())
 
-        // --- Deallocator クラス ---
-        val deallocator = TypeSpec.classBuilder("Deallocator")
-            .addModifiers(KModifier.PRIVATE)
-            .addSuperinterface(Runnable::class)
-            .primaryConstructor(
-                FunSpec.constructorBuilder()
-                    .addParameter("segment", MemorySegment::class)
-                    .addParameter("dropHandle", MethodHandle::class)
-                    .build()
-            )
-            .addProperty(
-                PropertySpec.builder("segment", MemorySegment::class, KModifier.PRIVATE).initializer("segment").build()
-            )
-            .addProperty(
-                PropertySpec.builder("dropHandle", MethodHandle::class, KModifier.PRIVATE).initializer("dropHandle")
-                    .build()
-            )
-            .addFunction(
-                FunSpec.builder("run")
-                    .addModifiers(KModifier.OVERRIDE)
-                    .beginControlFlow("if (segment != MemorySegment.NULL)")
-                    .beginControlFlow("try")
-                    .addStatement("dropHandle.invokeExact(segment)")
-                    .nextControlFlow("catch (e: Throwable)")
-                    .addStatement("System.err.println(%S + e.message)", "Xross: Failed to drop native opaque object: ")
-                    .endControlFlow()
-                    .endControlFlow()
-                    .build()
-            )
-            .build()
-
-        classBuilder.addType(deallocator)
-
-        // --- ファイル書き出し (不足していたインポートの追加) ---
+        // --- ファイル書き出し ---
         val fileSpecBuilder = FileSpec.builder(targetPackage, className)
-            .addImport("java.lang.foreign", "Linker", "SymbolLookup", "FunctionDescriptor", "ValueLayout")
+            .addImport("java.lang.foreign", "Linker", "SymbolLookup", "FunctionDescriptor", "ValueLayout", "Arena")
             .addType(classBuilder.build())
         if (meta.isClonable) {
             fileSpecBuilder

@@ -41,7 +41,11 @@ object XrossTypeSerializer : KSerializer<XrossType> {
 
                 val signature = body["signature"]?.jsonPrimitive?.content ?: ""
                 val ownershipStr = body["ownership"]?.jsonPrimitive?.content ?: "Owned"
-                val ownership = XrossType.Ownership.valueOf(ownershipStr)
+                val ownership = try {
+                    XrossType.Ownership.valueOf(ownershipStr)
+                } catch (e: IllegalArgumentException) {
+                    XrossType.Ownership.Owned
+                }
 
                 when (typeKey) {
                     "Object" -> XrossType.Object(signature, ownership)

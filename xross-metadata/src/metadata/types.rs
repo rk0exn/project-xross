@@ -2,9 +2,10 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum Ownership {
-    Owned,  // 所有権あり (dropが必要)
-    Ref,    // 不変参照
-    MutRef, // 可変参照
+    Owned,  // Inline (for fields) or Value (for returns)
+    Boxed,  // Boxed pointer (Box<T>)
+    Ref,    // Immutable reference (&T)
+    MutRef, // Mutable reference (&mut T)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -29,7 +30,9 @@ pub enum XrossType {
 impl XrossType {
     pub fn is_owned(&self) -> bool {
         match self {
-            XrossType::Object { ownership, .. } => *ownership == Ownership::Owned,
+            XrossType::Object { ownership, .. } => {
+                matches!(ownership, Ownership::Owned | Ownership::Boxed)
+            }
             _ => false,
         }
     }
