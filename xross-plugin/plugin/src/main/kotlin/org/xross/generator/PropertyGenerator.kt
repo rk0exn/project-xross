@@ -50,7 +50,7 @@ object PropertyGenerator {
                     .mutable(isMutable)
                     .getter(buildGetter(field, vhName, fqn, backingFieldName)) // 引数追加
 
-                if (isMutable) propBuilder.setter(buildSetter(field, vhName, fqn))
+                if (isMutable) propBuilder.setter(buildSetter(field, vhName, fqn, backingFieldName))
                 classBuilder.addProperty(propBuilder.build())
             }
         }
@@ -114,8 +114,7 @@ object PropertyGenerator {
         """.trimIndent(), TypeVariableName(" $fqn"), readCodeBuilder.build(), readCodeBuilder.build()
         ).build()
     }
-
-    private fun buildSetter(field: XrossField, vhName: String, fqn: String): FunSpec {
+    private fun buildSetter(field: XrossField, vhName: String, fqn: String, backingFieldName: String?): FunSpec {
         val writeCodeBuilder = CodeBlock.builder()
         writeCodeBuilder.addStatement(
             "if (this.segment == %T.NULL || !this.aliveFlag.isValid) throw %T(%S)",
@@ -133,7 +132,13 @@ object PropertyGenerator {
                     NullPointerException::class,
                     "Cannot set field '${field.name}' with a NULL or invalid native reference"
                 )
+                // ネイティブポインタを更新
                 writeCodeBuilder.addStatement("Companion.$vhName.set(this.segment, 0L, v.segment)")
+
+                // --- 修正点: キャッシュをクリア ---
+                if (backingFieldName != null) {
+                    writeCodeBuilder.addStatement("this.$backingFieldName = null")
+                }
             }
 
             else -> writeCodeBuilder.addStatement("Companion.$vhName.set(this.segment, 0L, v)")
@@ -141,12 +146,11 @@ object PropertyGenerator {
 
         return FunSpec.setterBuilder().addParameter("v", TypeVariableName(" $fqn")).addCode(
             """
-            val stamp = this.sl.writeLock()
-            try { %L } finally { this.sl.unlockWrite(stamp) }
-        """.trimIndent(), writeCodeBuilder.build()
+        val stamp = this.sl.writeLock()
+        try { %L } finally { this.sl.unlockWrite(stamp) }
+    """.trimIndent(), writeCodeBuilder.build()
         ).build()
     }
-
     private fun generateAtomicProperty(
         classBuilder: TypeSpec.Builder,
         baseName: String,
