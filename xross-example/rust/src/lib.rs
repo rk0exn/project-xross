@@ -12,14 +12,22 @@ pub struct MyService {
     pub unknown_struct: Box<UnknownStruct>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, JvmClass)]
 pub struct UnknownStruct {
+    #[jvm_field]
     pub i: i32,
+    #[jvm_field]
     pub f: f32,
+    #[jvm_field]
     pub s: String,
 }
-xross_core::opaque_class!(com.example, UnknownStruct);
-
+#[jvm_class]
+impl UnknownStruct {
+    #[jvm_new]
+    pub fn new(i: i32, s: String, f: f32) -> Self {
+        Self { i, s, f }
+    }
+}
 pub enum UnClonable {
     S,
     Y,
@@ -114,6 +122,24 @@ impl MyService {
                 j: UnknownStruct::default(),
             },
             _ => XrossTestEnum::A,
+        }
+    }
+
+    #[jvm_method]
+    pub fn get_option_struct(&self, flag: bool) -> Option<UnknownStruct> {
+        if flag {
+            Some(UnknownStruct::default())
+        } else {
+            None
+        }
+    }
+
+    #[jvm_method]
+    pub fn get_result_struct(&self, flag: bool) -> Result<UnknownStruct, String> {
+        if flag {
+            Ok(UnknownStruct::default())
+        } else {
+            Err("Error from Rust!".to_string())
         }
     }
 }

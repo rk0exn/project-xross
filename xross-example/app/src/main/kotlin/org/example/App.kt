@@ -35,6 +35,8 @@ fun main() {
         executeConcurrencyTest()
         // 4. Enumに関するテスト
         executeEnumTest()
+        // 5. Optionに関するテスト
+        executeCollectionAndOptionalTest()
     } catch (e: Exception) {
         println("Test failed with exception:")
         e.printStackTrace()
@@ -139,7 +141,18 @@ fun executeReferenceAndOwnershipTest() {
     try {
         borrowed2.execute()
     } catch (e: NullPointerException) {
-        println("Success: Caught expected NullPointerException, $e")
+        println("Success: Caught expected NullPointerException for borrowed2, $e")
+    }
+
+    println("\n--- [2.1] Consumption (self) Test ---")
+    val serviceToConsume = MyService()
+    val len = serviceToConsume.consumeSelf()
+    println("Service consumed, len: $len")
+    try {
+        serviceToConsume.execute(5)
+        println("❌ Failure: Service should have been invalidated!")
+    } catch (e: NullPointerException) {
+        println("✅ Success: Caught expected NullPointerException for consumed service.")
     }
 }
 
@@ -180,4 +193,27 @@ fun executeConcurrencyTest() {
         }
     }
     shared.close()
+}
+
+fun executeCollectionAndOptionalTest() {
+    println("\n--- [5] Optional Types Test ---")
+    val service = MyService()
+    // 1. Option Test
+    val someStruct = service.getOptionStruct(true)
+    println("Option(true) result: $someStruct (i=${someStruct?.i})")
+    val noneStruct = service.getOptionStruct(false)
+    println("Option(false) result: $noneStruct")
+
+    // 2. Result Test
+    val okResult = service.getResultStruct(true)
+    println("Result(true) isSuccess: ${okResult.isSuccess}, value: ${okResult.getOrNull()?.i}")
+    
+    val errResult = service.getResultStruct(false)
+    println("Result(false) isFailure: ${errResult.isFailure}, exception: ${errResult.exceptionOrNull()}")
+    if (errResult.isFailure) {
+        val ex = errResult.exceptionOrNull() as? org.example.xross.runtime.XrossException
+        println("  -> Inner error: ${ex?.error}")
+    }
+
+    service.close()
 }

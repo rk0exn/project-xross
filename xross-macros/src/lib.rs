@@ -32,6 +32,24 @@ pub fn jvm_class_derive(input: TokenStream) -> TokenStream {
 
             // 2. メタデータ収集と保存
             let mut fields = Vec::new();
+            let methods = vec![XrossMethod {
+                name: "clone".to_string(),
+                symbol: format!("{}_clone", symbol_base),
+                method_type: XrossMethodType::ConstInstance,
+                is_constructor: false,
+                args: vec![],
+                ret: XrossType::Object {
+                    signature: if package.is_empty() {
+                        name.to_string()
+                    } else {
+                        format!("{}.{}", package, name)
+                    },
+                    ownership: Ownership::Owned,
+                },
+                safety: ThreadSafety::Lock,
+                docs: vec!["Creates a clone of the native object.".to_string()],
+            }];
+
             if let syn::Fields::Named(f) = &s.fields {
                 for field in &f.named {
                     if field.attrs.iter().any(|a| a.path().is_ident("jvm_field")) {
@@ -63,7 +81,7 @@ pub fn jvm_class_derive(input: TokenStream) -> TokenStream {
                     package_name: package,
                     name: name.to_string(),
                     fields,
-                    methods: vec![],
+                    methods, // 修正
                     docs: extract_docs(&s.attrs),
                 }),
             );
@@ -82,6 +100,24 @@ pub fn jvm_class_derive(input: TokenStream) -> TokenStream {
 
             // 2. メタデータ収集と保存
             let mut variants = Vec::new();
+            let methods = vec![XrossMethod {
+                name: "clone".to_string(),
+                symbol: format!("{}_clone", symbol_base),
+                method_type: XrossMethodType::ConstInstance,
+                is_constructor: false,
+                args: vec![],
+                ret: XrossType::Object {
+                    signature: if package.is_empty() {
+                        name.to_string()
+                    } else {
+                        format!("{}.{}", package, name)
+                    },
+                    ownership: Ownership::Owned,
+                },
+                safety: ThreadSafety::Lock,
+                docs: vec!["Creates a clone of the native object.".to_string()],
+            }];
+
             for v in &e.variants {
                 let v_ident = &v.ident;
                 let mut v_fields = Vec::new();
@@ -175,7 +211,7 @@ pub fn jvm_class_derive(input: TokenStream) -> TokenStream {
                     package_name: package,
                     name: name.to_string(),
                     variants,
-                    methods: vec![],
+                    methods, // 修正
                     docs: extract_docs(&e.attrs),
                 }),
             );
@@ -329,7 +365,17 @@ pub fn jvm_class(_attr: TokenStream, item: TokenStream) -> TokenStream {
                                         else { std::ffi::CStr::from_ptr(#raw_name).to_str().unwrap_or("") }
                                     };
                                 });
-                                call_args.push(quote! { #arg_ident });
+                                // 引数の型が String (所有権あり) かどうかを判定
+                                let is_string_owned = if let Type::Path(p) = &*pat_type.ty {
+                                    p.path.is_ident("String")
+                                } else {
+                                    false
+                                };
+                                if is_string_owned {
+                                    call_args.push(quote! { #arg_ident.to_string() });
+                                } else {
+                                    call_args.push(quote! { #arg_ident });
+                                }
                             }
                             XrossType::Object { .. } => {
                                 let raw_ty = &pat_type.ty;
@@ -418,31 +464,83 @@ pub fn jvm_class(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     quote! { *mut std::ffi::c_char },
                     quote! { std::ffi::CString::new(#inner_call).unwrap_or_default().into_raw() },
                 ),
-                | XrossType::Object { ownership, .. } => {
-                    // Ownership 列挙型に基づいて処理を分岐
+                XrossType::Object { ownership, .. } => {
                     match ownership {
-                        Ownership::Ref | Ownership::MutRef => {
-                            // 参照を返す場合は、すでに有効なメモリを指しているためポインタへキャストするのみ
+                        Ownership::Ref | Ownership::MutRef => (
+                            quote! { *mut std::ffi::c_void },
+                            quote! { #inner_call as *const _ as *mut std::ffi::c_void },
+                        ),
+                        Ownership::Owned => (
+                            quote! { *mut std::ffi::c_void },
+                            quote! { Box::into_raw(Box::new(#inner_call)) as *mut std::ffi::c_void },
+                        ),
+                        Ownership::Boxed => (
+                            quote! { *mut std::ffi::c_void },
+                            quote! { Box::into_raw(#inner_call) as *mut std::ffi::c_void },
+                        ),
+                    }
+                }
+                XrossType::Option(inner) => {
+                    match &**inner {
+                        XrossType::String => (
+                            quote! { *mut std::ffi::c_char },
+                            quote! {
+                                match #inner_call {
+                                    Some(s) => std::ffi::CString::new(s).unwrap_or_default().into_raw(),
+                                    None => std::ptr::null_mut(),
+                                }
+                            }
+                        ),
+                        XrossType::Object { .. } => (
+                            quote! { *mut std::ffi::c_void },
+                            quote! {
+                                match #inner_call {
+                                    Some(val) => Box::into_raw(Box::new(val)) as *mut std::ffi::c_void,
+                                    None => std::ptr::null_mut(),
+                                }
+                            }
+                        ),
+                        _ => {
+                            // プリミティブ型の場合も Box 化してポインタで返す (Kotlin 側で T? として扱うため)
                             (
                                 quote! { *mut std::ffi::c_void },
-                                quote! { #inner_call as *const _ as *mut std::ffi::c_void },
-                            )
-                        }
-                        Ownership::Owned => {
-                            // 所有権（値）を返す場合は、ヒープに固定(Box化)してポインタを渡す
-                            (
-                                quote! { *mut std::ffi::c_void },
-                                quote! { Box::into_raw(Box::new(#inner_call)) as *mut std::ffi::c_void },
-                            )
-                        }
-                        Ownership::Boxed => {
-                            // すでに Box 化されている場合は、そのまま生ポインタへ変換して所有権を渡す
-                            (
-                                quote! { *mut std::ffi::c_void },
-                                quote! { Box::into_raw(#inner_call) as *mut std::ffi::c_void },
+                                quote! {
+                                    match #inner_call {
+                                        Some(val) => Box::into_raw(Box::new(val)) as *mut std::ffi::c_void,
+                                        None => std::ptr::null_mut(),
+                                    }
+                                }
                             )
                         }
                     }
+                }
+                XrossType::Result { ok, err } => {
+                    let gen_ptr = |ty: &XrossType, val_ident: proc_macro2::TokenStream| match ty {
+                        XrossType::String => quote! {
+                            std::ffi::CString::new(#val_ident).unwrap_or_default().into_raw() as *mut std::ffi::c_void
+                        },
+                        _ => quote! {
+                            Box::into_raw(Box::new(#val_ident)) as *mut std::ffi::c_void
+                        },
+                    };
+                    let ok_ptr_logic = gen_ptr(ok, quote! { val });
+                    let err_ptr_logic = gen_ptr(err, quote! { e });
+
+                    (
+                        quote! { xross_core::XrossResult },
+                        quote! {
+                            match #inner_call {
+                                Ok(val) => xross_core::XrossResult {
+                                    ok_ptr: #ok_ptr_logic,
+                                    err_ptr: std::ptr::null_mut(),
+                                },
+                                Err(e) => xross_core::XrossResult {
+                                    ok_ptr: std::ptr::null_mut(),
+                                    err_ptr: #err_ptr_logic,
+                                },
+                            }
+                        },
+                    )
                 }
                 _ => {
                     let raw_ret = if let ReturnType::Type(_, ty) = &method.sig.output {
@@ -464,8 +562,8 @@ pub fn jvm_class(_attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 
     match &mut definition {
-        XrossDefinition::Struct(s) => s.methods = methods_meta,
-        XrossDefinition::Enum(e) => e.methods = methods_meta,
+        XrossDefinition::Struct(s) => s.methods.extend(methods_meta),
+        XrossDefinition::Enum(e) => e.methods.extend(methods_meta),
         XrossDefinition::Opaque(_) => {
             panic!("Unsupported. Why is there Opaque??????")
         }
@@ -478,25 +576,22 @@ pub fn jvm_class(_attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn opaque_class(input: TokenStream) -> TokenStream {
     let input_str = input.to_string();
-    let parts: Vec<&str> = input_str.split(',').map(|s| s.trim()).collect();
+    // スペースが含まれる場合（例: com . example）を考慮して空白を除去しつつ分割
+    let parts: Vec<String> = input_str.split(',').map(|s| s.replace(" ", "")).collect();
 
     let (package, name_str, is_clonable) = match parts.len() {
-        // パターン1: opaque_class!(UnknownStruct)
-        1 => ("".to_string(), parts[0], true),
-        // パターン2: opaque_class!(com.example, UnknownStruct)
-        //          or opaque_class!(UnknownStruct, false)
+        1 => ("".to_string(), parts[0].as_str(), true),
         2 => {
             let second = parts[1].to_lowercase();
             if second == "true" || second == "false" {
-                ("".to_string(), parts[0], second.parse().unwrap())
+                ("".to_string(), parts[0].as_str(), second.parse().unwrap())
             } else {
-                (parts[0].replace(" ", ""), parts[1], true)
+                (parts[0].clone(), parts[1].as_str(), true)
             }
         }
-        // パターン3: opaque_class!(com.example, UnknownStruct, false)
         3 => (
-            parts[0].replace(" ", ""),
-            parts[1],
+            parts[0].clone(),
+            parts[1].as_str(),
             parts[2].to_lowercase().parse().unwrap_or(true),
         ),
         _ => panic!(
@@ -511,6 +606,27 @@ pub fn opaque_class(input: TokenStream) -> TokenStream {
 
     let symbol_base = build_symbol_base(&crate_name, &package, name_str);
 
+    let mut methods = vec![];
+    if is_clonable {
+        methods.push(XrossMethod {
+            name: "clone".to_string(),
+            symbol: format!("{}_clone", symbol_base),
+            method_type: XrossMethodType::ConstInstance,
+            is_constructor: false,
+            args: vec![],
+            ret: XrossType::Object {
+                signature: if package.is_empty() {
+                    name_str.to_string()
+                } else {
+                    format!("{}.{}", package, name_str)
+                },
+                ownership: Ownership::Owned,
+            },
+            safety: ThreadSafety::Lock,
+            docs: vec!["Creates a clone of the native object.".to_string()],
+        });
+    }
+
     // メタデータの保存 (is_clonable を追加)
     let definition = XrossDefinition::Opaque(xross_metadata::XrossOpaque {
         signature: if package.is_empty() {
@@ -521,6 +637,7 @@ pub fn opaque_class(input: TokenStream) -> TokenStream {
         symbol_prefix: symbol_base.clone(),
         package_name: package,
         name: name_str.to_string(),
+        methods,
         is_clonable, // メタデータに反映
         docs: vec![format!("Opaque wrapper for {}", name_str)],
     });

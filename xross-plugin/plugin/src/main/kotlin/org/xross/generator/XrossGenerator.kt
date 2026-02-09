@@ -16,6 +16,9 @@ object XrossGenerator {
             targetPackage.removeSuffix(meta.packageName).removeSuffix(".")
         }
 
+        // 共通ランタイムの生成
+        RuntimeGenerator.generate(outputDir, basePackage)
+
         when (val resolvedMeta = resolveAllTypes(meta, resolver)) {
             is XrossDefinition.Opaque -> {
                 OpaqueGenerator.generateSingle(resolvedMeta, outputDir, targetPackage)
@@ -42,9 +45,18 @@ object XrossGenerator {
                     )
                 }
             )
+
             is XrossDefinition.Enum -> meta.copy(
                 variants = meta.variants.map { v ->
-                    v.copy(fields = v.fields.map { it.copy(ty = resolveType(it.ty, resolver, "${meta.name}.${v.name}")) })
+                    v.copy(fields = v.fields.map {
+                        it.copy(
+                            ty = resolveType(
+                                it.ty,
+                                resolver,
+                                "${meta.name}.${v.name}"
+                            )
+                        )
+                    })
                 },
                 methods = meta.methods.map { m ->
                     m.copy(
@@ -53,6 +65,7 @@ object XrossGenerator {
                     )
                 }
             )
+
             is XrossDefinition.Opaque -> meta
         }
     }
@@ -60,11 +73,23 @@ object XrossGenerator {
     private fun resolveType(type: XrossType, resolver: TypeResolver, context: String): XrossType {
         return when (type) {
             is XrossType.Object -> type.copy(signature = resolver.resolve(type.signature, context))
+            is XrossType.Optional -> type.copy(inner = resolveType(type.inner, resolver, context))
+            is XrossType.Result -> type.copy(
+                ok = resolveType(type.ok, resolver, context),
+                err = resolveType(type.err, resolver, context)
+            )
+
+            is XrossType.Async -> type.copy(inner = resolveType(type.inner, resolver, context))
             else -> type
         }
     }
 
-    private fun generateComplexType(meta: XrossDefinition, outputDir: File, targetPackage: String, basePackage: String) {
+    private fun generateComplexType(
+        meta: XrossDefinition,
+        outputDir: File,
+        targetPackage: String,
+        basePackage: String
+    ) {
         val className = meta.name
         val isEnum = meta is XrossDefinition.Enum
         val isPure = isPureEnum(meta)
@@ -73,13 +98,16 @@ object XrossGenerator {
             meta is XrossDefinition.Struct -> {
                 TypeSpec.classBuilder(className).addSuperinterface(AutoCloseable::class)
             }
+
             isPure -> {
                 TypeSpec.enumBuilder(className)
             }
+
             isEnum -> {
                 TypeSpec.classBuilder(className).addModifiers(KModifier.SEALED)
                     .addSuperinterface(AutoCloseable::class)
             }
+
             else -> throw IllegalArgumentException("Unsupported type")
         }
 
@@ -89,7 +117,13 @@ object XrossGenerator {
         MethodGenerator.generateMethods(classBuilder, companionBuilder, meta, basePackage)
 
         when {
-            meta is XrossDefinition.Struct -> PropertyGenerator.generateFields(classBuilder, meta, basePackage)
+            meta is XrossDefinition.Struct -> PropertyGenerator.generateFields(
+                classBuilder,
+                meta,
+                targetPackage,
+                basePackage
+            )
+
             isEnum -> EnumVariantGenerator.generateVariants(
                 classBuilder, companionBuilder, meta, targetPackage, basePackage
             )
@@ -104,7 +138,11 @@ object XrossGenerator {
     }
 
     fun getClassName(signature: String, basePackage: String): ClassName {
-        val fqn = if (basePackage.isEmpty()) signature else "$basePackage.$signature"
+        val fqn = if (basePackage.isEmpty() || signature.startsWith(basePackage)) {
+            signature
+        } else {
+            "$basePackage.$signature"
+        }
         val lastDot = fqn.lastIndexOf('.')
         return if (lastDot == -1) ClassName("", fqn)
         else ClassName(fqn.substring(0, lastDot), fqn.substring(lastDot + 1))
@@ -128,8 +166,7 @@ object XrossGenerator {
             "sealed", "open", "abstract", "constructor", "companion",
             "init", "data", "override", "lateinit", "inner"
         ).joinToString("|")
-        
-        // "public " の後にキーワードが続く場合、"public " を削除する
+
         val regex = Regex("""public\s+(?=$keywords)""")
         return content.replace(regex, "")
     }

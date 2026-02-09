@@ -1,10 +1,23 @@
-pub use xross_macros::*;
-pub use xross_metadata::*;
+use std::ffi::c_void;
+
+pub use xross_macros::{JvmClass, jvm_class, opaque_class};
+
+#[repr(C)]
+pub struct XrossResult {
+    pub ok_ptr: *mut c_void,
+    pub err_ptr: *mut c_void,
+}
+
+// マクロで生成される共通FFIのためのマーカートレイト
+pub trait XrossJvmClass {
+    fn xross_layout() -> String;
+}
 
 #[unsafe(no_mangle)]
-#[doc(hidden)]
 pub unsafe extern "C" fn xross_free_string(ptr: *mut std::ffi::c_char) {
     if !ptr.is_null() {
-        unsafe { drop(std::ffi::CString::from_raw(ptr)) }
+        unsafe {
+            let _ = std::ffi::CString::from_raw(ptr);
+        }
     }
 }

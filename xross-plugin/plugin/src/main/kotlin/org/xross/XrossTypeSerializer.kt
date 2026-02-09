@@ -36,25 +36,36 @@ object XrossTypeSerializer : KSerializer<XrossType> {
             }
 
             is JsonObject -> {
-                val typeKey = element.keys.firstOrNull()
-                val body = element[typeKey]?.jsonObject ?: throw IllegalArgumentException("Invalid body")
-
-                val signature = body["signature"]?.jsonPrimitive?.content ?: ""
-                val ownershipStr = body["ownership"]?.jsonPrimitive?.content ?: "Owned"
-                val ownership = try {
-                    XrossType.Ownership.valueOf(ownershipStr)
-                } catch (e: IllegalArgumentException) {
-                    XrossType.Ownership.Owned
-                }
+                val typeKey = element.keys.firstOrNull() ?: throw IllegalArgumentException("Empty object")
+                val body = element[typeKey] ?: throw IllegalArgumentException("Missing body")
 
                 when (typeKey) {
-                    "Object" -> XrossType.Object(signature, ownership)
-                    else -> throw IllegalArgumentException("Unknown type: $typeKey")
+                    "Object" -> {
+                        val obj = body.jsonObject
+                        val signature = obj["signature"]?.jsonPrimitive?.content ?: ""
+                        val ownershipStr = obj["ownership"]?.jsonPrimitive?.content ?: "Owned"
+                        val ownership = XrossType.Ownership.valueOf(ownershipStr)
+                        XrossType.Object(signature, ownership)
+                    }
+                    "Option" -> XrossType.Optional(deserializeRecursive(body))
+                    "Result" -> {
+                        val obj = body.jsonObject
+                        XrossType.Result(
+                            deserializeRecursive(obj["ok"]!!),
+                            deserializeRecursive(obj["err"]!!)
+                        )
+                    }
+                    "Async" -> XrossType.Async(deserializeRecursive(body))
+                    else -> throw IllegalArgumentException("Unknown complex type: $typeKey")
                 }
             }
 
             else -> throw IllegalArgumentException("Invalid JSON")
         }
+    }
+
+    private fun deserializeRecursive(element: JsonElement): XrossType {
+        return Json.decodeFromJsonElement(this, element)
     }
 
     override fun serialize(encoder: Encoder, value: XrossType) {
@@ -66,7 +77,14 @@ object XrossTypeSerializer : KSerializer<XrossType> {
                     put("ownership", value.ownership.name)
                 }
             }
-
+            is XrossType.Optional -> buildJsonObject { put("Option", serializeRecursive(value.inner)) }
+            is XrossType.Result -> buildJsonObject {
+                putJsonObject("Result") {
+                    put("ok", serializeRecursive(value.ok))
+                    put("err", serializeRecursive(value.err))
+                }
+            }
+            is XrossType.Async -> buildJsonObject { put("Async", serializeRecursive(value.inner)) }
             else -> {
                 val name = nameToPrimitive.entries.find { it.value == value }?.key
                     ?: throw IllegalArgumentException("Unknown type instance: $value")
@@ -74,5 +92,9 @@ object XrossTypeSerializer : KSerializer<XrossType> {
             }
         }
         jsonOutput.encodeJsonElement(element)
+    }
+
+    private fun serializeRecursive(type: XrossType): JsonElement {
+        return Json.encodeToJsonElement(this, type)
     }
 }

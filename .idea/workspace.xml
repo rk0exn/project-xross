@@ -21,26 +21,28 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="f975a9a1-e29b-4a10-834b-aa32ce0e2a24" name="変更" comment="">
-      <change afterPath="$PROJECT_DIR$/xross-example/app/hs_err_pid112783.log" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/TypeResolver.kt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/xross-example/app/hs_err_pid215488.log" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/RuntimeGenerator.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/modules/xross-example.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules/xross-example.iml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-core/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-core/src/lib.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-example/app/build.gradle.kts" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/app/build.gradle.kts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-example/app/hs_err_pid112783.log" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-example/app/src/main/kotlin/org/example/App.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/app/src/main/kotlin/org/example/App.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-example/app/src/main/resources/libxross_example.so" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/app/src/main/resources/libxross_example.so" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-example/rust/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/rust/Cargo.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-example/rust/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/rust/src/lib.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-macros/build.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/build.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-macros/src/utils.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/src/utils.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-macros/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-macros/src/type_mapping.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/src/type_mapping.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-metadata/src/metadata/class.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-metadata/src/metadata/class.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/GenerateAction.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/GenerateAction.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/GenerateParameters.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/GenerateParameters.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/GenerateXrossTask.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/GenerateXrossTask.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-metadata/src/metadata/types.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-metadata/src/metadata/types.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossTypeSerializer.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossTypeSerializer.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/collections/RustCollection.kt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/collections/RustSlice.kt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/collections/RustVec.kt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/collections/RustVecDeque.kt" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/CompanionGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/CompanionGenerator.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/EnumVariantGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/EnumVariantGenerator.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/MethodGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/MethodGenerator.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/OpaqueGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/OpaqueGenerator.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/PropertyGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/PropertyGenerator.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/StructureGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/StructureGenerator.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/XrossGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/XrossGenerator.kt" afterDir="false" />
@@ -198,7 +200,7 @@
       <workItem from="1770450261945" duration="1095000" />
       <workItem from="1770524163559" duration="7526000" />
       <workItem from="1770537042178" duration="8686000" />
-      <workItem from="1770601858892" duration="8110000" />
+      <workItem from="1770601858892" duration="18896000" />
     </task>
     <servers />
   </component>

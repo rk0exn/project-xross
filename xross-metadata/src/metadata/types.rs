@@ -25,6 +25,14 @@ pub enum XrossType {
         signature: String,
         ownership: Ownership,
     },
+    // 追加: 再帰的な型定義
+    Option(Box<XrossType>),
+    Result {
+        ok: Box<XrossType>,
+        err: Box<XrossType>,
+    },
+    // 追加: 非同期
+    Async(Box<XrossType>),
 }
 
 impl XrossType {
@@ -33,6 +41,7 @@ impl XrossType {
             XrossType::Object { ownership, .. } => {
                 matches!(ownership, Ownership::Owned | Ownership::Boxed)
             }
+            XrossType::Result { .. } | XrossType::Option(_) => true,
             _ => false,
         }
     }

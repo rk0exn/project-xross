@@ -11,10 +11,9 @@ import java.lang.foreign.MemoryLayout
 import java.lang.foreign.MemorySegment
 
 object PropertyGenerator {
-
-    fun generateFields(classBuilder: TypeSpec.Builder, meta: XrossDefinition.Struct, basePackage: String) {
+    private val MEMORY_SEGMENT = ClassName("java.lang.foreign", "MemorySegment")
+    fun generateFields(classBuilder: TypeSpec.Builder, meta: XrossDefinition.Struct, targetPackage: String, basePackage: String) {
         val selfType = XrossGenerator.getClassName(meta.signature, basePackage)
-        
         meta.fields.forEach { field ->
             val baseName = field.name.toCamelCase()
             val escapedName = baseName.escapeKotlinKeyword()
@@ -45,7 +44,7 @@ object PropertyGenerator {
                     .mutable(isMutable)
                     .getter(buildGetter(field, vhName, kType, backingFieldName, selfType)) 
 
-                if (isMutable) propBuilder.setter(buildSetter(field, vhName, kType, backingFieldName))
+                if (isMutable) propBuilder.setter(buildSetter(field, vhName, kType, backingFieldName, selfType))
                 classBuilder.addProperty(propBuilder.build())
             }
         }
@@ -55,6 +54,8 @@ object PropertyGenerator {
         readCodeBuilder.addStatement("if (this.segment == %T.NULL || !this.aliveFlag.isValid) throw %T(%S)", MemorySegment::class, NullPointerException::class, "Access error")
 
         val isSelf = kType == selfType
+        val baseName = field.name.toCamelCase()
+        val offsetName = "Companion.OFFSET_$baseName"
 
         when (field.ty) {
             is XrossType.Object -> {
@@ -62,38 +63,34 @@ object PropertyGenerator {
                 readCodeBuilder.addStatement("res = this.$backingFieldName!!")
                 readCodeBuilder.nextControlFlow("else")
 
-                if (field.ty.ownership == XrossType.Ownership.Owned) {
-                    readCodeBuilder.addStatement("val offset = LAYOUT.byteOffset(%T.PathElement.groupElement(%S))", MemoryLayout::class, field.name)
-                    val sizeExpr = if (isSelf) "STRUCT_SIZE" else "%T.STRUCT_SIZE"
-                    readCodeBuilder.addStatement(
-                        "val resSeg = this.segment.asSlice(offset, $sizeExpr)",
-                        *(if (isSelf) emptyArray() else arrayOf(kType))
-                    )
-                    val fromPointerExpr = if (isSelf) "fromPointer" else "%T.fromPointer"
-                    readCodeBuilder.addStatement(
-                        "res = $fromPointerExpr(resSeg, this.arena)",
-                        *(if (isSelf) emptyArray() else arrayOf(kType))
-                    )
-                } else {
-                    readCodeBuilder.addStatement("val rawSegment = $vhName.get(this.segment, 0L) as %T", MemorySegment::class)
-                    val sizeExpr = if (isSelf) "STRUCT_SIZE" else "%T.STRUCT_SIZE"
-                    readCodeBuilder.addStatement(
-                        "val resSeg = if (rawSegment == %T.NULL) %T.NULL else rawSegment.reinterpret($sizeExpr)",
-                        *(if (isSelf) arrayOf(MemorySegment::class, MemorySegment::class) else arrayOf(MemorySegment::class, MemorySegment::class, kType))
-                    )
-                    val fromPointerExpr = if (isSelf) "fromPointer" else "%T.fromPointer"
-                    readCodeBuilder.addStatement(
-                        "res = $fromPointerExpr(resSeg, this.arena)",
-                        *(if (isSelf) emptyArray() else arrayOf(kType))
-                    )
-                }
+                val sizeExpr = if (isSelf) "Companion.STRUCT_SIZE" else "%T.Companion.STRUCT_SIZE"
+                val fromPointerExpr = if (isSelf) "Companion.fromPointer" else "%T.Companion.fromPointer"
+                val isOwned = field.ty.ownership == XrossType.Ownership.Owned
+
+                val resolveArgs = mutableListOf<Any?>()
+                resolveArgs.add(isOwned)
+                if (!isSelf) resolveArgs.add(kType)
+                resolveArgs.add(isOwned)
+
+                readCodeBuilder.addStatement(
+                    "val resSeg = resolveFieldSegment(this.segment, if (%L) null else Companion.$vhName, $offsetName, $sizeExpr, %L)",
+                    *resolveArgs.toTypedArray()
+                )
+                
+                val fromPointerArgs = mutableListOf<Any?>()
+                if (!isSelf) fromPointerArgs.add(kType)
+                
+                readCodeBuilder.addStatement(
+                    "res = $fromPointerExpr(resSeg, this.arena)",
+                    *fromPointerArgs.toTypedArray()
+                )
                 readCodeBuilder.addStatement("this.$backingFieldName = res")
                 readCodeBuilder.endControlFlow()
             }
-            is XrossType.Bool -> readCodeBuilder.addStatement("res = ($vhName.get(this.segment, 0L) as Byte) != (0).toByte()")
+            is XrossType.Bool -> readCodeBuilder.addStatement("res = (Companion.$vhName.get(this.segment, $offsetName) as Byte) != (0).toByte()")
             is XrossType.RustString -> {
                 readCodeBuilder.addStatement(
-                    "val rawSegment = $vhName.get(this.segment, 0L) as %T",
+                    "val rawSegment = Companion.$vhName.get(this.segment, $offsetName) as %T",
                     MemorySegment::class
                 )
                 readCodeBuilder.addStatement(
@@ -103,7 +100,7 @@ object PropertyGenerator {
                 )
             }
 
-            else -> readCodeBuilder.addStatement("res = $vhName.get(this.segment, 0L) as %T", kType)
+            else -> readCodeBuilder.addStatement("res = Companion.$vhName.get(this.segment, $offsetName) as %T", kType)
         }
 
         return FunSpec.getterBuilder().addCode(
@@ -123,7 +120,7 @@ object PropertyGenerator {
         """.trimIndent(), kType, readCodeBuilder.build(), readCodeBuilder.build()
         ).build()
     }
-    private fun buildSetter(field: XrossField, vhName: String, kType: TypeName, backingFieldName: String?): FunSpec {
+    private fun buildSetter(field: XrossField, vhName: String, kType: TypeName, backingFieldName: String?, selfType: ClassName): FunSpec {
         val writeCodeBuilder = CodeBlock.builder()
         writeCodeBuilder.addStatement(
             "if (this.segment == %T.NULL || !this.aliveFlag.isValid) throw %T(%S)",
@@ -132,8 +129,12 @@ object PropertyGenerator {
             "Attempted to set field '${field.name}' on a NULL or invalid native object"
         )
 
+        val isSelf = kType == selfType
+        val baseName = field.name.toCamelCase()
+        val offsetName = "Companion.OFFSET_$baseName"
+
         when (field.ty) {
-            is XrossType.Bool -> writeCodeBuilder.addStatement("$vhName.set(this.segment, 0L, if (v) 1.toByte() else 0.toByte())")
+            is XrossType.Bool -> writeCodeBuilder.addStatement("Companion.$vhName.set(this.segment, $offsetName, if (v) 1.toByte() else 0.toByte())")
             is XrossType.Object -> {
                 writeCodeBuilder.addStatement(
                     "if (v.segment == %T.NULL || !v.aliveFlag.isValid) throw %T(%S)",
@@ -141,14 +142,23 @@ object PropertyGenerator {
                     NullPointerException::class,
                     "Cannot set field '${field.name}' with a NULL or invalid native reference"
                 )
-                writeCodeBuilder.addStatement("$vhName.set(this.segment, 0L, v.segment)")
+
+                if (field.ty.ownership == XrossType.Ownership.Owned) {
+                    val sizeExpr = if (isSelf) "Companion.STRUCT_SIZE" else "%T.Companion.STRUCT_SIZE"
+                    writeCodeBuilder.addStatement(
+                        "this.segment.asSlice($offsetName, $sizeExpr).copyFrom(v.segment)",
+                        *(if (isSelf) emptyArray() else arrayOf(kType))
+                    )
+                } else {
+                    writeCodeBuilder.addStatement("Companion.$vhName.set(this.segment, $offsetName, v.segment)")
+                }
 
                 if (backingFieldName != null) {
                     writeCodeBuilder.addStatement("this.$backingFieldName = null")
                 }
             }
 
-            else -> writeCodeBuilder.addStatement("$vhName.set(this.segment, 0L, v)")
+            else -> writeCodeBuilder.addStatement("Companion.$vhName.set(this.segment, $offsetName, v)")
         }
 
         return FunSpec.setterBuilder().addParameter("v", kType).addCode(
@@ -166,12 +176,13 @@ object PropertyGenerator {
         kType: TypeName
     ) {
         val innerClassName = "AtomicFieldOf${baseName.replaceFirstChar { it.uppercase() }}"
+        val offsetName = "Companion.OFFSET_$baseName"
         val innerClass = TypeSpec.classBuilder(innerClassName).addModifiers(KModifier.INNER)
             .addProperty(
                 PropertySpec.builder("value", kType)
                     .getter(
                         FunSpec.getterBuilder()
-                            .addStatement("return $vhName.getVolatile(this@${className(classBuilder)}.segment, 0L) as %T", kType)
+                            .addStatement("return Companion.$vhName.getVolatile(this@${className(classBuilder)}.segment, $offsetName) as %T", kType)
                             .build()
                     ).build()
             )
@@ -182,7 +193,7 @@ object PropertyGenerator {
                     .beginControlFlow("try")
                     .addStatement("val current = value")
                     .addStatement("val next = block(current)")
-                    .beginControlFlow("if ($vhName.compareAndSet(this@${className(classBuilder)}.segment, 0L, current, next))")
+                    .beginControlFlow("if (Companion.$vhName.compareAndSet(this@${className(classBuilder)}.segment, $offsetName, current, next))")
                     .addStatement("return next")
                     .endControlFlow()
                     .nextControlFlow("catch (e: %T)", Throwable::class)
