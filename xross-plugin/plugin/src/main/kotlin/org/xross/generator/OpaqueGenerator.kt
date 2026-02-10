@@ -108,9 +108,10 @@ object OpaqueGenerator {
             .addParameter("ptr", MemorySegment::class)
             .addParameter("arena", ClassName("java.lang.foreign", "Arena"))
             .addParameter(ParameterSpec.builder("isArenaOwner", Boolean::class).defaultValue("false").build())
+            .addParameter(ParameterSpec.builder("sharedFlag", ClassName("", "AliveFlag").copy(nullable = true)).defaultValue("null").build())
             .returns(ClassName(targetPackage, className))
             .addModifiers(KModifier.INTERNAL)
-            .addCode("return %L(ptr.reinterpret(STRUCT_SIZE), arena, isArenaOwner = isArenaOwner)\n", className)
+            .addCode("return %L(ptr.reinterpret(STRUCT_SIZE), arena, isArenaOwner = isArenaOwner, sharedFlag = sharedFlag)\n", className)
         
         companion.addFunction(fromPointerBuilder.build())
             

@@ -113,9 +113,10 @@ object StructureGenerator {
                 .addParameter("ptr", MEMORY_SEGMENT)
                 .addParameter("arena", ClassName("java.lang.foreign", "Arena"))
                 .addParameter(ParameterSpec.builder("isArenaOwner", Boolean::class).defaultValue("false").build())
+                .addParameter(ParameterSpec.builder("sharedFlag", ClassName("", "AliveFlag").copy(nullable = true)).defaultValue("null").build())
                 .returns(selfType)
                 .addModifiers(KModifier.INTERNAL)
-                .addCode("return %T(ptr.reinterpret(STRUCT_SIZE), arena, isArenaOwner = isArenaOwner)\n", selfType)
+                .addCode("return %T(ptr.reinterpret(STRUCT_SIZE), arena, isArenaOwner = isArenaOwner, sharedFlag = sharedFlag)\n", selfType)
             
             companionBuilder.addFunction(fromPointerBuilder.build())
         }

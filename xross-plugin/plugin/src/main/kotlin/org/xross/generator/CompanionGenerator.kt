@@ -72,6 +72,11 @@ object CompanionGenerator {
                 meta.fields.forEach {
 
                     val baseCamel = it.name.toCamelCase()
+                    
+                    if (it.ty is XrossType.RustString) {
+                        handles.add("${baseCamel}StrGetHandle")
+                        handles.add("${baseCamel}StrSetHandle")
+                    }
 
                     builder.addProperty(
 
@@ -251,6 +256,23 @@ object CompanionGenerator {
                 desc
 
             )
+            
+            meta.fields.forEach { field ->
+                if (field.ty is XrossType.RustString) {
+                    val baseCamel = field.name.toCamelCase()
+                    val getSymbol = "${meta.symbolPrefix}_property_${field.name}_str_get"
+                    val setSymbol = "${meta.symbolPrefix}_property_${field.name}_str_set"
+                    
+                    init.addStatement(
+                        "this.${baseCamel}StrGetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.of(%M, %M))",
+                        getSymbol, FunctionDescriptor::class.asTypeName(), ADDRESS, ADDRESS
+                    )
+                    init.addStatement(
+                        "this.${baseCamel}StrSetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.ofVoid(%M, %M))",
+                        setSymbol, FunctionDescriptor::class.asTypeName(), ADDRESS, ADDRESS
+                    )
+                }
+            }
 
         } else if (meta is XrossDefinition.Enum) {
 

@@ -3,6 +3,7 @@ use xross_core::{XrossClass, xross_class};
 
 /// 巨大なメモリを確保してリークテストを行うためのサービス
 #[derive(XrossClass, Clone)]
+#[repr(C)]
 pub struct MyService {
     _boxes: Vec<i32>,
 
@@ -13,6 +14,7 @@ pub struct MyService {
 }
 
 #[derive(Clone, XrossClass)]
+#[repr(C)]
 pub struct UnknownStruct {
     #[xross_field]
     pub i: i32,
@@ -36,6 +38,7 @@ pub enum UnClonable {
 
 xross_core::opaque_class!(UnClonable, false);
 #[derive(Clone, Copy, XrossClass, Debug, PartialEq)]
+#[repr(C)]
 pub enum XrossSimpleEnum {
     V,
     W,
@@ -52,6 +55,7 @@ impl XrossSimpleEnum {
 }
 
 #[derive(Clone, XrossClass)]
+#[repr(C)]
 pub enum XrossTestEnum {
     A,
     B {
@@ -60,7 +64,7 @@ pub enum XrossTestEnum {
     },
     C {
         #[xross_field]
-        j: UnknownStruct,
+        j: Box<UnknownStruct>,
     },
 }
 impl Default for UnknownStruct {
@@ -119,7 +123,7 @@ impl MyService {
             0 => XrossTestEnum::A,
             1 => XrossTestEnum::B { i: rand::random() },
             2 => XrossTestEnum::C {
-                j: UnknownStruct::default(),
+                j: Box::new(UnknownStruct::default()),
             },
             _ => XrossTestEnum::A,
         }
@@ -149,6 +153,7 @@ pub mod test {
 
     #[derive(XrossClass, Clone)]
     #[xross_package("test.test2")]
+    #[repr(C)]
     pub struct MyService2 {
         #[xross_field(safety = Atomic)]
         pub val: i32,

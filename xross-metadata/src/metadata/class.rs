@@ -36,6 +36,7 @@ pub struct XrossStruct {
     pub fields: Vec<XrossField>,
     pub methods: Vec<XrossMethod>,
     pub docs: Vec<String>,
+    pub is_copy: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -48,6 +49,7 @@ pub struct XrossEnum {
     pub variants: Vec<XrossVariant>,
     pub methods: Vec<XrossMethod>,
     pub docs: Vec<String>,
+    pub is_copy: bool,
 }
 
 // 追加: メソッドやフィールドを持たない、ポインタ管理専用の定義
@@ -61,6 +63,7 @@ pub struct XrossOpaque {
     pub methods: Vec<XrossMethod>,
     pub docs: Vec<String>,
     pub is_clonable: bool,
+    pub is_copy: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

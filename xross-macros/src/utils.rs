@@ -164,6 +164,22 @@ pub fn discover_signature(type_name: &str) -> Option<String> {
     }
 }
 
+pub fn extract_is_copy(attrs: &[Attribute]) -> bool {
+    attrs.iter().any(|attr| {
+        if attr.path().is_ident("derive") {
+            if let Meta::List(list) = &attr.meta {
+                // simple check for Copy in derive(...)
+                let folder = list.tokens.to_string();
+                folder.contains("Copy")
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    })
+}
+
 pub fn extract_package(attrs: &[Attribute]) -> String {
     for attr in attrs {
         if attr.path().is_ident("xross_package") {

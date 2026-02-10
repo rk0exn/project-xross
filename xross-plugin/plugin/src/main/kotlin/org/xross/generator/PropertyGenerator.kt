@@ -79,7 +79,7 @@ object PropertyGenerator {
                 if (!isSelf) fromPointerArgs.add(kType)
                 
                 readCodeBuilder.addStatement(
-                    "res = $fromPointerExpr(resSeg, this.arena)",
+                    "res = $fromPointerExpr(resSeg, this.arena, isArenaOwner = false)",
                     *fromPointerArgs.toTypedArray()
                 )
                 readCodeBuilder.addStatement("this.$backingFieldName = res")
@@ -88,13 +88,17 @@ object PropertyGenerator {
             is XrossType.Bool -> readCodeBuilder.addStatement("res = ($vhName.get(this.segment, $offsetName) as Byte) != (0).toByte()")
             is XrossType.RustString -> {
                 readCodeBuilder.addStatement(
-                    "val rawSegment = $vhName.get(this.segment, $offsetName) as %T",
+                    "val rawSegment = Companion.${baseName}StrGetHandle.invokeExact(this.segment) as %T",
                     MemorySegment::class
                 )
                 readCodeBuilder.addStatement(
                     "res = if (rawSegment == %T.NULL) \"\" else rawSegment.reinterpret(%T.MAX_VALUE).getString(0)",
                     MemorySegment::class,
                     Long::class
+                )
+                readCodeBuilder.addStatement(
+                    "if (rawSegment != %T.NULL) Companion.xrossFreeStringHandle.invokeExact(rawSegment)",
+                    MemorySegment::class
                 )
             }
 
@@ -132,6 +136,12 @@ object PropertyGenerator {
         val offsetName = "OFFSET_$baseName"
 
         when (field.ty) {
+            is XrossType.RustString -> {
+                writeCodeBuilder.beginControlFlow("java.lang.foreign.Arena.ofConfined().use { arena ->")
+                writeCodeBuilder.addStatement("val allocated = arena.allocateFrom(v)")
+                writeCodeBuilder.addStatement("Companion.${baseName}StrSetHandle.invokeExact(this.segment, allocated) as Unit")
+                writeCodeBuilder.endControlFlow()
+            }
             is XrossType.Bool -> writeCodeBuilder.addStatement("$vhName.set(this.segment, $offsetName, if (v) 1.toByte() else 0.toByte())")
             is XrossType.Object -> {
                 writeCodeBuilder.addStatement(

@@ -53,6 +53,8 @@ pub fn xross_class_derive(input: TokenStream) -> TokenStream {
             if let syn::Fields::Named(f) = &s.fields {
                 for field in &f.named {
                     if field.attrs.iter().any(|a| a.path().is_ident("xross_field")) {
+                        let field_ident = field.ident.as_ref().unwrap();
+                        let field_name = field_ident.to_string();
                         let xross_ty = resolve_type_with_attr(
                             &field.ty,
                             &field.attrs,
@@ -61,11 +63,33 @@ pub fn xross_class_derive(input: TokenStream) -> TokenStream {
                             false,
                         );
                         fields.push(XrossField {
-                            name: field.ident.as_ref().unwrap().to_string(),
-                            ty: xross_ty,
+                            name: field_name.clone(),
+                            ty: xross_ty.clone(),
                             safety: extract_safety_attr(&field.attrs, ThreadSafety::Lock),
                             docs: extract_docs(&field.attrs),
                         });
+
+                        // RustString (String型) の場合、専用のアクセサを生成
+                        if matches!(xross_ty, XrossType::String) {
+                            let get_fn = format_ident!("{}_property_{}_str_get", symbol_base, field_name);
+                            let set_fn = format_ident!("{}_property_{}_str_set", symbol_base, field_name);
+                            extra_functions.push(quote! {
+                                #[unsafe(no_mangle)]
+                                pub unsafe extern "C" fn #get_fn(ptr: *const #name) -> *mut std::ffi::c_char {
+                                    if ptr.is_null() { return std::ptr::null_mut(); }
+                                    let obj = &*ptr;
+                                    std::ffi::CString::new(obj.#field_ident.as_str()).unwrap().into_raw()
+                                }
+
+                                #[unsafe(no_mangle)]
+                                pub unsafe extern "C" fn #set_fn(ptr: *mut #name, val: *const std::ffi::c_char) {
+                                    if ptr.is_null() || val.is_null() { return; }
+                                    let obj = &mut *ptr;
+                                    let s = std::ffi::CStr::from_ptr(val).to_string_lossy().into_owned();
+                                    obj.#field_ident = s;
+                                }
+                            });
+                        }
                     }
                 }
             }
@@ -83,6 +107,7 @@ pub fn xross_class_derive(input: TokenStream) -> TokenStream {
                     fields,
                     methods, // 修正
                     docs: extract_docs(&s.attrs),
+                    is_copy: extract_is_copy(&s.attrs),
                 }),
             );
 
@@ -154,9 +179,21 @@ pub fn xross_class_derive(input: TokenStream) -> TokenStream {
                     // ty.is_owned() を使って Box::from_raw するか判定
                     if ty.is_owned() {
                         c_param_defs.push(quote! { #arg_id: *mut std::ffi::c_void });
-                        internal_conversions.push(
-                            quote! { let #arg_id = *Box::from_raw(#arg_id as *mut #raw_ty); },
-                        );
+                        if matches!(ty, XrossType::Object { ownership: Ownership::Boxed, .. }) {
+                            // Box<T> の場合、ポインタをそのまま Box に戻す
+                            // raw_ty は Box<T> なので、*mut Box<T> ではなく、中身の型を取り出す必要があるが、
+                            // Box::from_raw は *mut T を取って Box<T> を返すので、単にキャストして呼べばよい。
+                            // ただし、シンボルとしての raw_ty をそのまま使うと Box<T> になるため、
+                            // ここでは *mut #raw_ty ではなく、型推論に任せるか、明示的な変換を行う。
+                            internal_conversions.push(
+                                quote! { let #arg_id = Box::from_raw(#arg_id as *mut _); },
+                            );
+                        } else {
+                            // インライン構造体などの場合
+                            internal_conversions.push(
+                                quote! { let #arg_id = *Box::from_raw(#arg_id as *mut #raw_ty); },
+                            );
+                        }
                     } else if matches!(
                         ty,
                             | XrossType::Object { .. }
@@ -213,6 +250,7 @@ pub fn xross_class_derive(input: TokenStream) -> TokenStream {
                     variants,
                     methods, // 修正
                     docs: extract_docs(&e.attrs),
+                    is_copy: extract_is_copy(&e.attrs),
                 }),
             );
 
@@ -640,6 +678,7 @@ pub fn opaque_class(input: TokenStream) -> TokenStream {
         methods,
         is_clonable, // メタデータに反映
         docs: vec![format!("Opaque wrapper for {}", name_str)],
+        is_copy: false, // Opaque 型の場合は明示的な検知が難しいためデフォルト false
     });
     save_definition(&name_ident, &definition);
 

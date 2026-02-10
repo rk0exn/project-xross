@@ -25,18 +25,26 @@ fun main() {
             loadFromResources(tempDir)
         }
 
-        // 1. メモリリークテスト
+        // 1. メモリリークテスト (高負荷なため1回のみ)
         executeMemoryLeakTest()
-        // 2. 参照と所有権テスト
-        executeReferenceAndOwnershipTest()
-        // 3. アトミック並行アクセステスト
-        executeConcurrencyTest()
-        // 4. Enumに関するテスト
-        executeEnumTest()
-        // 5. Optionに関するテスト
-        executeCollectionAndOptionalTest()
-        // 6. プロパティに関するテスト
-        executePropertyTest()
+
+        // 2-6. 安定性テストの繰り返し実行
+        val repeatCount = 100
+        println("\n--- Starting Repetitive Stability Test ($repeatCount cycles) ---")
+        
+        for (i in 1..repeatCount) {
+            executeReferenceAndOwnershipTest()
+            executeConcurrencyTest()
+            executeEnumTest()
+            executeCollectionAndOptionalTest()
+            executePropertyTest()
+            
+            if (i % 10 == 0) {
+                println(">>> Completed cycle $i / $repeatCount")
+            }
+        }
+        
+        println("\n✅ All $repeatCount cycles finished without any crashes or memory errors!")
     } catch (e: Exception) {
         println("Test failed with exception:")
         e.printStackTrace()
@@ -62,7 +70,7 @@ private fun loadFromResources(tempDir: File) {
 fun executePropertyTest(){
     val unknownStruct= UnknownStruct(1,"Hello",1f);
     println(unknownStruct.s)
-    unknownStruct.s = "Hello, World. from modified"
+    unknownStruct.s = "Hello, World. from modified, 無限、❤"
     println(unknownStruct.s)
 }
 

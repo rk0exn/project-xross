@@ -16,6 +16,7 @@ sealed class XrossDefinition {
     abstract val name: String
     abstract val methods: List<XrossMethod>
     abstract val docs: List<String>
+    abstract val isCopy: Boolean
 
     @Serializable
     @SerialName("struct")
@@ -26,7 +27,8 @@ sealed class XrossDefinition {
         override val name: String,
         val fields: List<XrossField> = emptyList(),
         override val methods: List<XrossMethod> = emptyList(),
-        override val docs: List<String> = emptyList()
+        override val docs: List<String> = emptyList(),
+        override val isCopy: Boolean = false
     ) : XrossDefinition()
 
     @Serializable
@@ -38,7 +40,8 @@ sealed class XrossDefinition {
         override val name: String,
         val variants: List<XrossVariant> = emptyList(),
         override val methods: List<XrossMethod> = emptyList(),
-        override val docs: List<String> = emptyList()
+        override val docs: List<String> = emptyList(),
+        override val isCopy: Boolean = false
     ) : XrossDefinition()
 
     @Serializable
@@ -51,6 +54,7 @@ sealed class XrossDefinition {
         // 中身は公開されないため、メソッドやドキュメントは最小限（あるいは無し）
         override val methods: List<XrossMethod> = emptyList(),
         override val docs: List<String> = emptyList(),
-        val isClonable: Boolean = true
+        val isClonable: Boolean = true,
+        override val isCopy: Boolean = false
     ) : XrossDefinition()
 }
