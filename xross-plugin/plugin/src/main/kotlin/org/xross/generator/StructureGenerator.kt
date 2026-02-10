@@ -47,11 +47,11 @@ object StructureGenerator {
                 .initializer("%T()", ClassName("java.util.concurrent.locks", "StampedLock"))
                 .build())
 
-            classBuilder.addProperty(PropertySpec.builder("arena", ClassName("java.lang.foreign", "Arena"), KModifier.INTERNAL)
-                .initializer("%T.global()", ClassName("java.lang.foreign", "Arena"))
+            classBuilder.addProperty(PropertySpec.builder("autoArena", ClassName("java.lang.foreign", "Arena"), KModifier.INTERNAL)
+                .initializer("%T.ofAuto()", ClassName("java.lang.foreign", "Arena"))
                 .build())
-            classBuilder.addProperty(PropertySpec.builder("isArenaOwner", Boolean::class, KModifier.INTERNAL)
-                .initializer("false")
+            classBuilder.addProperty(PropertySpec.builder("confinedArena", ClassName("java.lang.foreign", "Arena").copy(nullable = true), KModifier.INTERNAL)
+                .initializer("null")
                 .build())
 
         } else {
@@ -67,13 +67,13 @@ object StructureGenerator {
             val constructorBuilder = FunSpec.constructorBuilder()
                 .addModifiers(if (isEnum) KModifier.PROTECTED else KModifier.INTERNAL)
                 .addParameter("raw", MEMORY_SEGMENT)
-                .addParameter(ParameterSpec.builder("arena", ClassName("java.lang.foreign", "Arena")).build())
-                .addParameter(ParameterSpec.builder("isArenaOwner", Boolean::class).defaultValue("true").build())
+                .addParameter(ParameterSpec.builder("autoArena", ClassName("java.lang.foreign", "Arena")).build())
+                .addParameter(ParameterSpec.builder("confinedArena", ClassName("java.lang.foreign", "Arena").copy(nullable = true)).defaultValue("null").build())
                 .addParameter(ParameterSpec.builder("sharedFlag", ClassName("", "AliveFlag").copy(nullable = true)).defaultValue("null").build())
             classBuilder.primaryConstructor(constructorBuilder.build())
 
-            classBuilder.addProperty(PropertySpec.builder("arena", ClassName("java.lang.foreign", "Arena"), KModifier.INTERNAL).initializer("arena").build())
-            classBuilder.addProperty(PropertySpec.builder("isArenaOwner", Boolean::class, KModifier.INTERNAL).mutable(true).initializer("isArenaOwner").build())
+            classBuilder.addProperty(PropertySpec.builder("autoArena", ClassName("java.lang.foreign", "Arena"), KModifier.INTERNAL).initializer("autoArena").build())
+            classBuilder.addProperty(PropertySpec.builder("confinedArena", ClassName("java.lang.foreign", "Arena").copy(nullable = true), KModifier.INTERNAL).initializer("confinedArena").build())
             classBuilder.addProperty(PropertySpec.builder("aliveFlag", ClassName("", "AliveFlag"), KModifier.INTERNAL).initializer(CodeBlock.of("sharedFlag ?: AliveFlag(true)")).build())
             
             val segmentProp = PropertySpec.builder("segment", MEMORY_SEGMENT, KModifier.INTERNAL)
@@ -111,12 +111,12 @@ object StructureGenerator {
         if (!isEnum) {
             val fromPointerBuilder = FunSpec.builder("fromPointer")
                 .addParameter("ptr", MEMORY_SEGMENT)
-                .addParameter("arena", ClassName("java.lang.foreign", "Arena"))
-                .addParameter(ParameterSpec.builder("isArenaOwner", Boolean::class).defaultValue("false").build())
+                .addParameter("autoArena", ClassName("java.lang.foreign", "Arena"))
+                .addParameter(ParameterSpec.builder("confinedArena", ClassName("java.lang.foreign", "Arena").copy(nullable = true)).defaultValue("null").build())
                 .addParameter(ParameterSpec.builder("sharedFlag", ClassName("", "AliveFlag").copy(nullable = true)).defaultValue("null").build())
                 .returns(selfType)
                 .addModifiers(KModifier.INTERNAL)
-                .addCode("return %T(ptr.reinterpret(STRUCT_SIZE), arena, isArenaOwner = isArenaOwner, sharedFlag = sharedFlag)\n", selfType)
+                .addCode("return %T(ptr, autoArena, confinedArena = confinedArena, sharedFlag = sharedFlag)\n", selfType)
             
             companionBuilder.addFunction(fromPointerBuilder.build())
         }
@@ -134,9 +134,9 @@ object StructureGenerator {
                     addStatement("val stamp = sl.writeLock()")
                     beginControlFlow("try")
                     addStatement("segment = %T.NULL", MEMORY_SEGMENT)
-                    beginControlFlow("if (isArenaOwner)")
+                    beginControlFlow("if (confinedArena != null)")
                     beginControlFlow("try")
-                    addStatement("arena.close()")
+                    addStatement("confinedArena.close()")
                     nextControlFlow("catch (e: %T)", UnsupportedOperationException::class.asTypeName())
                     addStatement("// Ignore for non-closeable arenas")
                     endControlFlow()
@@ -146,9 +146,9 @@ object StructureGenerator {
                     endControlFlow()
                 } else {
                     addStatement("segment = %T.NULL", MEMORY_SEGMENT)
-                    beginControlFlow("if (isArenaOwner)")
+                    beginControlFlow("if (confinedArena != null)")
                     beginControlFlow("try")
-                    addStatement("arena.close()")
+                    addStatement("confinedArena.close()")
                     nextControlFlow("catch (e: %T)", UnsupportedOperationException::class.asTypeName())
                     addStatement("// Ignore for non-closeable arenas")
                     endControlFlow()

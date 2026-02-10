@@ -79,7 +79,7 @@ object PropertyGenerator {
                 if (!isSelf) fromPointerArgs.add(kType)
                 
                 readCodeBuilder.addStatement(
-                    "res = $fromPointerExpr(resSeg, this.arena, isArenaOwner = false)",
+                    "res = $fromPointerExpr(resSeg, this.autoArena)",
                     *fromPointerArgs.toTypedArray()
                 )
                 readCodeBuilder.addStatement("this.$backingFieldName = res")

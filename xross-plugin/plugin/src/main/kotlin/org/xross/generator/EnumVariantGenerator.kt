@@ -23,12 +23,13 @@ object EnumVariantGenerator {
     ) {
         val isPure = XrossGenerator.isPureEnum(meta)
         val baseClassName = ClassName(targetPackage, meta.name)
-        val tripleType = Triple::class.asClassName().parameterizedBy(MEMORY_SEGMENT, Arena::class.asTypeName(), ClassName("", "AliveFlag"))
+        val arenaPair = Pair::class.asClassName().parameterizedBy(Arena::class.asTypeName(), Arena::class.asTypeName().copy(nullable = true))
+        val tripleType = Triple::class.asClassName().parameterizedBy(MEMORY_SEGMENT, arenaPair, ClassName("", "AliveFlag"))
 
         val fromPointerBuilder = FunSpec.builder("fromPointer")
             .addParameter("ptr", MEMORY_SEGMENT)
-            .addParameter("arena", Arena::class.asTypeName())
-            .addParameter(ParameterSpec.builder("isArenaOwner", Boolean::class).defaultValue("false").build())
+            .addParameter("autoArena", Arena::class.asTypeName())
+            .addParameter(ParameterSpec.builder("confinedArena", Arena::class.asTypeName().copy(nullable = true)).defaultValue("null").build())
             .addParameter(ParameterSpec.builder("sharedFlag", ClassName("", "AliveFlag").copy(nullable = true)).defaultValue("null").build())
             .returns(baseClassName)
             .addModifiers(KModifier.INTERNAL)
@@ -47,8 +48,8 @@ object EnumVariantGenerator {
                     if (nameRaw != %T.NULL) Companion.xrossFreeStringHandle.invokeExact(nameRaw)
                     return valueOf(name)
                 } finally {
-                    if (isArenaOwner) {
-                        arena.close()
+                    if (confinedArena != null) {
+                        confinedArena.close()
                     }
                 }
                 """.trimIndent(),
@@ -76,8 +77,8 @@ object EnumVariantGenerator {
                         .addModifiers(KModifier.DATA)
                         .superclass(baseClassName)
                         .addSuperclassConstructorParameter("%T.NULL", MEMORY_SEGMENT)
-                        .addSuperclassConstructorParameter("%T.global()", Arena::class.asTypeName())
-                        .addSuperclassConstructorParameter("false")
+                        .addSuperclassConstructorParameter("%T.ofAuto()", Arena::class.asTypeName())
+                        .addSuperclassConstructorParameter("null")
                         .addSuperclassConstructorParameter("null")
                     
                     val segmentProp = PropertySpec.builder("segment", MEMORY_SEGMENT, KModifier.INTERNAL, KModifier.OVERRIDE)
@@ -94,11 +95,11 @@ object EnumVariantGenerator {
                     classBuilder.addType(objectBuilder.build())
 
                     fromPointerBuilder.addCode("%S -> {\n", variant.name)
-                    fromPointerBuilder.addStatement("    if (isArenaOwner) arena.close()")
+                    fromPointerBuilder.addStatement("    if (confinedArena != null) confinedArena.close()")
                     fromPointerBuilder.addStatement("    %T", variantClassName)
                     fromPointerBuilder.addCode("}\n")
                 } else {
-                    fromPointerBuilder.addStatement("%S -> %T(ptr.reinterpret(Companion.STRUCT_SIZE), arena, isArenaOwner = isArenaOwner, sharedFlag = sharedFlag)", variant.name, variantClassName)
+                    fromPointerBuilder.addStatement("%S -> %T(ptr.reinterpret(Companion.STRUCT_SIZE), autoArena, confinedArena = confinedArena, sharedFlag = sharedFlag)", variant.name, variantClassName)
 
                     val variantTypeBuilder = TypeSpec.classBuilder(variant.name)
                     variantTypeBuilder.superclass(baseClassName)
@@ -106,13 +107,13 @@ object EnumVariantGenerator {
                     variantTypeBuilder.primaryConstructor(FunSpec.constructorBuilder()
                         .addModifiers(KModifier.INTERNAL)
                         .addParameter("raw", MEMORY_SEGMENT)
-                        .addParameter("arena", Arena::class.asTypeName())
-                        .addParameter(ParameterSpec.builder("isArenaOwner", Boolean::class).defaultValue("true").build())
+                        .addParameter("autoArena", Arena::class.asTypeName())
+                        .addParameter(ParameterSpec.builder("confinedArena", Arena::class.asTypeName().copy(nullable = true)).defaultValue("null").build())
                         .addParameter(ParameterSpec.builder("sharedFlag", ClassName("", "AliveFlag").copy(nullable = true)).defaultValue("null").build())
                         .build())
                     variantTypeBuilder.addSuperclassConstructorParameter("raw")
-                    variantTypeBuilder.addSuperclassConstructorParameter("arena")
-                    variantTypeBuilder.addSuperclassConstructorParameter("isArenaOwner")
+                    variantTypeBuilder.addSuperclassConstructorParameter("autoArena")
+                    variantTypeBuilder.addSuperclassConstructorParameter("confinedArena")
                     variantTypeBuilder.addSuperclassConstructorParameter("sharedFlag")
 
                     val factoryMethodName = "xrossNew${variant.name}Internal"
@@ -128,7 +129,8 @@ object EnumVariantGenerator {
                         })
                         .returns(tripleType)
                         .addCode(CodeBlock.builder()
-                            .addStatement("val newArena = Arena.ofAuto()")
+                            .addStatement("val newAutoArena = Arena.ofAuto()")
+                            .addStatement("val newConfinedArena = Arena.ofConfined()")
                             .addStatement("val flag = AliveFlag(true)")
                             .addStatement("val resRaw = Companion.new${variant.name}Handle.invokeExact(${variant.fields.joinToString(", ") { field ->
                                 val argName = "argOf" + field.name.toCamelCase()
@@ -140,20 +142,19 @@ object EnumVariantGenerator {
                                 variant.fields.forEach { field ->
                                     if (field.ty is XrossType.Object && field.ty.isOwned) {
                                         val argName = "argOf" + field.name.toCamelCase()
-                                        addStatement("$argName.isArenaOwner = false")
                                         addStatement("$argName.close()")
                                     }
                                 }
                             }
-                            .addStatement("val res = resRaw.reinterpret(Companion.STRUCT_SIZE, newArena) { s -> if (flag.isValid) { flag.isValid = false; Companion.dropHandle.invokeExact(s) } }")
-                            .addStatement("return %T(res, newArena, flag)", Triple::class.asTypeName())
+                            .addStatement("val res = resRaw.reinterpret(Companion.STRUCT_SIZE, newAutoArena) { s -> if (flag.isValid) { flag.isValid = false; Companion.dropHandle.invokeExact(s); try { newConfinedArena.close() } catch (e: Throwable) {} } }")
+                            .addStatement("return %T(res, %T(newAutoArena, newConfinedArena), flag)", Triple::class.asTypeName(), Pair::class.asTypeName())
                             .build())
                         .build())
 
                     variantTypeBuilder.addFunction(FunSpec.constructorBuilder()
                         .addModifiers(KModifier.PRIVATE)
                         .addParameter("p", tripleType)
-                        .callThisConstructor(CodeBlock.of("p.first"), CodeBlock.of("p.second"), CodeBlock.of("true"), CodeBlock.of("p.third"))
+                        .callThisConstructor(CodeBlock.of("p.first"), CodeBlock.of("p.second.first"), CodeBlock.of("p.second.second"), CodeBlock.of("p.third"))
                         .build())
                     
                     variantTypeBuilder.addFunction(FunSpec.constructorBuilder()
@@ -228,7 +229,7 @@ object EnumVariantGenerator {
                             val sizeExpr = if (isSelf) CodeBlock.of("Companion.STRUCT_SIZE") else CodeBlock.of("%T.Companion.STRUCT_SIZE", kType)
                             addStatement("val resSeg = this.segment.asSlice(Companion.$offsetName, %L)", sizeExpr)
                             val fromPointerExpr = if (isSelf) CodeBlock.of("Companion.fromPointer") else CodeBlock.of("%T.Companion.fromPointer", kType)
-                            addStatement("res = %L(resSeg, this.arena)", fromPointerExpr)
+                            addStatement("res = %L(resSeg, this.autoArena)", fromPointerExpr)
                         } else {
                             val sizeExpr = if (isSelf) "Companion.STRUCT_SIZE" else "%T.Companion.STRUCT_SIZE"
                             val fromPointerExpr = if (isSelf) "Companion.fromPointer" else "%T.Companion.fromPointer"
@@ -244,11 +245,11 @@ object EnumVariantGenerator {
 
                             if (field.ty.ownership == XrossType.Ownership.Boxed) {
                                 val fromPointerExprOwned = if (isSelf) CodeBlock.of("Companion.fromPointer") else CodeBlock.of("%T.Companion.fromPointer", kType)
-                                addStatement("res = %L(resSeg, this.arena, isArenaOwner = false)", fromPointerExprOwned)
+                                addStatement("res = %L(resSeg, this.autoArena, confinedArena = null)", fromPointerExprOwned)
                             } else {
                                 val fromPointerArgs = mutableListOf<Any?>()
                                 if (!isSelf) fromPointerArgs.add(kType)
-                                addStatement("res = $fromPointerExpr(resSeg, this.arena)", *fromPointerArgs.toTypedArray())
+                                addStatement("res = $fromPointerExpr(resSeg, this.autoArena)", *fromPointerArgs.toTypedArray())
                             }
                         }
                     }
