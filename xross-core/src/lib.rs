@@ -1,6 +1,6 @@
 use std::ffi::c_void;
 
-pub use xross_macros::{JvmClass, jvm_class, opaque_class};
+pub use xross_macros::{XrossClass, xross_class, opaque_class};
 
 #[repr(C)]
 pub struct XrossResult {
@@ -9,7 +9,7 @@ pub struct XrossResult {
 }
 
 // マクロで生成される共通FFIのためのマーカートレイト
-pub trait XrossJvmClass {
+pub trait XrossClass {
     fn xross_layout() -> String;
 }
 

@@ -10,8 +10,8 @@ use xross_metadata::{
     XrossStruct, XrossType, XrossVariant,
 };
 
-#[proc_macro_derive(JvmClass, attributes(jvm_field, jvm_package, xross))]
-pub fn jvm_class_derive(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(XrossClass, attributes(xross_field, xross_package, xross))]
+pub fn xross_class_derive(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as syn::Item);
 
     // 実行時(コンパイル時)にマクロ呼び出し側のクレート名を取得
@@ -52,7 +52,7 @@ pub fn jvm_class_derive(input: TokenStream) -> TokenStream {
 
             if let syn::Fields::Named(f) = &s.fields {
                 for field in &f.named {
-                    if field.attrs.iter().any(|a| a.path().is_ident("jvm_field")) {
+                    if field.attrs.iter().any(|a| a.path().is_ident("xross_field")) {
                         let xross_ty = resolve_type_with_attr(
                             &field.ty,
                             &field.attrs,
@@ -250,23 +250,23 @@ pub fn jvm_class_derive(input: TokenStream) -> TokenStream {
                 }
             });
         }
-        _ => panic!("#[derive(JvmClass)] only supports Struct and Enum"),
+        _ => panic!("#[derive(XrossClass)] only supports Struct and Enum"),
     }
 
     quote!(#(#extra_functions)*).into()
 }
 
 #[proc_macro_attribute]
-pub fn jvm_class(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn xross_class(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut input_impl = parse_macro_input!(item as ItemImpl);
     let type_name_ident = if let Type::Path(tp) = &*input_impl.self_ty {
         &tp.path.segments.last().unwrap().ident
     } else {
-        panic!("jvm_class must be used on a direct type implementation");
+        panic!("xross_class must be used on a direct type implementation");
     };
 
     let mut definition = load_definition(type_name_ident)
-        .expect("JvmClass definition not found. Apply #[derive(JvmClass)] first.");
+        .expect("XrossClass definition not found. Apply #[derive(XrossClass)] first.");
 
     let (package_name, symbol_base, _is_struct) = match &definition {
         XrossDefinition::Struct(s) => (s.package_name.clone(), s.symbol_prefix.clone(), true),
@@ -284,10 +284,10 @@ pub fn jvm_class(_attr: TokenStream, item: TokenStream) -> TokenStream {
             let mut is_new = false;
             let mut is_method = false;
             method.attrs.retain(|attr| {
-                if attr.path().is_ident("jvm_new") {
+                if attr.path().is_ident("xross_new") {
                     is_new = true;
                     false
-                } else if attr.path().is_ident("jvm_method") {
+                } else if attr.path().is_ident("xross_method") {
                     is_method = true;
                     false
                 } else {
@@ -405,7 +405,7 @@ pub fn jvm_class(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 } else {
                     format!("{}.{}", package_name, type_name_ident)
                 };
-                // コンストラクタ(jvm_new)は常に所有権を返す
+                // コンストラクタ(xross_new)は常に所有権を返す
                 XrossType::Object {
                     signature: sig,
                     ownership: Ownership::Owned,

@@ -68,7 +68,7 @@ pub fn save_definition(_ident: &syn::Ident, def: &XrossDefinition) {
                     panic!(
                         "\n[Xross Error] Duplicate definition detected for signature: '{}'\n\
                         The same signature is being defined multiple times with different structures.\n\
-                        Please ensure that each JvmClass has a unique package or name.\n",
+                        Please ensure that each XrossClass has a unique package or name.\n",
                         signature
                     );
                 }
@@ -166,7 +166,7 @@ pub fn discover_signature(type_name: &str) -> Option<String> {
 
 pub fn extract_package(attrs: &[Attribute]) -> String {
     for attr in attrs {
-        if attr.path().is_ident("jvm_package") {
+        if attr.path().is_ident("xross_package") {
             if let Ok(lit) = attr.parse_args::<Lit>() {
                 if let Lit::Str(s) = lit {
                     return s.value();
@@ -197,7 +197,7 @@ pub fn extract_docs(attrs: &[Attribute]) -> Vec<String> {
 
 pub fn extract_safety_attr(attrs: &[Attribute], default: ThreadSafety) -> ThreadSafety {
     for attr in attrs {
-        if attr.path().is_ident("jvm_field") || attr.path().is_ident("jvm_method") {
+        if attr.path().is_ident("xross_field") || attr.path().is_ident("xross_method") {
             let mut safety = default;
             let _ = attr.parse_nested_meta(|meta| {
                 if meta.path.is_ident("safety") {
@@ -241,7 +241,7 @@ pub fn generate_common_ffi(
     let drop_id = format_ident!("{}_drop", base);
     let clone_id = format_ident!("{}_clone", base);
     let layout_id = format_ident!("{}_layout", base);
-    let trait_name = format_ident!("XrossJvm{}Class", name);
+    let trait_name = format_ident!("Xross{}Class", name);
 
     toks.push(quote! {
         pub trait #trait_name {

@@ -1,29 +1,29 @@
 #![feature(offset_of_enum)]
-use xross_core::{JvmClass, jvm_class};
+use xross_core::{XrossClass, xross_class};
 
 /// 巨大なメモリを確保してリークテストを行うためのサービス
-#[derive(JvmClass, Clone)]
+#[derive(XrossClass, Clone)]
 pub struct MyService {
     _boxes: Vec<i32>,
 
-    // JvmClassが付与されていない外部構造体。
+    // XrossClassが付与されていない外部構造体。
     // 明示的に opaque 指定を行うことで、Java側へ signature を伝える。
-    #[jvm_field]
+    #[xross_field]
     pub unknown_struct: Box<UnknownStruct>,
 }
 
-#[derive(Clone, JvmClass)]
+#[derive(Clone, XrossClass)]
 pub struct UnknownStruct {
-    #[jvm_field]
+    #[xross_field]
     pub i: i32,
-    #[jvm_field]
+    #[xross_field]
     pub f: f32,
-    #[jvm_field]
+    #[xross_field]
     pub s: String,
 }
-#[jvm_class]
+#[xross_class]
 impl UnknownStruct {
-    #[jvm_new]
+    #[xross_new]
     pub fn new(i: i32, s: String, f: f32) -> Self {
         Self { i, s, f }
     }
@@ -35,7 +35,7 @@ pub enum UnClonable {
 }
 
 xross_core::opaque_class!(UnClonable, false);
-#[derive(Clone, Copy, JvmClass, Debug, PartialEq)]
+#[derive(Clone, Copy, XrossClass, Debug, PartialEq)]
 pub enum XrossSimpleEnum {
     V,
     W,
@@ -43,23 +43,23 @@ pub enum XrossSimpleEnum {
     Y,
     Z,
 }
-#[jvm_class]
+#[xross_class]
 impl XrossSimpleEnum {
-    #[jvm_method]
+    #[xross_method]
     pub fn say_hello(self) {
         println!("Hello from Simple::{:?}!", self);
     }
 }
 
-#[derive(Clone, JvmClass)]
+#[derive(Clone, XrossClass)]
 pub enum XrossTestEnum {
     A,
     B {
-        #[jvm_field]
+        #[xross_field]
         i: i32,
     },
     C {
-        #[jvm_field]
+        #[xross_field]
         j: UnknownStruct,
     },
 }
@@ -73,9 +73,9 @@ impl Default for UnknownStruct {
     }
 }
 
-#[jvm_class]
+#[xross_class]
 impl MyService {
-    #[jvm_new]
+    #[xross_new]
     pub fn new() -> Self {
         let boxes = vec![0; 1_000_000]; // 約4MB
         MyService {
@@ -85,35 +85,35 @@ impl MyService {
     }
 
     /// Self は自動的に RustStruct { signature: "MyService" } として解析されます
-    #[jvm_method]
+    #[xross_method]
     pub fn default() -> Self {
         Self::new()
     }
 
-    #[jvm_method(safety = Unsafe)]
+    #[xross_method(safety = Unsafe)]
     pub fn execute(&self, data: i32) -> i32 {
         data * 2
     }
 
-    #[jvm_method]
+    #[xross_method]
     pub fn str_test() -> String {
         "Hello from Rust!".to_string()
     }
 
     /// 所有権を消費して自分自身を消滅させる
-    #[jvm_method]
+    #[xross_method]
     pub fn consume_self(self) -> i32 {
         self._boxes.len() as i32
     }
 
     /// &mut Self も RustStruct として正しくポインタ経由で扱われます
-    #[jvm_method]
+    #[xross_method]
     pub fn get_mut_ref(&mut self) -> &mut Self {
         self
     }
 
     /// Enumを返すテスト
-    #[jvm_method]
+    #[xross_method]
     pub fn ret_enum(&self) -> XrossTestEnum {
         match rand::random_range(0..3) {
             0 => XrossTestEnum::A,
@@ -125,7 +125,7 @@ impl MyService {
         }
     }
 
-    #[jvm_method]
+    #[xross_method]
     pub fn get_option_struct(&self, flag: bool) -> Option<UnknownStruct> {
         if flag {
             Some(UnknownStruct::default())
@@ -134,7 +134,7 @@ impl MyService {
         }
     }
 
-    #[jvm_method]
+    #[xross_method]
     pub fn get_result_struct(&self, flag: bool) -> Result<UnknownStruct, String> {
         if flag {
             Ok(UnknownStruct::default())
@@ -147,37 +147,37 @@ impl MyService {
 pub mod test {
     use super::*;
 
-    #[derive(JvmClass, Clone)]
-    #[jvm_package("test.test2")]
+    #[derive(XrossClass, Clone)]
+    #[xross_package("test.test2")]
     pub struct MyService2 {
-        #[jvm_field(safety = Atomic)]
+        #[xross_field(safety = Atomic)]
         pub val: i32,
     }
 
-    #[jvm_class]
+    #[xross_class]
     impl MyService2 {
-        #[jvm_new]
+        #[xross_new]
         pub fn new(val: i32) -> Self {
             MyService2 { val }
         }
 
-        #[jvm_method(safety = Atomic)]
+        #[xross_method(safety = Atomic)]
         pub fn execute(&self) -> i64 {
             self.val as i64 * 2i64
         }
 
-        #[jvm_method(safety = Atomic)]
+        #[xross_method(safety = Atomic)]
         pub fn mut_test(&mut self) {
             self.val += 1;
         }
 
         /// パッケージ化された Self (test.test2.MyService2) を自動解決します
-        #[jvm_method]
+        #[xross_method]
         pub fn get_self_ref(&self) -> &Self {
             self
         }
 
-        #[jvm_method]
+        #[xross_method]
         pub fn create_clone(&self) -> Self {
             self.clone()
         }
