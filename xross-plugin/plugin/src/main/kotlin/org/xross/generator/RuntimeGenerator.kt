@@ -23,8 +23,15 @@ object RuntimeGenerator {
         val aliveFlag = TypeSpec.classBuilder("AliveFlag")
             .primaryConstructor(FunSpec.constructorBuilder()
                 .addParameter("initial", Boolean::class)
+                .addParameter(ParameterSpec.builder("parent", ClassName(pkg, "AliveFlag").copy(nullable = true)).defaultValue("null").build())
                 .build())
-            .addProperty(PropertySpec.builder("isValid", Boolean::class).mutable(true).initializer("initial").build())
+            .addProperty(PropertySpec.builder("parent", ClassName(pkg, "AliveFlag").copy(nullable = true), KModifier.PRIVATE).initializer("parent").build())
+            .addProperty(PropertySpec.builder("_isValid", Boolean::class, KModifier.PRIVATE).mutable(true).initializer("initial").build())
+            .addProperty(PropertySpec.builder("isValid", Boolean::class)
+                .mutable(true)
+                .getter(FunSpec.getterBuilder().addStatement("return _isValid && (parent?.isValid ?: true)").build())
+                .setter(FunSpec.setterBuilder().addParameter("value", Boolean::class).addStatement("_isValid = value").build())
+                .build())
             .build()
 
         // --- XrossAsync ---

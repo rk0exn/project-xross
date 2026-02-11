@@ -43,20 +43,21 @@ object PropertyGenerator {
 
                 val propBuilder = PropertySpec.builder(escapedName, kType)
                     .mutable(isMutable)
-                    .getter(buildGetter(field, vhName, kType, backingFieldName, selfType)) 
+                    .getter(buildGetter(field, vhName, kType, backingFieldName, selfType, basePackage)) 
 
-                if (isMutable) propBuilder.setter(buildSetter(field, vhName, kType, backingFieldName, selfType))
+                if (isMutable) propBuilder.setter(buildSetter(field, vhName, kType, backingFieldName, selfType, basePackage))
                 classBuilder.addProperty(propBuilder.build())
             }
         }
     }
-    private fun buildGetter(field: XrossField, vhName: String, kType: TypeName, backingFieldName: String?, selfType: ClassName): FunSpec {
+    private fun buildGetter(field: XrossField, vhName: String, kType: TypeName, backingFieldName: String?, selfType: ClassName, basePackage: String): FunSpec {
         val readCodeBuilder = CodeBlock.builder()
         readCodeBuilder.addStatement("if (this.segment == %T.NULL || !this.aliveFlag.isValid) throw %T(%S)", MemorySegment::class, NullPointerException::class, "Access error")
 
         val isSelf = kType == selfType
         val baseName = field.name.toCamelCase()
         val offsetName = "OFFSET_$baseName"
+        val aliveFlagType = ClassName("$basePackage.xross.runtime", "AliveFlag")
 
         when (field.ty) {
             is XrossType.Object -> {
@@ -81,9 +82,10 @@ object PropertyGenerator {
                 
                 val fromPointerArgs = mutableListOf<Any?>()
                 if (!isSelf) fromPointerArgs.add(kType)
+                fromPointerArgs.add(aliveFlagType)
                 
                 readCodeBuilder.addStatement(
-                    "res = $fromPointerExpr(resSeg, this.autoArena, sharedFlag = this.aliveFlag)",
+                    "res = $fromPointerExpr(resSeg, this.autoArena, sharedFlag = %T(true, this.aliveFlag))",
                     *fromPointerArgs.toTypedArray()
                 )
                 readCodeBuilder.addStatement("this.$backingFieldName = %T(res)", WeakReference::class.asTypeName())
@@ -126,7 +128,7 @@ object PropertyGenerator {
         """.trimIndent(), kType, readCodeBuilder.build(), readCodeBuilder.build()
         ).build()
     }
-    private fun buildSetter(field: XrossField, vhName: String, kType: TypeName, backingFieldName: String?, selfType: ClassName): FunSpec {
+    private fun buildSetter(field: XrossField, vhName: String, kType: TypeName, backingFieldName: String?, selfType: ClassName, basePackage: String): FunSpec {
         val writeCodeBuilder = CodeBlock.builder()
         writeCodeBuilder.addStatement(
             "if (this.segment == %T.NULL || !this.aliveFlag.isValid) throw %T(%S)",

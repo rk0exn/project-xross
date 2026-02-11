@@ -231,10 +231,10 @@ object EnumVariantGenerator {
 
                         variantTypeBuilder.addProperty(PropertySpec.builder(baseCamelName.escapeKotlinKeyword(), kType)
                             .mutable(field.safety != XrossThreadSafety.Immutable)
-                            .getter(buildVariantGetter(field, vhName, offsetName, kType, baseClassName, backingFieldName))
+                            .getter(buildVariantGetter(field, vhName, offsetName, kType, baseClassName, backingFieldName, basePackage))
                             .apply {
                                 if (field.safety != XrossThreadSafety.Immutable) {
-                                    setter(buildVariantSetter(field, vhName, offsetName, kType, backingFieldName))
+                                    setter(buildVariantSetter(field, vhName, offsetName, kType, backingFieldName, basePackage))
                                 }
                             }
                             .build())
@@ -256,7 +256,7 @@ object EnumVariantGenerator {
         companionBuilder.addFunction(fromPointerBuilder.build())
     }
 
-    private fun buildVariantGetter(field: XrossField, vhName: String, offsetName: String, kType: TypeName, selfType: ClassName, backingFieldName: String?): FunSpec {
+    private fun buildVariantGetter(field: XrossField, vhName: String, offsetName: String, kType: TypeName, selfType: ClassName, backingFieldName: String?, basePackage: String): FunSpec {
         val isSelf = kType == selfType
         val readCode = CodeBlock.builder()
             .addStatement("if (this.segment == %T.NULL || !this.aliveFlag.isValid) throw %T(%S)", MEMORY_SEGMENT, NullPointerException::class.asTypeName(), "Access error")
@@ -276,11 +276,12 @@ object EnumVariantGenerator {
                             nextControlFlow("else")
                         }
 
+                        val flagType = ClassName("${basePackage}.xross.runtime", "AliveFlag")
                         if (field.ty.ownership == XrossType.Ownership.Owned) {
                             val sizeExpr = if (isSelf) CodeBlock.of("Companion.STRUCT_SIZE") else CodeBlock.of("%T.Companion.STRUCT_SIZE", kType)
                             addStatement("val resSeg = this.segment.asSlice(Companion.$offsetName, %L)", sizeExpr)
                             val fromPointerExpr = if (isSelf) CodeBlock.of("Companion.fromPointer") else CodeBlock.of("%T.Companion.fromPointer", kType)
-                            addStatement("res = %L(resSeg, this.autoArena, sharedFlag = this.aliveFlag)", fromPointerExpr)
+                            addStatement("res = %L(resSeg, this.autoArena, sharedFlag = %T(true, this.aliveFlag))", fromPointerExpr, flagType)
                         } else {
                             val sizeExpr = if (isSelf) "Companion.STRUCT_SIZE" else "%T.Companion.STRUCT_SIZE"
                             val fromPointerExpr = if (isSelf) "Companion.fromPointer" else "%T.Companion.fromPointer"
@@ -296,13 +297,13 @@ object EnumVariantGenerator {
 
                             if (field.ty.ownership == XrossType.Ownership.Boxed) {
                                 val fromPointerExprOwned = if (isSelf) CodeBlock.of("Companion.fromPointer") else CodeBlock.of("%T.Companion.fromPointer", kType)
-                                addStatement("res = %L(resSeg, this.autoArena, confinedArena = null, sharedFlag = this.aliveFlag)", fromPointerExprOwned)
+                                addStatement("res = %L(resSeg, this.autoArena, confinedArena = null, sharedFlag = %T(true, this.aliveFlag))", fromPointerExprOwned, flagType)
                             } else {
-                                val fromPointerArgs = mutableListOf<Any?>()
-                                if (!isSelf) fromPointerArgs.add(kType)
-                                addStatement("res = $fromPointerExpr(resSeg, this.autoArena, sharedFlag = this.aliveFlag)", *fromPointerArgs.toTypedArray())
-                            }
-                        }
+                                                            val fromPointerArgs = mutableListOf<Any?>()
+                                                            if (!isSelf) fromPointerArgs.add(kType)
+                                                            fromPointerArgs.add(flagType)
+                                                            addStatement("res = $fromPointerExpr(resSeg, this.autoArena, sharedFlag = %T(true, this.aliveFlag))", *fromPointerArgs.toTypedArray())
+                                                        }                        }
                         
                         if (backingFieldName != null) {
                             addStatement("this.$backingFieldName = %T(res)", WeakReference::class.asTypeName())
@@ -331,7 +332,7 @@ object EnumVariantGenerator {
         ).build()
     }
 
-    private fun buildVariantSetter(field: XrossField, vhName: String, offsetName: String, kType: TypeName, backingFieldName: String?): FunSpec {
+    private fun buildVariantSetter(field: XrossField, vhName: String, offsetName: String, kType: TypeName, backingFieldName: String?, basePackage: String): FunSpec {
         val isOwnedObject = field.ty is XrossType.Object && field.ty.ownership == XrossType.Ownership.Owned
         val writeCode = CodeBlock.builder()
             .addStatement("if (this.segment == %T.NULL || !this.aliveFlag.isValid) throw %T(%S)", MEMORY_SEGMENT, NullPointerException::class.asTypeName(), "Object invalid")

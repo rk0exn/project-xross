@@ -149,17 +149,28 @@ fun executeReferenceAndOwnershipTest() {
     val parent = MyService2(100)
     val borrowed = parent.getSelfRef()
 
-    println("Parent value: ${parent.`val`}")
+    println("Parent value: ${parent.`val`.value}")
     borrowed.close()
+    println("Borrowed reference closed.")
+
+    // 参照を閉めても親は生きているはず
+    try {
+        println("Checking parent after borrowed.close(): ${parent.execute()}")
+        println("✅ Success: Parent is still alive after closing a borrowed reference.")
+    } catch (e: NullPointerException) {
+        println("❌ Failure: Parent was incorrectly invalidated by closing a borrowed reference!")
+    }
 
     val borrowed2 = parent.getSelfRef()
     parent.close()
     println("Parent closed.")
 
+    // 親を閉めたら、そこから派生した参照も死ぬはず
     try {
         borrowed2.execute()
+        println("❌ Failure: Borrowed reference should have been invalidated by closing the parent!")
     } catch (e: NullPointerException) {
-        println("Success: Caught expected NullPointerException for borrowed2, $e")
+        println("✅ Success: Caught expected NullPointerException for borrowed2 after parent.close(), $e")
     }
 
     println("\n--- [2.1] Consumption (self) Test ---")

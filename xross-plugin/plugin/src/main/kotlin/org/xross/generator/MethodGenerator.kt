@@ -224,7 +224,7 @@ object MethodGenerator {
                             body.addStatement("val res = resRaw.reinterpret(%L, retAutoArena) { s -> if (flag.isValid) { flag.isValid = false; %L.invokeExact(s); try { retConfinedArena.close() } catch (e: Throwable) {} } }", sizeExpr, dropExpr)
                             body.addStatement("%L(res, retAutoArena, confinedArena = retConfinedArena, sharedFlag = flag)", fromPointerExpr)
                         } else {
-                            body.addStatement("%L(resRaw, this.autoArena, sharedFlag = this.aliveFlag)", fromPointerExpr)
+                            body.addStatement("%L(resRaw, this.autoArena, sharedFlag = %T(true, this.aliveFlag))", fromPointerExpr, flagType)
                         }
                     }
                     is XrossType.RustString -> body.addStatement("""
@@ -254,7 +254,7 @@ object MethodGenerator {
                     body.addStatement("val res = resRaw.reinterpret(%L, retAutoArena) { s -> if (flag.isValid) { flag.isValid = false; %L.invokeExact(s); try { retConfinedArena.close() } catch (e: Throwable) {} } }", sizeExpr, dropExpr)
                     body.addStatement("%L(res, retAutoArena, confinedArena = retConfinedArena, sharedFlag = flag)", fromPointerExpr)
                 }
-                else body.addStatement("%L(resRaw, this.autoArena, sharedFlag = this.aliveFlag)", fromPointerExpr)
+                else body.addStatement("%L(resRaw, this.autoArena, sharedFlag = %T(true, this.aliveFlag))", fromPointerExpr, flagType)
                 body.endControlFlow()
             }
             is XrossType.Result -> {
