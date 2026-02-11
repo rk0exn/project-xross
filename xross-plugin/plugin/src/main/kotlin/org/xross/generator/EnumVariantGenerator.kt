@@ -10,6 +10,7 @@ import org.xross.structures.XrossThreadSafety
 import org.xross.structures.XrossType
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.Arena
+import java.lang.ref.WeakReference
 
 object EnumVariantGenerator {
     private val MEMORY_SEGMENT = MemorySegment::class.asTypeName()
@@ -21,7 +22,7 @@ object EnumVariantGenerator {
         targetPackage: String,
         basePackage: String
     ) {
-        val isPure = XrossGenerator.isPureEnum(meta)
+        val isPure = GeneratorUtils.isPureEnum(meta)
         val baseClassName = ClassName(targetPackage, meta.name)
         val arenaPair = Pair::class.asClassName().parameterizedBy(Arena::class.asTypeName(), Arena::class.asTypeName().copy(nullable = true))
         val tripleType = Triple::class.asClassName().parameterizedBy(MEMORY_SEGMENT, arenaPair, ClassName("", "AliveFlag"))
@@ -151,7 +152,7 @@ object EnumVariantGenerator {
                         .addModifiers(KModifier.PRIVATE)
                         .addParameters(variant.fields.map { field ->
                             val kType = if (field.ty is XrossType.Object) {
-                                XrossGenerator.getClassName(field.ty.signature, basePackage)
+                                GeneratorUtils.getClassName(field.ty.signature, basePackage)
                             } else {
                                 field.ty.kotlinType
                             }
@@ -190,7 +191,7 @@ object EnumVariantGenerator {
                     variantTypeBuilder.addFunction(FunSpec.constructorBuilder()
                         .addParameters(variant.fields.map { field ->
                             val kType = if (field.ty is XrossType.Object) {
-                                XrossGenerator.getClassName(field.ty.signature, basePackage)
+                                GeneratorUtils.getClassName(field.ty.signature, basePackage)
                             } else {
                                 field.ty.kotlinType
                             }
@@ -211,17 +212,28 @@ object EnumVariantGenerator {
                         val vhName = "VH_${variant.name}_$baseCamelName"
                         val offsetName = "OFFSET_${variant.name}_$baseCamelName"
                         val kType = if (field.ty is XrossType.Object) {
-                            XrossGenerator.getClassName(field.ty.signature, basePackage)
+                            GeneratorUtils.getClassName(field.ty.signature, basePackage)
                         } else {
                             field.ty.kotlinType
                         }
 
+                        var backingFieldName: String? = null
+                        if (field.ty is XrossType.Object) {
+                            backingFieldName = "_$baseCamelName"
+                            val weakRefType = ClassName("java.lang.ref", "WeakReference").parameterizedBy(kType)
+                            variantTypeBuilder.addProperty(PropertySpec.builder(backingFieldName, weakRefType.copy(nullable = true))
+                                .mutable(true)
+                                .addModifiers(KModifier.PRIVATE)
+                                .initializer("null")
+                                .build())
+                        }
+
                         variantTypeBuilder.addProperty(PropertySpec.builder(baseCamelName.escapeKotlinKeyword(), kType)
                             .mutable(field.safety != XrossThreadSafety.Immutable)
-                            .getter(buildVariantGetter(field, vhName, offsetName, kType, baseClassName))
+                            .getter(buildVariantGetter(field, vhName, offsetName, kType, baseClassName, backingFieldName))
                             .apply {
                                 if (field.safety != XrossThreadSafety.Immutable) {
-                                    setter(buildVariantSetter(field, vhName, offsetName, kType))
+                                    setter(buildVariantSetter(field, vhName, offsetName, kType, backingFieldName))
                                 }
                             }
                             .build())
@@ -243,7 +255,7 @@ object EnumVariantGenerator {
         companionBuilder.addFunction(fromPointerBuilder.build())
     }
 
-    private fun buildVariantGetter(field: XrossField, vhName: String, offsetName: String, kType: TypeName, selfType: ClassName): FunSpec {
+    private fun buildVariantGetter(field: XrossField, vhName: String, offsetName: String, kType: TypeName, selfType: ClassName, backingFieldName: String?): FunSpec {
         val isSelf = kType == selfType
         val readCode = CodeBlock.builder()
             .addStatement("if (this.segment == %T.NULL || !this.aliveFlag.isValid) throw %T(%S)", MEMORY_SEGMENT, NullPointerException::class.asTypeName(), "Access error")
@@ -255,6 +267,11 @@ object EnumVariantGenerator {
                         addStatement("res = if (rawSegment == %T.NULL) \"\" else rawSegment.reinterpret(%T.MAX_VALUE).getString(0)", MEMORY_SEGMENT, Long::class.asTypeName())
                     }
                     is XrossType.Object -> {
+                        addStatement("val cached = this.$backingFieldName?.get()")
+                        beginControlFlow("if (cached != null && cached.aliveFlag.isValid)")
+                        addStatement("res = cached")
+                        nextControlFlow("else")
+
                         if (field.ty.ownership == XrossType.Ownership.Owned) {
                             val sizeExpr = if (isSelf) CodeBlock.of("Companion.STRUCT_SIZE") else CodeBlock.of("%T.Companion.STRUCT_SIZE", kType)
                             addStatement("val resSeg = this.segment.asSlice(Companion.$offsetName, %L)", sizeExpr)
@@ -282,6 +299,8 @@ object EnumVariantGenerator {
                                 addStatement("res = $fromPointerExpr(resSeg, this.autoArena)", *fromPointerArgs.toTypedArray())
                             }
                         }
+                        addStatement("this.$backingFieldName = %T(res)", WeakReference::class.asTypeName())
+                        endControlFlow()
                     }
                     else -> addStatement("res = Companion.$vhName.get(this.segment, Companion.$offsetName) as %T", kType)
                 }
@@ -305,7 +324,7 @@ object EnumVariantGenerator {
         ).build()
     }
 
-    private fun buildVariantSetter(field: XrossField, vhName: String, offsetName: String, kType: TypeName): FunSpec {
+    private fun buildVariantSetter(field: XrossField, vhName: String, offsetName: String, kType: TypeName, backingFieldName: String?): FunSpec {
         val isOwnedObject = field.ty is XrossType.Object && field.ty.ownership == XrossType.Ownership.Owned
         val writeCode = CodeBlock.builder()
             .addStatement("if (this.segment == %T.NULL || !this.aliveFlag.isValid) throw %T(%S)", MEMORY_SEGMENT, NullPointerException::class.asTypeName(), "Object invalid")
@@ -319,6 +338,10 @@ object EnumVariantGenerator {
                     addStatement("Companion.$vhName.set(this.segment, Companion.$offsetName, if (v) 1.toByte() else 0.toByte())")
                 } else {
                     addStatement("Companion.$vhName.set(this.segment, Companion.$offsetName, v)")
+                }
+
+                if (backingFieldName != null) {
+                    addStatement("this.$backingFieldName = null")
                 }
             }.build()
 

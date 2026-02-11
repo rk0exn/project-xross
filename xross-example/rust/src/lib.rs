@@ -143,7 +143,7 @@ impl MyService {
 
     #[xross_method]
     pub fn ret_enum(&self) -> XrossTestEnum {
-        match rand::random_range(0..3) {
+        match rand::random_range(0..2) {
             0 => XrossTestEnum::A,
             1 => XrossTestEnum::B { i: rand::random() },
             2 => {

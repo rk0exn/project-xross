@@ -54,7 +54,7 @@ object CompanionGenerator {
             .addStatement("this.STRUCT_SIZE = 0L").addStatement("this.LAYOUT = %T.structLayout()", MEMORY_LAYOUT)
             .endControlFlow()
 
-        if (XrossGenerator.isPureEnum(meta)) {
+        if (GeneratorUtils.isPureEnum(meta)) {
             init.add("\n// --- Enum Segment Initialization ---\n")
             init.beginControlFlow("entries.forEach { v ->")
             init.beginControlFlow("v.segment = when(v)")

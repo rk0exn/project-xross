@@ -19,7 +19,7 @@ object MethodGenerator {
         meta: XrossDefinition,
         basePackage: String
     ) {
-        val selfType = XrossGenerator.getClassName(meta.signature, basePackage)
+        val selfType = GeneratorUtils.getClassName(meta.signature, basePackage)
         val isEnum = meta is XrossDefinition.Enum
 
         meta.methods.forEach { method ->
@@ -102,7 +102,7 @@ object MethodGenerator {
     private fun resolveReturnType(type: XrossType, basePackage: String): TypeName {
         return when (type) {
             is XrossType.RustString -> String::class.asTypeName()
-            is XrossType.Object -> XrossGenerator.getClassName(type.signature, basePackage)
+            is XrossType.Object -> GeneratorUtils.getClassName(type.signature, basePackage)
             is XrossType.Optional -> resolveReturnType(type.inner, basePackage).copy(nullable = true)
             is XrossType.Result -> ClassName("kotlin", "Result").parameterizedBy(resolveReturnType(type.ok, basePackage))
             else -> type.kotlinType
@@ -113,7 +113,7 @@ object MethodGenerator {
         val isVoid = method.ret is XrossType.Void
         val useLock = method.safety == XrossThreadSafety.Lock && method.methodType != XrossMethodType.Static
         val body = CodeBlock.builder()
-        val isPureEnum = XrossGenerator.isPureEnum(meta)
+        val isPureEnum = GeneratorUtils.isPureEnum(meta)
         val isCopy = meta.isCopy
 
         if (useLock) {

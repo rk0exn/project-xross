@@ -1,6 +1,7 @@
 package org.xross.generator
 
 import com.squareup.kotlinpoet.*
+import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import org.xross.helper.StringHelper.escapeKotlinKeyword
 import org.xross.helper.StringHelper.toCamelCase
 import org.xross.structures.XrossDefinition
@@ -8,16 +9,17 @@ import org.xross.structures.XrossField
 import org.xross.structures.XrossThreadSafety
 import org.xross.structures.XrossType
 import java.lang.foreign.MemorySegment
+import java.lang.ref.WeakReference
 
 object PropertyGenerator {
     fun generateFields(classBuilder: TypeSpec.Builder, meta: XrossDefinition.Struct, basePackage: String) {
-        val selfType = XrossGenerator.getClassName(meta.signature, basePackage)
+        val selfType = GeneratorUtils.getClassName(meta.signature, basePackage)
         meta.fields.forEach { field ->
             val baseName = field.name.toCamelCase()
             val escapedName = baseName.escapeKotlinKeyword()
             val vhName = "VH_$baseName"
             val kType = if (field.ty is XrossType.Object) {
-                XrossGenerator.getClassName(field.ty.signature, basePackage)
+                GeneratorUtils.getClassName(field.ty.signature, basePackage)
             } else {
                 field.ty.kotlinType
             }
@@ -25,7 +27,8 @@ object PropertyGenerator {
             var backingFieldName: String? = null
             if (field.ty is XrossType.Object) {
                 backingFieldName = "_$baseName"
-                val backingProp = PropertySpec.builder(backingFieldName, kType.copy(nullable = true))
+                val weakRefType = ClassName("java.lang.ref", "WeakReference").parameterizedBy(kType)
+                val backingProp = PropertySpec.builder(backingFieldName, weakRefType.copy(nullable = true))
                     .mutable(true)
                     .addModifiers(KModifier.PRIVATE)
                     .initializer("null")
@@ -57,8 +60,9 @@ object PropertyGenerator {
 
         when (field.ty) {
             is XrossType.Object -> {
-                readCodeBuilder.beginControlFlow("if (this.$backingFieldName != null && this.$backingFieldName!!.aliveFlag.isValid)")
-                readCodeBuilder.addStatement("res = this.$backingFieldName!!")
+                readCodeBuilder.addStatement("val cached = this.$backingFieldName?.get()")
+                readCodeBuilder.beginControlFlow("if (cached != null && cached.aliveFlag.isValid)")
+                readCodeBuilder.addStatement("res = cached")
                 readCodeBuilder.nextControlFlow("else")
 
                 val sizeExpr = if (isSelf) "STRUCT_SIZE" else "%T.STRUCT_SIZE"
@@ -82,7 +86,7 @@ object PropertyGenerator {
                     "res = $fromPointerExpr(resSeg, this.autoArena)",
                     *fromPointerArgs.toTypedArray()
                 )
-                readCodeBuilder.addStatement("this.$backingFieldName = res")
+                readCodeBuilder.addStatement("this.$backingFieldName = %T(res)", WeakReference::class.asTypeName())
                 readCodeBuilder.endControlFlow()
             }
             is XrossType.Bool -> readCodeBuilder.addStatement("res = ($vhName.get(this.segment, $offsetName) as Byte) != (0).toByte()")

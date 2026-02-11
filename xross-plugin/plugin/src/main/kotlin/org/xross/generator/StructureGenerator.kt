@@ -11,9 +11,9 @@ object StructureGenerator {
 
     fun buildBase(classBuilder: TypeSpec.Builder, companionBuilder: TypeSpec.Builder, meta: XrossDefinition, basePackage: String) {
         val isEnum = meta is XrossDefinition.Enum
-        val isPure = XrossGenerator.isPureEnum(meta)
+        val isPure = GeneratorUtils.isPureEnum(meta)
         
-        val selfType = XrossGenerator.getClassName(meta.signature, basePackage)
+        val selfType = GeneratorUtils.getClassName(meta.signature, basePackage)
 
         if (isPure) {
             // --- Pure Enum Case (enum class) ---
@@ -112,7 +112,7 @@ object StructureGenerator {
     }
 
     fun addFinalBlocks(classBuilder: TypeSpec.Builder, meta: XrossDefinition) {
-        if (XrossGenerator.isPureEnum(meta)) return
+        if (GeneratorUtils.isPureEnum(meta)) return
 
         val closeBody = CodeBlock.builder()
             .beginControlFlow("if (segment != %T.NULL)", MEMORY_SEGMENT)

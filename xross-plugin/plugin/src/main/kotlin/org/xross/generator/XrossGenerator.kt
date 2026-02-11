@@ -30,10 +30,6 @@ object XrossGenerator {
         }
     }
 
-    fun isPureEnum(meta: XrossDefinition): Boolean {
-        return meta is XrossDefinition.Enum && meta.variants.all { it.fields.isEmpty() }
-    }
-
     private fun resolveAllTypes(meta: XrossDefinition, resolver: TypeResolver): XrossDefinition {
         return when (meta) {
             is XrossDefinition.Struct -> meta.copy(
@@ -92,7 +88,7 @@ object XrossGenerator {
     ) {
         val className = meta.name
         val isEnum = meta is XrossDefinition.Enum
-        val isPure = isPureEnum(meta)
+        val isPure = GeneratorUtils.isPureEnum(meta)
 
         val classBuilder = when {
             meta is XrossDefinition.Struct -> {
@@ -134,17 +130,6 @@ object XrossGenerator {
         }
 
         writeToDisk(classBuilder.build(), targetPackage, className, outputDir)
-    }
-
-    fun getClassName(signature: String, basePackage: String): ClassName {
-        val fqn = if (basePackage.isEmpty() || signature.startsWith(basePackage)) {
-            signature
-        } else {
-            "$basePackage.$signature"
-        }
-        val lastDot = fqn.lastIndexOf('.')
-        return if (lastDot == -1) ClassName("", fqn)
-        else ClassName(fqn.substring(0, lastDot), fqn.substring(lastDot + 1))
     }
 
     private fun writeToDisk(typeSpec: TypeSpec, pkg: String, name: String, outputDir: File) {
