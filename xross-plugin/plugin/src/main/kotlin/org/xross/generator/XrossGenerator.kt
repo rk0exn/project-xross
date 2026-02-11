@@ -21,7 +21,7 @@ object XrossGenerator {
 
         when (val resolvedMeta = resolveAllTypes(meta, resolver)) {
             is XrossDefinition.Opaque -> {
-                OpaqueGenerator.generateSingle(resolvedMeta, outputDir, targetPackage)
+                OpaqueGenerator.generateSingle(resolvedMeta, outputDir, targetPackage, basePackage)
             }
 
             is XrossDefinition.Struct, is XrossDefinition.Enum -> {

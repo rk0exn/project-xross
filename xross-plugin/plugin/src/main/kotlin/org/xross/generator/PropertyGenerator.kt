@@ -83,7 +83,7 @@ object PropertyGenerator {
                 if (!isSelf) fromPointerArgs.add(kType)
                 
                 readCodeBuilder.addStatement(
-                    "res = $fromPointerExpr(resSeg, this.autoArena)",
+                    "res = $fromPointerExpr(resSeg, this.autoArena, sharedFlag = this.aliveFlag)",
                     *fromPointerArgs.toTypedArray()
                 )
                 readCodeBuilder.addStatement("this.$backingFieldName = %T(res)", WeakReference::class.asTypeName())

@@ -8,22 +8,14 @@ import java.lang.invoke.MethodHandle
 
 object OpaqueGenerator {
 
-    fun generateSingle(meta: XrossDefinition.Opaque, outputDir: File, targetPackage: String) {
+    fun generateSingle(meta: XrossDefinition.Opaque, outputDir: File, targetPackage: String, basePackage: String) {
         val className = meta.name
         val prefix = meta.symbolPrefix
+        val aliveFlagType = ClassName("$basePackage.xross.runtime", "AliveFlag")
 
         val classBuilder = TypeSpec.classBuilder(className)
             .addSuperinterface(AutoCloseable::class)
             .addKdoc(meta.docs.joinToString("\n"))
-
-        // --- AliveFlag ---
-        classBuilder.addType(
-            TypeSpec.classBuilder("AliveFlag")
-                .addModifiers(KModifier.INTERNAL)
-                .primaryConstructor(FunSpec.constructorBuilder().addParameter("initial", Boolean::class).build())
-                .addProperty(PropertySpec.builder("isValid", Boolean::class).mutable().initializer("initial").build())
-                .build()
-        )
 
         classBuilder.primaryConstructor(
             FunSpec.constructorBuilder()
@@ -35,7 +27,7 @@ object OpaqueGenerator {
                         .defaultValue("null").build()
                 )
                 .addParameter(
-                    ParameterSpec.builder("sharedFlag", ClassName("", "AliveFlag").copy(nullable = true))
+                    ParameterSpec.builder("sharedFlag", aliveFlagType.copy(nullable = true))
                         .defaultValue("null").build()
                 )
                 .build()
@@ -51,8 +43,8 @@ object OpaqueGenerator {
                 .build()
         )
         classBuilder.addProperty(
-            PropertySpec.builder("aliveFlag", ClassName("", "AliveFlag"), KModifier.INTERNAL)
-                .initializer(CodeBlock.of("sharedFlag ?: AliveFlag(true)"))
+            PropertySpec.builder("aliveFlag", aliveFlagType, KModifier.INTERNAL)
+                .initializer(CodeBlock.of("sharedFlag ?: %T(true)", aliveFlagType))
                 .build()
         )
         classBuilder.addProperty(
@@ -71,7 +63,7 @@ object OpaqueGenerator {
                     .addStatement("if (this.segment == %T.NULL || !this.aliveFlag.isValid) throw %T(%S)", MemorySegment::class, NullPointerException::class, "Object dropped or invalid")
                     .addStatement("val newAutoArena = Arena.ofAuto()")
                     .addStatement("val newConfinedArena = Arena.ofConfined()")
-                    .addStatement("val flag = AliveFlag(true)")
+                    .addStatement("val flag = %T(true)", aliveFlagType)
                     .addStatement("val raw = cloneHandle.invokeExact(this.segment) as MemorySegment")
                     .addStatement("val res = raw.reinterpret(STRUCT_SIZE, newAutoArena) { s -> if (flag.isValid) { flag.isValid = false; dropHandle.invokeExact(s); try { newConfinedArena.close() } catch (e: Throwable) {} } }")
                     .addStatement("return %L(res, newAutoArena, confinedArena = newConfinedArena, sharedFlag = flag)", className)
@@ -109,7 +101,7 @@ object OpaqueGenerator {
             .addParameter("ptr", MemorySegment::class)
             .addParameter("autoArena", ClassName("java.lang.foreign", "Arena"))
             .addParameter(ParameterSpec.builder("confinedArena", ClassName("java.lang.foreign", "Arena").copy(nullable = true)).defaultValue("null").build())
-            .addParameter(ParameterSpec.builder("sharedFlag", ClassName("", "AliveFlag").copy(nullable = true)).defaultValue("null").build())
+            .addParameter(ParameterSpec.builder("sharedFlag", aliveFlagType.copy(nullable = true)).defaultValue("null").build())
             .returns(ClassName(targetPackage, className))
             .addModifiers(KModifier.INTERNAL)
             .addCode("return %L(ptr, autoArena, confinedArena = confinedArena, sharedFlag = sharedFlag)\n", className)

@@ -19,6 +19,14 @@ object RuntimeGenerator {
             .addProperty(PropertySpec.builder("error", Any::class).initializer("error").build())
             .build()
 
+        // --- AliveFlag ---
+        val aliveFlag = TypeSpec.classBuilder("AliveFlag")
+            .primaryConstructor(FunSpec.constructorBuilder()
+                .addParameter("initial", Boolean::class)
+                .build())
+            .addProperty(PropertySpec.builder("isValid", Boolean::class).mutable(true).initializer("initial").build())
+            .build()
+
         // --- XrossAsync ---
         val xrossAsync = TypeSpec.objectBuilder("XrossAsync")
             .addFunction(FunSpec.builder("awaitFuture")
@@ -42,6 +50,7 @@ object RuntimeGenerator {
 
         val file = FileSpec.builder(pkg, "XrossRuntime")
             .addType(xrossException)
+            .addType(aliveFlag)
             .addType(xrossAsync)
             .build()
         

@@ -12,6 +12,7 @@ object StructureGenerator {
     fun buildBase(classBuilder: TypeSpec.Builder, companionBuilder: TypeSpec.Builder, meta: XrossDefinition, basePackage: String) {
         val isEnum = meta is XrossDefinition.Enum
         val isPure = GeneratorUtils.isPureEnum(meta)
+        val aliveFlagType = ClassName("$basePackage.xross.runtime", "AliveFlag")
         
         val selfType = GeneratorUtils.getClassName(meta.signature, basePackage)
 
@@ -23,13 +24,8 @@ object StructureGenerator {
                 .build()
             classBuilder.addProperty(segmentProp)
             
-            val aliveFlagClass = TypeSpec.classBuilder("AliveFlag")
-                .addModifiers(KModifier.INTERNAL)
-                .addProperty(PropertySpec.builder("isValid", Boolean::class).mutable(true).initializer("true").build())
-                .build()
-            classBuilder.addType(aliveFlagClass)
-            classBuilder.addProperty(PropertySpec.builder("aliveFlag", ClassName("", "AliveFlag"), KModifier.INTERNAL)
-                .initializer("AliveFlag()").build())
+            classBuilder.addProperty(PropertySpec.builder("aliveFlag", aliveFlagType, KModifier.INTERNAL)
+                .initializer("%T(true)", aliveFlagType).build())
 
             classBuilder.addProperty(PropertySpec.builder("sl", ClassName("java.util.concurrent.locks", "StampedLock"))
                 .addModifiers(KModifier.INTERNAL)
@@ -45,25 +41,17 @@ object StructureGenerator {
 
         } else {
             // --- Normal Struct / Complex Enum Case ---
-            classBuilder.addType(
-                TypeSpec.classBuilder("AliveFlag")
-                    .addModifiers(KModifier.INTERNAL)
-                    .primaryConstructor(FunSpec.constructorBuilder().addParameter("initial", Boolean::class).build())
-                    .addProperty(PropertySpec.builder("isValid", Boolean::class).mutable(true).initializer("initial").build())
-                    .build()
-            )
-
             val constructorBuilder = FunSpec.constructorBuilder()
                 .addModifiers(if (isEnum) KModifier.PROTECTED else KModifier.INTERNAL)
                 .addParameter("raw", MEMORY_SEGMENT)
                 .addParameter(ParameterSpec.builder("autoArena", ClassName("java.lang.foreign", "Arena")).build())
                 .addParameter(ParameterSpec.builder("confinedArena", ClassName("java.lang.foreign", "Arena").copy(nullable = true)).defaultValue("null").build())
-                .addParameter(ParameterSpec.builder("sharedFlag", ClassName("", "AliveFlag").copy(nullable = true)).defaultValue("null").build())
+                .addParameter(ParameterSpec.builder("sharedFlag", aliveFlagType.copy(nullable = true)).defaultValue("null").build())
             classBuilder.primaryConstructor(constructorBuilder.build())
 
             classBuilder.addProperty(PropertySpec.builder("autoArena", ClassName("java.lang.foreign", "Arena"), KModifier.INTERNAL).initializer("autoArena").build())
             classBuilder.addProperty(PropertySpec.builder("confinedArena", ClassName("java.lang.foreign", "Arena").copy(nullable = true), KModifier.INTERNAL).initializer("confinedArena").build())
-            classBuilder.addProperty(PropertySpec.builder("aliveFlag", ClassName("", "AliveFlag"), KModifier.INTERNAL).initializer(CodeBlock.of("sharedFlag ?: AliveFlag(true)")).build())
+            classBuilder.addProperty(PropertySpec.builder("aliveFlag", aliveFlagType, KModifier.INTERNAL).initializer(CodeBlock.of("sharedFlag ?: %T(true)", aliveFlagType)).build())
             
             val segmentProp = PropertySpec.builder("segment", MEMORY_SEGMENT, KModifier.INTERNAL)
                 .mutable(true)
@@ -102,7 +90,7 @@ object StructureGenerator {
                 .addParameter("ptr", MEMORY_SEGMENT)
                 .addParameter("autoArena", ClassName("java.lang.foreign", "Arena"))
                 .addParameter(ParameterSpec.builder("confinedArena", ClassName("java.lang.foreign", "Arena").copy(nullable = true)).defaultValue("null").build())
-                .addParameter(ParameterSpec.builder("sharedFlag", ClassName("", "AliveFlag").copy(nullable = true)).defaultValue("null").build())
+                .addParameter(ParameterSpec.builder("sharedFlag", aliveFlagType.copy(nullable = true)).defaultValue("null").build())
                 .returns(selfType)
                 .addModifiers(KModifier.INTERNAL)
                 .addCode("return %T(ptr, autoArena, confinedArena = confinedArena, sharedFlag = sharedFlag)\n", selfType)
