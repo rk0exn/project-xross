@@ -21,7 +21,6 @@ object MethodGenerator {
     ) {
         val selfType = GeneratorUtils.getClassName(meta.signature, basePackage)
         val isEnum = meta is XrossDefinition.Enum
-        val aliveFlagType = ClassName("$basePackage.xross.runtime", "AliveFlag")
 
         meta.methods.forEach { method ->
             if (method.isConstructor) {
@@ -139,8 +138,6 @@ object MethodGenerator {
         val isVoid = method.ret is XrossType.Void
         val useLock = method.safety == XrossThreadSafety.Lock && method.methodType != XrossMethodType.Static
         val body = CodeBlock.builder()
-        val isPureEnum = GeneratorUtils.isPureEnum(meta)
-        val isCopy = meta.isCopy
 
         if (useLock) {
             if (!isVoid) body.addStatement("var resValue: %T", returnType)
@@ -148,62 +145,41 @@ object MethodGenerator {
             body.beginControlFlow("try")
             if (!isVoid) body.add("resValue = ")
             body.add(generateInvokeLogic(method, call, returnType, selfType, basePackage))
-
-            if (method.methodType == XrossMethodType.OwnedInstance) {
-                if (isPureEnum && !isCopy) {
-                    // 消費されたが Copy ではない Pure Enum の場合、再初期化する
-                    body.addStatement("// Re-initialize consumed segment for fieldless enum")
-                    body.addStatement("this.segment = when(this) {")
-                    (meta as XrossDefinition.Enum).variants.forEach { v ->
-                        body.addStatement("    %N -> Companion.new${v.name}Handle.invokeExact() as %T", v.name, MEMORY_SEGMENT)
-                    }
-                    body.addStatement("}")
-                } else if (meta is XrossDefinition.Enum && !isCopy) {
-                    body.addStatement("this.relinquishInternal()")
-                } else if (!isPureEnum) {
-                    body.addStatement("this.relinquishInternal()")
-                }
-            }
-
             body.nextControlFlow("finally")
             body.addStatement("this.sl.unlockWrite(stamp)")
             body.endControlFlow()
-
-            method.args.forEach { arg ->
-                if (arg.ty is XrossType.Object && arg.ty.isOwned) {
-                    val name = arg.name.toCamelCase().escapeKotlinKeyword()
-                    body.addStatement("%L.relinquish()", name)
-                }
-            }
-
-            if (!isVoid) body.addStatement("resValue")
         } else {
             if (!isVoid) body.add("val resValue = ")
             body.add(generateInvokeLogic(method, call, returnType, selfType, basePackage))
-
-            if (method.methodType == XrossMethodType.OwnedInstance) {
-                if (isPureEnum && !isCopy) {
-                    body.addStatement("// Re-initialize consumed segment for fieldless enum")
-                    body.addStatement("this.segment = when(this) {")
-                    (meta as XrossDefinition.Enum).variants.forEach { v ->
-                        body.addStatement("    %N -> Companion.new${v.name}Handle.invokeExact() as %T", v.name, MEMORY_SEGMENT)
-                    }
-                    body.addStatement("}")
-                } else if (meta is XrossDefinition.Enum && !isCopy) {
-                    body.addStatement("this.relinquishInternal()")
-                } else if (!isPureEnum) {
-                    body.addStatement("this.relinquishInternal()")
-                }
-            }
-            method.args.forEach { arg ->
-                if (arg.ty is XrossType.Object && arg.ty.isOwned) {
-                    val name = arg.name.toCamelCase().escapeKotlinKeyword()
-                    body.addStatement("%L.relinquish()", name)
-                }
-            }
-
-            if (!isVoid) body.addStatement("resValue")
         }
+
+        // Post-call logic for OwnedInstance
+        if (method.methodType == XrossMethodType.OwnedInstance) {
+            val isPureEnum = GeneratorUtils.isPureEnum(meta)
+            val isCopy = meta.isCopy
+            if (isPureEnum && !isCopy) {
+                body.addStatement("// Re-initialize consumed segment for fieldless enum")
+                body.addStatement("this.segment = when(this) {")
+                (meta as XrossDefinition.Enum).variants.forEach { v ->
+                    body.addStatement("    %N -> new${v.name}Handle.invokeExact() as %T", v.name, MEMORY_SEGMENT)
+                }
+                body.addStatement("}")
+            } else if (!isCopy || !isPureEnum) {
+                // If it's an Enum (complex) or Struct, and it's consumed, we relinquish it.
+                // Note: Structs don't have isPureEnum true.
+                body.addStatement("this.relinquishInternal()")
+            }
+        }
+
+        // Relinquish owned arguments
+        method.args.forEach { arg ->
+            if (arg.ty is XrossType.Object && arg.ty.isOwned) {
+                val name = arg.name.toCamelCase().escapeKotlinKeyword()
+                body.addStatement("%L.relinquish()", name)
+            }
+        }
+
+        if (!isVoid) body.addStatement("resValue")
         return body.build()
     }
 
@@ -216,9 +192,7 @@ object MethodGenerator {
             }
             is XrossType.RustString -> {
                 body.beginControlFlow("run")
-                body.addStatement("val res = %L as %T", call, MEMORY_SEGMENT)
-                body.addStatement("val str = if (res == %T.NULL) \"\" else res.reinterpret(%T.MAX_VALUE).getString(0)", MEMORY_SEGMENT, Long::class.asTypeName())
-                body.addStatement("if (res != %T.NULL) xrossFreeStringHandle.invokeExact(res)", MEMORY_SEGMENT)
+                GeneratorUtils.addRustStringResolution(body, call)
                 body.addStatement("str")
                 body.endControlFlow()
             }
@@ -245,13 +219,10 @@ object MethodGenerator {
                             body.addStatement("%L(resRaw, this.autoArena, sharedFlag = %T(true, this.aliveFlag))", fromPointerExpr, flagType)
                         }
                     }
-                    is XrossType.RustString -> body.addStatement(
-                        """
-                        val str = resRaw.reinterpret(Long.MAX_VALUE).getString(0)
-                        xrossFreeStringHandle.invokeExact(resRaw)
-                        str
-                        """.trimIndent(),
-                    )
+                    is XrossType.RustString -> {
+                        GeneratorUtils.addRustStringResolution(body, "resRaw")
+                        body.addStatement("str")
+                    }
                     else -> body.addStatement("val valRes = resRaw.get(%M, 0)\ndropHandle.invokeExact(resRaw)\nvalRes", inner.layoutMember)
                 }
                 body.endControlFlow().endControlFlow()
@@ -281,7 +252,9 @@ object MethodGenerator {
             is XrossType.Result -> {
                 body.beginControlFlow("run")
                 body.addStatement("val resRaw = %L as %T", call, MEMORY_SEGMENT)
-                body.addStatement("val isOk = resRaw.get(%M, 0L) != (0).toByte()", ClassName("java.lang.foreign", "ValueLayout").let { MemberName(it, "JAVA_BYTE") })
+                body.addStatement("val isOk = resRaw.get(%M, 0L) != (0).toByte()",
+                    MemberName(ClassName("java.lang.foreign", "ValueLayout"), "JAVA_BYTE")
+                )
                 body.addStatement("val ptr = resRaw.get(%M, 8L)", ADDRESS)
                 body.beginControlFlow("if (isOk)")
 
@@ -301,13 +274,10 @@ object MethodGenerator {
                         body.addStatement("val res = ptr.reinterpret(%L, retAutoArena) { s -> if (flag.tryInvalidate()) { %L.invokeExact(s) } }", okSizeExpr, okDropExpr)
                         body.addStatement("%L(res, retAutoArena, confinedArena = retOwnerArena, sharedFlag = flag)", okFromPointerExpr)
                     }
-                    is XrossType.RustString -> body.addStatement(
-                        """
-                        val str = ptr.reinterpret(Long.MAX_VALUE).getString(0)
-                        xrossFreeStringHandle.invokeExact(ptr)
-                        str
-                        """.trimIndent(),
-                    )
+                    is XrossType.RustString -> {
+                        GeneratorUtils.addRustStringResolution(body, "ptr")
+                        body.addStatement("str")
+                    }
                     else -> body.addStatement("val v = ptr.get(%M, 0)\ndropHandle.invokeExact(ptr)\nv", okTy.layoutMember)
                 }
                 body.endControlFlow()
@@ -331,13 +301,10 @@ object MethodGenerator {
                         body.addStatement("val res = ptr.reinterpret(%L, retAutoArena) { s -> if (flag.tryInvalidate()) { %L.invokeExact(s) } }", errSizeExpr, errDropExpr)
                         body.addStatement("%L(res, retAutoArena, confinedArena = retOwnerArena, sharedFlag = flag)", errFromPointerExpr)
                     }
-                    is XrossType.RustString -> body.addStatement(
-                        """
-                        val str = ptr.reinterpret(Long.MAX_VALUE).getString(0)
-                        xrossFreeStringHandle.invokeExact(ptr)
-                        str
-                        """.trimIndent(),
-                    )
+                    is XrossType.RustString -> {
+                        GeneratorUtils.addRustStringResolution(body, "ptr")
+                        body.addStatement("str")
+                    }
                     else -> body.addStatement("val v = ptr.get(%M, 0)\ndropHandle.invokeExact(ptr)\nv", errTy.layoutMember)
                 }
                 body.endControlFlow()
@@ -356,25 +323,19 @@ object MethodGenerator {
         method: XrossMethod,
         basePackage: String,
     ) {
-        val arenaPair = Pair::class.asClassName().parameterizedBy(Arena::class.asTypeName(), Arena::class.asTypeName().copy(nullable = true))
-        val aliveFlagType = ClassName("$basePackage.xross.runtime", "AliveFlag")
-        val tripleType = Triple::class.asClassName().parameterizedBy(MEMORY_SEGMENT, arenaPair, aliveFlagType)
+        val tripleType = GeneratorUtils.getFactoryTripleType(basePackage)
 
         val factoryBuilder = FunSpec.builder("xrossNewInternal").addModifiers(KModifier.PRIVATE)
             .addParameters(method.args.map { ParameterSpec.builder("argOf" + it.name.toCamelCase(), resolveReturnType(it.ty, basePackage)).build() })
             .returns(tripleType)
 
         val body = CodeBlock.builder()
-        body.addStatement("val newAutoArena = Arena.ofAuto()")
-        body.addStatement("val newOwnerArena = Arena.ofAuto()")
-        body.addStatement("val flag = %T(true)", aliveFlagType)
-
         val callArgs = mutableListOf<CodeBlock>()
         method.args.forEach { arg ->
             val name = "argOf" + arg.name.toCamelCase()
             when (arg.ty) {
                 is XrossType.RustString -> {
-                    body.addStatement("val ${name}Memory = newAutoArena.allocateFrom($name)")
+                    body.addStatement("val ${name}Memory = %T.ofAuto().allocateFrom($name)", Arena::class)
                     callArgs.add(CodeBlock.of("${name}Memory"))
                 }
                 is XrossType.Bool -> callArgs.add(CodeBlock.of("if ($name) 1.toByte() else 0.toByte()"))
@@ -383,9 +344,13 @@ object MethodGenerator {
             }
         }
 
-        body.addStatement("val raw = newHandle.invokeExact(%L) as %T", callArgs.joinToCode(", "), MEMORY_SEGMENT)
-        body.addStatement("if (raw == %T.NULL) throw %T(%S)", MEMORY_SEGMENT, RuntimeException::class.asTypeName(), "Fail")
-        body.addStatement("val res = raw.reinterpret(STRUCT_SIZE, newAutoArena) { s -> if (flag.tryInvalidate()) { dropHandle.invokeExact(s) } }")
+        GeneratorUtils.addFactoryBody(
+            body,
+            basePackage,
+            CodeBlock.of("newHandle.invokeExact(%L)", callArgs.joinToCode(", ")),
+            CodeBlock.of("STRUCT_SIZE"),
+            CodeBlock.of("dropHandle"),
+        )
         body.addStatement("return %T(res, %T(newAutoArena, newOwnerArena), flag)", Triple::class.asTypeName(), Pair::class.asTypeName())
 
         factoryBuilder.addCode(body.build())

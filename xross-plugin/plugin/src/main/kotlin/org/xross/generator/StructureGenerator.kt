@@ -6,7 +6,6 @@ import java.lang.foreign.MemorySegment
 
 object StructureGenerator {
     private val MEMORY_SEGMENT = MemorySegment::class.asTypeName()
-    private val VH_TYPE = java.lang.invoke.VarHandle::class.asClassName()
 
     fun buildBase(classBuilder: TypeSpec.Builder, companionBuilder: TypeSpec.Builder, meta: XrossDefinition, basePackage: String) {
         val isEnum = meta is XrossDefinition.Enum
@@ -68,45 +67,9 @@ object StructureGenerator {
             classBuilder.addProperty(PropertySpec.builder("sl", ClassName("java.util.concurrent.locks", "StampedLock")).addModifiers(KModifier.INTERNAL).initializer("%T()", ClassName("java.util.concurrent.locks", "StampedLock")).build())
         }
 
-        // --- resolveFieldSegment Helper ---
-        val resolver = FunSpec.builder("resolveFieldSegment")
-            .addModifiers(KModifier.INTERNAL)
-            .addParameter("parent", MEMORY_SEGMENT)
-            .addParameter("vh", VH_TYPE.copy(nullable = true))
-            .addParameter("offset", Long::class)
-            .addParameter("size", Long::class)
-            .addParameter("isOwned", Boolean::class)
-            .returns(MEMORY_SEGMENT)
-            .addCode(
-                """
-                if (parent == %T.NULL) return %T.NULL
-                return if (isOwned) {
-                    parent.asSlice(offset, size)
-                } else {
-                    if (vh == null) return %T.NULL
-                    val ptr = vh.get(parent, offset) as %T
-                    if (ptr == %T.NULL) %T.NULL else ptr.reinterpret(size)
-                }
-                """.trimIndent(),
-                MEMORY_SEGMENT,
-                MEMORY_SEGMENT,
-                MEMORY_SEGMENT,
-                MEMORY_SEGMENT,
-                MEMORY_SEGMENT,
-                MEMORY_SEGMENT,
-            )
-            .build()
-        classBuilder.addFunction(resolver)
-
         // --- fromPointer メソッド ---
         if (!isEnum) {
-            val fromPointerBuilder = FunSpec.builder("fromPointer")
-                .addParameter("ptr", MEMORY_SEGMENT)
-                .addParameter("autoArena", ClassName("java.lang.foreign", "Arena"))
-                .addParameter(ParameterSpec.builder("confinedArena", ClassName("java.lang.foreign", "Arena").copy(nullable = true)).defaultValue("null").build())
-                .addParameter(ParameterSpec.builder("sharedFlag", aliveFlagType.copy(nullable = true)).defaultValue("null").build())
-                .returns(selfType)
-                .addModifiers(KModifier.INTERNAL)
+            val fromPointerBuilder = GeneratorUtils.buildFromPointerBase("fromPointer", selfType, basePackage)
                 .addCode("return %T(ptr, autoArena, confinedArena = confinedArena, sharedFlag = sharedFlag)\n", selfType)
 
             companionBuilder.addFunction(fromPointerBuilder.build())
@@ -137,7 +100,7 @@ object StructureGenerator {
             .beginControlFlow("if (aliveFlag.tryInvalidate())")
             .addStatement("relinquishInternal()")
             .beginControlFlow("if (confinedArena != null)")
-            .addStatement("Companion.dropHandle.invokeExact(currentS)")
+            .addStatement("dropHandle.invokeExact(currentS)")
             .endControlFlow()
             .endControlFlow()
             .endControlFlow()

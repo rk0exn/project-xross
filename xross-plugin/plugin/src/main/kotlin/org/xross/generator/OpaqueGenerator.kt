@@ -49,7 +49,7 @@ object OpaqueGenerator {
             .indent("    ")
             .build()
 
-        writeToDisk(fileSpec, targetPackage, className, outputDir)
+        GeneratorUtils.writeToDisk(fileSpec, outputDir)
     }
 
     private fun buildOpaqueGetter(field: XrossField, kType: TypeName, basePackage: String): FunSpec {
@@ -75,9 +75,7 @@ object OpaqueGenerator {
              body.endControlFlow()
              body.addStatement("return res as %T", kType)
         } else if (field.ty is XrossType.RustString) {
-            body.addStatement("val raw = Companion.$getHandle.invokeExact(this.segment) as %T", MemorySegment::class)
-            body.addStatement("val s = if (raw == %T.NULL) \"\" else raw.reinterpret(%T.MAX_VALUE).getString(0)", MemorySegment::class, Long::class)
-            body.addStatement("if (raw != %T.NULL) Companion.xrossFreeStringHandle.invokeExact(raw)")
+            GeneratorUtils.addRustStringResolution(body, "Companion.$getHandle.invokeExact(this.segment)", "s")
             body.addStatement("return s")
         } else {
             body.addStatement("return Companion.$getHandle.invokeExact(this.segment) as %T", kType)
@@ -103,12 +101,5 @@ object OpaqueGenerator {
         }
 
         return FunSpec.setterBuilder().addParameter("v", kType).addCode(body.build()).build()
-    }
-
-    private fun writeToDisk(fileSpec: FileSpec, pkg: String, name: String, outputDir: File) {
-        val content = XrossGenerator.cleanupPublic(fileSpec.toString())
-        val fileDir = outputDir.resolve(pkg.replace('.', '/'))
-        if (!fileDir.exists()) fileDir.mkdirs()
-        fileDir.resolve("$name.kt").writeText(content)
     }
 }

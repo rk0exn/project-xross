@@ -1,9 +1,9 @@
 package org.xross.generator
 
-import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.TypeSpec
 import org.xross.structures.XrossDefinition
+import org.xross.structures.XrossMethod
 import org.xross.structures.XrossType
 import java.io.File
 
@@ -42,13 +42,7 @@ object XrossGenerator {
         is XrossDefinition.Struct ->
             meta.copy(
                 fields = meta.fields.map { it.copy(ty = resolveType(it.ty, resolver, meta.name)) },
-                methods =
-                meta.methods.map { m ->
-                    m.copy(
-                        args = m.args.map { it.copy(ty = resolveType(it.ty, resolver, "${meta.name}.${m.name}")) },
-                        ret = resolveType(m.ret, resolver, "${meta.name}.${m.name}"),
-                    )
-                },
+                methods = resolveMethods(meta.methods, resolver, meta.name),
             )
 
         is XrossDefinition.Enum ->
@@ -69,16 +63,19 @@ object XrossGenerator {
                         },
                     )
                 },
-                methods =
-                meta.methods.map { m ->
-                    m.copy(
-                        args = m.args.map { it.copy(ty = resolveType(it.ty, resolver, "${meta.name}.${m.name}")) },
-                        ret = resolveType(m.ret, resolver, "${meta.name}.${m.name}"),
-                    )
-                },
+                methods = resolveMethods(meta.methods, resolver, meta.name),
             )
 
         is XrossDefinition.Opaque -> meta
+    }
+
+    private fun resolveMethods(methods: List<XrossMethod>, resolver: TypeResolver, context: String): List<XrossMethod> {
+        return methods.map { m ->
+            m.copy(
+                args = m.args.map { it.copy(ty = resolveType(it.ty, resolver, "$context.${m.name}")) },
+                ret = resolveType(m.ret, resolver, "$context.${m.name}"),
+            )
+        }
     }
 
     private fun resolveType(
@@ -156,54 +153,6 @@ object XrossGenerator {
             StructureGenerator.addFinalBlocks(classBuilder, meta)
         }
 
-        writeToDisk(classBuilder.build(), targetPackage, className, outputDir)
-    }
-
-    private fun writeToDisk(
-        typeSpec: TypeSpec,
-        pkg: String,
-        name: String,
-        outputDir: File,
-    ) {
-        val fileSpec =
-            FileSpec
-                .builder(pkg, name)
-                .addType(typeSpec)
-                .indent("    ")
-                .build()
-        val content = cleanupPublic(fileSpec.toString())
-
-        val fileDir = outputDir.resolve(pkg.replace('.', '/'))
-        if (!fileDir.exists()) fileDir.mkdirs()
-        fileDir.resolve("$name.kt").writeText(content)
-    }
-
-    /**
-     * Kotlin においてデフォルト（省略可能）な public 修飾子を正規表現で一括削除する。
-     */
-    fun cleanupPublic(content: String): String {
-        val keywords =
-            listOf(
-                "class",
-                "interface",
-                "fun",
-                "val",
-                "var",
-                "object",
-                "enum",
-                "sealed",
-                "open",
-                "abstract",
-                "constructor",
-                "companion",
-                "init",
-                "data",
-                "override",
-                "lateinit",
-                "inner",
-            ).joinToString("|")
-
-        val regex = Regex("""public\s+(?=$keywords)""")
-        return content.replace(regex, "")
+        GeneratorUtils.writeToDisk(classBuilder.build(), targetPackage, className, outputDir)
     }
 }

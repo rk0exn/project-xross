@@ -50,6 +50,38 @@ object RuntimeGenerator {
             )
             .build()
 
+        // --- FfiHelpers ---
+        val ffiHelpers = TypeSpec.objectBuilder("FfiHelpers")
+            .addFunction(
+                FunSpec.builder("resolveFieldSegment")
+                    .addParameter("parent", MEMORY_SEGMENT)
+                    .addParameter("vh", java.lang.invoke.VarHandle::class.asClassName().copy(nullable = true))
+                    .addParameter("offset", Long::class)
+                    .addParameter("size", Long::class)
+                    .addParameter("isOwned", Boolean::class)
+                    .returns(MEMORY_SEGMENT)
+                    .addCode(
+                        """
+                        if (parent == %T.NULL) return %T.NULL
+                        return if (isOwned) {
+                            parent.asSlice(offset, size)
+                        } else {
+                            if (vh == null) return %T.NULL
+                            val ptr = vh.get(parent, offset) as %T
+                            if (ptr == %T.NULL) %T.NULL else ptr.reinterpret(size)
+                        }
+                        """.trimIndent(),
+                        MEMORY_SEGMENT,
+                        MEMORY_SEGMENT,
+                        MEMORY_SEGMENT,
+                        MEMORY_SEGMENT,
+                        MEMORY_SEGMENT,
+                        MEMORY_SEGMENT,
+                    )
+                    .build(),
+            )
+            .build()
+
         // --- XrossAsync ---
         val xrossAsync = TypeSpec.objectBuilder("XrossAsync")
             .addFunction(
@@ -80,12 +112,10 @@ object RuntimeGenerator {
             .addImport("java.util.concurrent.atomic", "AtomicBoolean")
             .addType(xrossException)
             .addType(aliveFlag)
+            .addType(ffiHelpers)
             .addType(xrossAsync)
             .build()
 
-        val content = XrossGenerator.cleanupPublic(file.toString())
-        val fileDir = outputDir.resolve(pkg.replace('.', '/'))
-        if (!fileDir.exists()) fileDir.mkdirs()
-        fileDir.resolve("XrossRuntime.kt").writeText(content)
+        GeneratorUtils.writeToDisk(file, outputDir)
     }
 }
