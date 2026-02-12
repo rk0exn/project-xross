@@ -38,6 +38,7 @@ fun main() {
             executeEnumTest()
             executeCollectionAndOptionalTest()
             executePropertyTest()
+            executeComplexFieldTest()
 
             if (i % 10 == 0) {
                 println(">>> Completed cycle $i / $repeatCount")
@@ -72,6 +73,10 @@ private fun loadFromResources(tempDir: File) {
     resourceStream.use { input -> libFile.outputStream().use { output -> input.copyTo(output) } }
     System.load(libFile.absolutePath)
     println("Native library loaded from: ${libFile.absolutePath}")
+}
+fun executeComplexFieldTest(){
+    println("\nComplex field test:")
+
 }
 
 fun executePropertyTest() {

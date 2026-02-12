@@ -76,3 +76,16 @@ pub fn build_symbol_base(crate_name: &str, package: &str, type_name: &str) -> St
         format!("{}_{}_{}", crate_name, package.replace(".", "_"), type_snake)
     }
 }
+
+pub fn extract_inner_type(ty: &syn::Type) -> &syn::Type {
+    if let syn::Type::Path(tp) = ty {
+        if let Some(last_segment) = tp.path.segments.last() {
+            if let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments {
+                if let Some(syn::GenericArgument::Type(inner)) = args.args.first() {
+                    return inner;
+                }
+            }
+        }
+    }
+    ty
+}

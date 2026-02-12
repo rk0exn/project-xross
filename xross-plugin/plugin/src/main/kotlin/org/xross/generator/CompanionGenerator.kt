@@ -86,6 +86,11 @@ object CompanionGenerator {
                     if (it.ty is XrossType.RustString) {
                         handles.add("${baseCamel}StrGetHandle")
                         handles.add("${baseCamel}StrSetHandle")
+                    } else if (it.ty is XrossType.Optional) {
+                        handles.add("${baseCamel}OptGetHandle")
+                        handles.add("${baseCamel}OptSetHandle")
+                    } else if (it.ty is XrossType.Result) {
+                        handles.add("${baseCamel}ResGetHandle")
                     }
 
                     builder.addProperty(
@@ -258,6 +263,35 @@ object CompanionGenerator {
                         setSymbol,
                         FunctionDescriptor::class.asTypeName(),
                         ADDRESS,
+                        ADDRESS,
+                    )
+                } else if (field.ty is XrossType.Optional) {
+                    val baseCamel = field.name.toCamelCase()
+                    val getSymbol = "${meta.symbolPrefix}_property_${field.name}_opt_get"
+                    val setSymbol = "${meta.symbolPrefix}_property_${field.name}_opt_set"
+
+                    init.addStatement(
+                        "this.${baseCamel}OptGetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.of(%M, %M))",
+                        getSymbol,
+                        FunctionDescriptor::class.asTypeName(),
+                        ADDRESS,
+                        ADDRESS,
+                    )
+                    init.addStatement(
+                        "this.${baseCamel}OptSetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.ofVoid(%M, %M))",
+                        setSymbol,
+                        FunctionDescriptor::class.asTypeName(),
+                        ADDRESS,
+                        ADDRESS,
+                    )
+                } else if (field.ty is XrossType.Result) {
+                    val baseCamel = field.name.toCamelCase()
+                    val getSymbol = "${meta.symbolPrefix}_property_${field.name}_res_get"
+
+                    init.addStatement(
+                        "this.${baseCamel}ResGetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.of(XROSS_RESULT_LAYOUT, %M))",
+                        getSymbol,
+                        FunctionDescriptor::class.asTypeName(),
                         ADDRESS,
                     )
                 }

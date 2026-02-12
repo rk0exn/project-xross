@@ -51,36 +51,106 @@ pub fn impl_xross_class_derive(input: Item) -> TokenStream {
                         let field_name = field_ident.to_string();
                         let xross_ty =
                             resolve_type_with_attr(&field.ty, &field.attrs, &package, Some(name));
-                        fields.push(XrossField {
-                            name: field_name.clone(),
-                            ty: xross_ty.clone(),
-                            safety: extract_safety_attr(&field.attrs, ThreadSafety::Lock),
-                            docs: extract_docs(&field.attrs),
-                        });
-
-                        if matches!(xross_ty, XrossType::String) {
-                            let get_fn =
-                                format_ident!("{}_property_{}_str_get", symbol_base, field_name);
-                            let set_fn =
-                                format_ident!("{}_property_{}_str_set", symbol_base, field_name);
-                            extra_functions.push(quote! {
-                                #[unsafe(no_mangle)]
-                                pub unsafe extern "C" fn #get_fn(ptr: *const #name) -> *mut std::ffi::c_char {
-                                    if ptr.is_null() { return std::ptr::null_mut(); }
-                                    let obj = &*ptr;
-                                    std::ffi::CString::new(obj.#field_ident.as_str()).unwrap().into_raw()
-                                }
-
-                                #[unsafe(no_mangle)]
-                                pub unsafe extern "C" fn #set_fn(ptr: *mut #name, val: *const std::ffi::c_char) {
-                                    if ptr.is_null() || val.is_null() { return; }
-                                    let obj = &mut *ptr;
-                                    let s = std::ffi::CStr::from_ptr(val).to_string_lossy().into_owned();
-                                    obj.#field_ident = s;
-                                }
-                            });
-                        }
-                    }
+                                                fields.push(XrossField {
+                                                    name: field_name.clone(),
+                                                    ty: xross_ty.clone(),
+                                                    safety: extract_safety_attr(&field.attrs, ThreadSafety::Lock),
+                                                    docs: extract_docs(&field.attrs),
+                                                });
+                        
+                                                match &xross_ty {
+                                                    XrossType::String => {
+                                                        let get_fn = format_ident!("{}_property_{}_str_get", symbol_base, field_name);
+                                                        let set_fn = format_ident!("{}_property_{}_str_set", symbol_base, field_name);
+                                                        extra_functions.push(quote! {
+                                                            #[unsafe(no_mangle)]
+                                                            pub unsafe extern "C" fn #get_fn(ptr: *const #name) -> *mut std::ffi::c_char {
+                                                                if ptr.is_null() { return std::ptr::null_mut(); }
+                                                                let obj = &*ptr;
+                                                                std::ffi::CString::new(obj.#field_ident.as_str()).unwrap().into_raw()
+                                                            }
+                        
+                                                            #[unsafe(no_mangle)]
+                                                            pub unsafe extern "C" fn #set_fn(ptr: *mut #name, val: *const std::ffi::c_char) {
+                                                                if ptr.is_null() || val.is_null() { return; }
+                                                                let obj = &mut *ptr;
+                                                                let s = std::ffi::CStr::from_ptr(val).to_string_lossy().into_owned();
+                                                                obj.#field_ident = s;
+                                                            }
+                                                        });
+                                                    }
+                                                    XrossType::Option(inner_xross) => {
+                                                        let get_fn = format_ident!("{}_property_{}_opt_get", symbol_base, field_name);
+                                                        let set_fn = format_ident!("{}_property_{}_opt_set", symbol_base, field_name);
+                                                        let inner_rust_ty = extract_inner_type(&field.ty);
+                                                        
+                                                        let ok_val_logic = if matches!(**inner_xross, XrossType::String) {
+                                                            quote! { std::ffi::CString::new(v.as_str()).unwrap().into_raw() as *mut std::ffi::c_void }
+                                                        } else if inner_xross.is_owned() {
+                                                            quote! { Box::into_raw(Box::new(v.clone())) as *mut std::ffi::c_void }
+                                                        } else {
+                                                            quote! { Box::into_raw(Box::new(*v)) as *mut std::ffi::c_void }
+                                                        };
+                        
+                                                        extra_functions.push(quote! {
+                                                            #[unsafe(no_mangle)]
+                                                            pub unsafe extern "C" fn #get_fn(ptr: *const #name) -> *mut std::ffi::c_void {
+                                                                if ptr.is_null() { return std::ptr::null_mut(); }
+                                                                let obj = &*ptr;
+                                                                match &obj.#field_ident {
+                                                                    Some(v) => #ok_val_logic,
+                                                                    None => std::ptr::null_mut(),
+                                                                }
+                                                            }
+                        
+                                                            #[unsafe(no_mangle)]
+                                                            pub unsafe extern "C" fn #set_fn(ptr: *mut #name, val: *mut std::ffi::c_void) {
+                                                                if ptr.is_null() { return; }
+                                                                let obj = &mut *ptr;
+                                                                obj.#field_ident = if val.is_null() {
+                                                                    None
+                                                                } else {
+                                                                    Some(*Box::from_raw(val as *mut #inner_rust_ty))
+                                                                };
+                                                            }
+                                                        });
+                                                    }
+                                                    XrossType::Result { ok: ok_xross, err: err_xross } => {
+                                                        let get_fn = format_ident!("{}_property_{}_res_get", symbol_base, field_name);
+                                                        
+                                                        let gen_ptr = |ty: &XrossType, val_expr: proc_macro2::TokenStream| match ty {
+                                                            XrossType::String => quote! {
+                                                                std::ffi::CString::new(#val_expr.as_str()).unwrap().into_raw() as *mut std::ffi::c_void
+                                                            },
+                                                            _ => quote! {
+                                                                Box::into_raw(Box::new(#val_expr.clone())) as *mut std::ffi::c_void
+                                                            },
+                                                        };
+                                                        let ok_ptr_logic = gen_ptr(ok_xross, quote! { v });
+                                                        let err_ptr_logic = gen_ptr(err_xross, quote! { e });
+                        
+                                                        extra_functions.push(quote! {
+                                                            #[unsafe(no_mangle)]
+                                                            pub unsafe extern "C" fn #get_fn(ptr: *const #name) -> xross_core::XrossResult {
+                                                                if ptr.is_null() { return xross_core::XrossResult { ok_ptr: std::ptr::null_mut(), err_ptr: std::ptr::null_mut() }; }
+                                                                let obj = &*ptr;
+                                                                match &obj.#field_ident {
+                                                                    Ok(v) => xross_core::XrossResult {
+                                                                        ok_ptr: #ok_ptr_logic,
+                                                                        err_ptr: std::ptr::null_mut(),
+                                                                    },
+                                                                    Err(e) => xross_core::XrossResult {
+                                                                        ok_ptr: std::ptr::null_mut(),
+                                                                        err_ptr: #err_ptr_logic,
+                                                                    },
+                                                                }
+                                                            }
+                                                        });
+                                                    }
+                                                    _ => {}
+                                                }
+                                            }
+                        
                 }
             }
             save_definition(&XrossDefinition::Struct(XrossStruct {
