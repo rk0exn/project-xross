@@ -19,7 +19,12 @@ object CompanionGenerator {
     private val JAVA_INT = MemberName(VAL_LAYOUT, "JAVA_INT")
 
     private val XROSS_RESULT_LAYOUT = CodeBlock.of(
-        "%T.structLayout(%M.withName(%S), %M.withName(%S))", MEMORY_LAYOUT, ADDRESS, "okPtr", ADDRESS, "errPtr"
+        "%T.structLayout(%M.withName(%S), %M.withName(%S))",
+        MEMORY_LAYOUT,
+        ADDRESS,
+        "okPtr",
+        ADDRESS,
+        "errPtr",
     )
 
     fun generateCompanions(companionBuilder: TypeSpec.Builder, meta: XrossDefinition) {
@@ -69,21 +74,15 @@ object CompanionGenerator {
     }
 
     private fun defineProperties(builder: TypeSpec.Builder, meta: XrossDefinition) {
-
         val handles = mutableListOf("dropHandle", "cloneHandle", "layoutHandle", "xrossFreeStringHandle")
 
-
-
         when (meta) {
-
             is XrossDefinition.Struct -> {
-
                 handles.add("newHandle")
 
                 meta.fields.forEach {
-
                     val baseCamel = it.name.toCamelCase()
-                    
+
                     if (it.ty is XrossType.RustString) {
                         handles.add("${baseCamel}StrGetHandle")
                         handles.add("${baseCamel}StrSetHandle")
@@ -93,9 +92,12 @@ object CompanionGenerator {
 
                         PropertySpec.builder(
 
-                            "VH_$baseCamel", VH_TYPE, KModifier.INTERNAL, KModifier.LATEINIT
+                            "VH_$baseCamel",
+                            VH_TYPE,
+                            KModifier.INTERNAL,
+                            KModifier.LATEINIT,
 
-                        ).mutable().build()
+                        ).mutable().build(),
 
                     )
 
@@ -103,19 +105,17 @@ object CompanionGenerator {
 
                         PropertySpec.builder(
 
-                            "OFFSET_$baseCamel", Long::class.asTypeName(), KModifier.INTERNAL
+                            "OFFSET_$baseCamel",
+                            Long::class.asTypeName(),
+                            KModifier.INTERNAL,
 
-                        ).mutable().initializer("0L").build()
+                        ).mutable().initializer("0L").build(),
 
                     )
-
                 }
-
             }
 
-
             is XrossDefinition.Enum -> {
-
                 handles.add("getTagHandle")
 
                 handles.add("getVariantNameHandle")
@@ -129,7 +129,6 @@ object CompanionGenerator {
                         val baseCamel = f.name.toCamelCase()
 
                         if (!(f.ty is XrossType.Object && f.ty.ownership == XrossType.Ownership.Owned)) {
-
                             builder.addProperty(
 
                                 PropertySpec.builder(
@@ -137,12 +136,12 @@ object CompanionGenerator {
 
                                     VH_TYPE,
 
-                                    KModifier.INTERNAL, KModifier.LATEINIT
+                                    KModifier.INTERNAL,
+                                    KModifier.LATEINIT,
 
-                                ).mutable().build()
+                                ).mutable().build(),
 
                             )
-
                         }
 
                         builder.addProperty(
@@ -151,111 +150,84 @@ object CompanionGenerator {
 
                                 "OFFSET_${v.name}_$baseCamel",
 
-                                Long::class.asTypeName(), KModifier.INTERNAL
+                                Long::class.asTypeName(),
+                                KModifier.INTERNAL,
 
-                            ).mutable().initializer("0L").build()
+                            ).mutable().initializer("0L").build(),
 
                         )
-
                     }
-
                 }
-
             }
 
-
             is XrossDefinition.Opaque -> {}
-
         }
 
-
-
-
-
         meta.methods.filter { !it.isConstructor }.forEach { handles.add("${it.name.toCamelCase()}Handle") }
-
-
 
         handles.distinct().forEach { name ->
 
             builder.addProperty(PropertySpec.builder(name, HANDLE_TYPE, KModifier.INTERNAL).mutable().build())
-
         }
-
-
 
         builder.addProperty(
 
             PropertySpec.builder("LAYOUT", LAYOUT_TYPE, KModifier.INTERNAL).mutable()
-
                 .initializer("%T.structLayout()", MEMORY_LAYOUT)
-
-                .build()
+                .build(),
 
         )
 
         builder.addProperty(
 
             PropertySpec.builder("STRUCT_SIZE", Long::class.asTypeName(), KModifier.INTERNAL).mutable()
-                .initializer("0L").build()
+                .initializer("0L").build(),
 
         )
-
     }
 
-
     private fun resolveAllHandles(init: CodeBlock.Builder, meta: XrossDefinition) {
-
         init.addStatement(
 
             "this.xrossFreeStringHandle = linker.downcallHandle(lookup.find(\"xross_free_string\").get(), %T.ofVoid(%M))",
 
             FunctionDescriptor::class.asTypeName(),
 
-            ADDRESS
+            ADDRESS,
 
         )
-
-
 
         listOf("drop", "layout", "clone").forEach { suffix ->
 
             val symbol = "${meta.symbolPrefix}_$suffix"
 
             val desc = when (suffix) {
-
                 "drop" -> CodeBlock.of("%T.ofVoid(%M)", FunctionDescriptor::class.asTypeName(), ADDRESS)
 
                 "layout" -> CodeBlock.of("%T.of(%M)", FunctionDescriptor::class.asTypeName(), ADDRESS)
 
                 else -> CodeBlock.of("%T.of(%M, %M)", FunctionDescriptor::class.asTypeName(), ADDRESS, ADDRESS)
-
             }
 
             val symbolFound = "lookup.find(%S)"
 
             init.addStatement("this.${suffix}Handle = linker.downcallHandle($symbolFound.get(), %L)", symbol, desc)
-
         }
 
-
-
         if (meta is XrossDefinition.Struct) {
-
             val constructor = meta.methods.find { it.isConstructor && it.name == "new" }
 
             val argLayouts = constructor?.args?.map { CodeBlock.of("%M", it.ty.layoutMember) } ?: emptyList()
 
             val desc = if (argLayouts.isEmpty()) {
-
                 CodeBlock.of("%T.of(%M)", FunctionDescriptor::class.asTypeName(), ADDRESS)
-
             } else {
-
                 CodeBlock.of(
-                    "%T.of(%M, %L)", FunctionDescriptor::class.asTypeName(), ADDRESS, argLayouts.joinToCode(", ")
+                    "%T.of(%M, %L)",
+                    FunctionDescriptor::class.asTypeName(),
+                    ADDRESS,
+                    argLayouts.joinToCode(", "),
                 )
-
             }
 
             init.addStatement(
@@ -264,29 +236,33 @@ object CompanionGenerator {
 
                 "${meta.symbolPrefix}_new",
 
-                desc
+                desc,
 
             )
-            
+
             meta.fields.forEach { field ->
                 if (field.ty is XrossType.RustString) {
                     val baseCamel = field.name.toCamelCase()
                     val getSymbol = "${meta.symbolPrefix}_property_${field.name}_str_get"
                     val setSymbol = "${meta.symbolPrefix}_property_${field.name}_str_set"
-                    
+
                     init.addStatement(
                         "this.${baseCamel}StrGetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.of(%M, %M))",
-                        getSymbol, FunctionDescriptor::class.asTypeName(), ADDRESS, ADDRESS
+                        getSymbol,
+                        FunctionDescriptor::class.asTypeName(),
+                        ADDRESS,
+                        ADDRESS,
                     )
                     init.addStatement(
                         "this.${baseCamel}StrSetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.ofVoid(%M, %M))",
-                        setSymbol, FunctionDescriptor::class.asTypeName(), ADDRESS, ADDRESS
+                        setSymbol,
+                        FunctionDescriptor::class.asTypeName(),
+                        ADDRESS,
+                        ADDRESS,
                     )
                 }
             }
-
         } else if (meta is XrossDefinition.Enum) {
-
             init.addStatement(
 
                 "this.getTagHandle = linker.downcallHandle(lookup.find(%S).get(), %T.of(%M, %M))",
@@ -297,7 +273,7 @@ object CompanionGenerator {
 
                 JAVA_INT,
 
-                ADDRESS
+                ADDRESS,
 
             )
 
@@ -311,7 +287,7 @@ object CompanionGenerator {
 
                 ADDRESS,
 
-                ADDRESS
+                ADDRESS,
 
             )
 
@@ -320,15 +296,14 @@ object CompanionGenerator {
                 val argLayouts = v.fields.map { CodeBlock.of("%M", it.ty.layoutMember) }
 
                 val desc = if (argLayouts.isEmpty()) {
-
                     CodeBlock.of("%T.of(%M)", FunctionDescriptor::class.asTypeName(), ADDRESS)
-
                 } else {
-
                     CodeBlock.of(
-                        "%T.of(%M, %L)", FunctionDescriptor::class.asTypeName(), ADDRESS, argLayouts.joinToCode(", ")
+                        "%T.of(%M, %L)",
+                        FunctionDescriptor::class.asTypeName(),
+                        ADDRESS,
+                        argLayouts.joinToCode(", "),
                     )
-
                 }
 
                 init.addStatement(
@@ -337,15 +312,11 @@ object CompanionGenerator {
 
                     "${meta.symbolPrefix}_new_${v.name}",
 
-                    desc
+                    desc,
 
                 )
-
             }
-
         }
-
-
 
         meta.methods.filter { !it.isConstructor }.forEach { method ->
 
@@ -355,38 +326,19 @@ object CompanionGenerator {
 
             method.args.forEach { args.add(CodeBlock.of("%M", it.ty.layoutMember)) }
 
-
             val desc = if (method.ret is XrossType.Void) {
-
-
                 CodeBlock.of("%T.ofVoid(%L)", FunctionDescriptor::class.asTypeName(), args.joinToCode(", "))
-
-
             } else {
-
-
                 val argsPart = if (args.isEmpty()) CodeBlock.of("") else CodeBlock.of(", %L", args.joinToCode(", "))
 
-
                 val retLayout = when (method.ret) {
-
-
                     is XrossType.Result -> XROSS_RESULT_LAYOUT
 
-
                     else -> CodeBlock.of("%M", method.ret.layoutMember)
-
-
                 }
 
-
-
                 CodeBlock.of("%T.of(%L%L)", FunctionDescriptor::class.asTypeName(), retLayout, argsPart)
-
-
             }
-
-
 
             init.addStatement(
 
@@ -394,250 +346,107 @@ object CompanionGenerator {
 
                 method.symbol,
 
-                desc
+                desc,
 
             )
-
         }
-
     }
 
-
     private fun buildStructLayoutInit(init: CodeBlock.Builder, meta: XrossDefinition.Struct) {
-
-
         init.addStatement("val layouts = mutableListOf<%T>()", MEMORY_LAYOUT)
-
-
 
         init.addStatement("var currentOffsetPos = 0L")
 
-
-
         init.addStatement("val matchedFields = mutableSetOf<String>()")
 
-
-
-
-
-
-
         init.beginControlFlow("for (i in 1 until parts.size)")
-
-
             .addStatement("val f = parts[i].split(':')")
-
-
             .addStatement("if (f.size < 3) continue")
-
-
             .addStatement("val fName = f[0]; val fOffset = f[1].toLong(); val fSize = f[2].toLong()")
-
-
             .beginControlFlow("if (fOffset > currentOffsetPos)")
-
-
             .addStatement("layouts.add(%T.paddingLayout(fOffset - currentOffsetPos))", MEMORY_LAYOUT)
-
-
             .addStatement("currentOffsetPos = fOffset")
-
-
             .endControlFlow()
-
-
             .beginControlFlow("if (fName in matchedFields)")
-
-
             .addStatement("continue")
-
-
             .endControlFlow()
-
-
-
-
-
-
 
         meta.fields.forEachIndexed { idx, field ->
 
-
             val branch = if (idx == 0) "if" else "else if"
-
-
 
             init.beginControlFlow("$branch (fName == %S)", field.name)
 
-
             val kotlinSize = when (field.ty) {
-
-
                 is XrossType.I32, is XrossType.F32 -> 4L
-
 
                 is XrossType.I64, is XrossType.F64, is XrossType.Pointer, is XrossType.RustString -> 8L
 
-
                 is XrossType.Bool, is XrossType.I8 -> 1L
-
 
                 is XrossType.I16, is XrossType.U16 -> 2L
 
-
                 else -> 8L
-
-
             }
-
 
             val alignmentCode = if (field.safety == XrossThreadSafety.Atomic) "" else ".withByteAlignment(1)"
 
-
-
-
-
-
-
             if (field.ty is XrossType.Object && field.ty.ownership == XrossType.Ownership.Owned) {
-
-
                 init.addStatement("layouts.add(%T.paddingLayout(fSize).withName(%S))", MEMORY_LAYOUT, field.name)
-
-
             } else {
-
-
                 init.addStatement("layouts.add(%M.withName(%S)%L)", field.ty.layoutMember, field.name, alignmentCode)
 
-
-
                 init.beginControlFlow("if (fSize > $kotlinSize)")
-
-
                     .addStatement("layouts.add(%T.paddingLayout(fSize - $kotlinSize))", MEMORY_LAYOUT)
-
-
                     .endControlFlow()
-
-
             }
-
-
-
-
-
-
 
             init.addStatement("this.OFFSET_${field.name.toCamelCase()} = fOffset")
 
-
-
             if (!(field.ty is XrossType.Object && field.ty.ownership == XrossType.Ownership.Owned)) {
-
-
                 init.addStatement("this.VH_${field.name.toCamelCase()} = %M.varHandle()", field.ty.layoutMember)
-
-
             }
-
-
-
-
-
-
 
             init.addStatement("currentOffsetPos = fOffset + fSize")
 
-
-
             init.addStatement("matchedFields.add(fName)")
-
-
                 .endControlFlow()
-
-
         }
 
-
-
-
-
-
-
         init.beginControlFlow("else")
-
-
             .addStatement("layouts.add(%T.paddingLayout(fSize))", MEMORY_LAYOUT)
-
-
             .addStatement("currentOffsetPos = fOffset + fSize")
-
-
             .endControlFlow()
-
-
-
-
-
-
 
         init.endControlFlow() // end for parts
 
-
         init.beginControlFlow("if (currentOffsetPos < STRUCT_SIZE)")
-
-
             .addStatement("layouts.add(%T.paddingLayout(STRUCT_SIZE - currentOffsetPos))", MEMORY_LAYOUT)
-
-
             .endControlFlow()
-
-
-
-
-
-
 
         init.addStatement(
             "this.LAYOUT = if (layouts.isEmpty()) %T.structLayout(%T.paddingLayout(STRUCT_SIZE)) else %T.structLayout(*layouts.toTypedArray())",
             MEMORY_LAYOUT,
             MEMORY_LAYOUT,
-            MEMORY_LAYOUT
+            MEMORY_LAYOUT,
         )
-
-
     }
 
-
     private fun buildEnumLayoutInit(init: CodeBlock.Builder, meta: XrossDefinition.Enum) {
-
         init.addStatement("val variantRegex = %T(%S)", Regex::class.asTypeName(), "(\\w+)(?:\\{(.*)})?")
-
             .beginControlFlow("for (i in 1 until parts.size)")
-
             .addStatement("val match = variantRegex.find(parts[i]) ?: continue")
-
             .addStatement("val vName = match.groupValues[1]")
-
             .addStatement("val vFields = match.groupValues[2]")
-
 
         val anyVariantHasFields = meta.variants.any { it.fields.isNotEmpty() }
 
         if (anyVariantHasFields) {
-
             init.beginControlFlow("if (vFields.isNotEmpty())")
-
                 .beginControlFlow("for (fInfo in vFields.split(';'))")
-
                 .addStatement("if (fInfo.isBlank()) continue")
-
                 .addStatement("val f = fInfo.split(':')")
-
                 .addStatement("val fName = f[0]; val fOffsetL = f[1].toLong(); val fSizeL = f[2].toLong()")
-
-
 
             meta.variants.filter { it.fields.isNotEmpty() }.forEach { variant ->
 
@@ -646,14 +455,10 @@ object CompanionGenerator {
                 variant.fields.forEach { field ->
 
                     init.beginControlFlow("if (fName == %S)", field.name)
-
                         .addStatement("val vLayouts = mutableListOf<%T>()", MEMORY_LAYOUT)
-
                         .addStatement("if (fOffsetL > 0) vLayouts.add(%T.paddingLayout(fOffsetL))", MEMORY_LAYOUT)
 
-
                     val kotlinSize = when (field.ty) {
-
                         is XrossType.I32, is XrossType.F32 -> 4L
 
                         is XrossType.I64, is XrossType.F64, is XrossType.Pointer, is XrossType.RustString -> 8L
@@ -663,94 +468,42 @@ object CompanionGenerator {
                         is XrossType.I16, is XrossType.U16 -> 2L
 
                         else -> 8L
-
                     }
 
-
-
                     if (field.ty is XrossType.Object && field.ty.ownership == XrossType.Ownership.Owned) {
-
-
                         init.addStatement("vLayouts.add(%T.paddingLayout(fSizeL).withName(fName))", MEMORY_LAYOUT)
-
-
                     } else {
-
-
                         val alignmentCode =
                             if (field.safety == XrossThreadSafety.Atomic) "" else ".withByteAlignment(1)"
 
-
-
                         init.addStatement("vLayouts.add(%M.withName(fName)%L)", field.ty.layoutMember, alignmentCode)
 
-
-
                         init.beginControlFlow("if (fSizeL > $kotlinSize)")
-
-
                             .addStatement("vLayouts.add(%T.paddingLayout(fSizeL - $kotlinSize))", MEMORY_LAYOUT)
-
-
                             .endControlFlow()
-
-
                     }
 
-
-
-
-
-
-
                     init.addStatement("val remaining = STRUCT_SIZE - fOffsetL - fSizeL")
-
                         .addStatement("if (remaining > 0) vLayouts.add(%T.paddingLayout(remaining))", MEMORY_LAYOUT)
-
                         .addStatement("val vLayout = %T.structLayout(*vLayouts.toTypedArray())", MEMORY_LAYOUT)
-
-
 
                     init.addStatement(
 
-
-                        "this.OFFSET_${variant.name}_${field.name.toCamelCase()} = fOffsetL"
-
+                        "this.OFFSET_${variant.name}_${field.name.toCamelCase()} = fOffsetL",
 
                     )
 
-
-
-
-
-
-
                     if (!(field.ty is XrossType.Object && field.ty.ownership == XrossType.Ownership.Owned)) {
-
-
                         init.addStatement(
-
 
                             "this.VH_${variant.name}_${field.name.toCamelCase()} = %M.varHandle()",
 
-
-                            field.ty.layoutMember
-
+                            field.ty.layoutMember,
 
                         )
-
-
                     }
 
-
-
-
-
-
-
                     init.endControlFlow()
-
-
                 }
                 init.endControlFlow()
             }
@@ -762,9 +515,7 @@ object CompanionGenerator {
             "this.LAYOUT = if (STRUCT_SIZE > 0) %T.structLayout(%T.paddingLayout(STRUCT_SIZE)) else %T.structLayout()",
             MEMORY_LAYOUT,
             MEMORY_LAYOUT,
-            MEMORY_LAYOUT
+            MEMORY_LAYOUT,
         )
     }
-
-
 }

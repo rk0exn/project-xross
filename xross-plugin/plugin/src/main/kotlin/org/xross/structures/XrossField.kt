@@ -7,5 +7,5 @@ data class XrossField(
     val name: String,
     val ty: XrossType,
     val safety: XrossThreadSafety,
-    val docs: List<String> = emptyList()
+    val docs: List<String> = emptyList(),
 )

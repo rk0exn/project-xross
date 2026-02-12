@@ -15,5 +15,5 @@ data class XrossMethod(
     val args: List<XrossField>,
     val ret: XrossType,
     val safety: XrossThreadSafety,
-    val docs: List<String> = emptyList()
+    val docs: List<String> = emptyList(),
 )

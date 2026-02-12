@@ -6,5 +6,5 @@ import kotlinx.serialization.Serializable
 data class XrossVariant(
     val name: String,
     val fields: List<XrossField> = emptyList(),
-    val docs: List<String> = emptyList()
+    val docs: List<String> = emptyList(),
 )

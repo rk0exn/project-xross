@@ -1,13 +1,12 @@
 package org.xross
 
-import java.io.File
-import kotlin.test.assertTrue
-import kotlin.test.Test
 import org.gradle.testkit.runner.GradleRunner
 import org.junit.jupiter.api.io.TempDir
+import java.io.File
+import kotlin.test.Test
+import kotlin.test.assertTrue
 
 class XrossPluginFunctionalTest {
-
     @field:TempDir
     lateinit var projectDir: File
 
@@ -22,7 +21,8 @@ class XrossPluginFunctionalTest {
         // メタデータJSONのダミーを配置 (target/xross/MyStruct.json)
         val metaDir = rustProjectDir.resolve("target/xross")
         metaDir.mkdirs()
-        metaDir.resolve("MyStruct.json").writeText("""
+        metaDir.resolve("MyStruct.json").writeText(
+            """
             {
               "kind": "struct",
               "signature": "org.xross.generated.MyStruct",
@@ -51,11 +51,13 @@ class XrossPluginFunctionalTest {
               ],
               "docs": []
             }
-        """.trimIndent())
+            """.trimIndent(),
+        )
 
         // セットアップ
         settingsFile.writeText("rootProject.name = \"xross-test\"")
-        buildFile.writeText("""
+        buildFile.writeText(
+            """
             plugins {
                 id("org.xross")
             }
@@ -64,7 +66,8 @@ class XrossPluginFunctionalTest {
                 rustProjectDir = "rust-lib"
                 packageName = "org.xross.generated"
             }
-        """.trimIndent())
+            """.trimIndent(),
+        )
 
         // タスクの実行
         val runner = GradleRunner.create()

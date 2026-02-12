@@ -12,7 +12,11 @@ import org.gradle.workers.WorkerExecutor
 import javax.inject.Inject
 
 // --- 並列実行タスク ---
-abstract class GenerateXrossTask @Inject constructor(private val workerExecutor: WorkerExecutor) : DefaultTask() {
+abstract class GenerateXrossTask
+@Inject
+constructor(
+    private val workerExecutor: WorkerExecutor,
+) : DefaultTask() {
     @get:InputDirectory
     @get:Optional
     abstract val metadataDir: DirectoryProperty

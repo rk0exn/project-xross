@@ -12,6 +12,17 @@ plugins {
     // Apply the Kotlin JVM plugin to add support for Kotlin.
     alias(libs.plugins.kotlin.serialization)
     kotlin("jvm") version "2.3.10"
+    alias(libs.plugins.spotless)
+}
+
+configure<com.diffplug.gradle.spotless.SpotlessExtension> {
+    kotlin {
+        target("src/**/*.kt")
+        ktlint().editorConfigOverride(mapOf("ktlint_standard_no-wildcard-imports" to "disabled"))
+        trimTrailingWhitespace()
+        leadingTabsToSpaces()
+        endWithNewline()
+    }
 }
 
 repositories {

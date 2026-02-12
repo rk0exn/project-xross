@@ -4,7 +4,9 @@ import kotlinx.serialization.json.Json
 import org.xross.structures.XrossDefinition
 import java.io.File
 
-class TypeResolver(metadataDir: File) {
+class TypeResolver(
+    metadataDir: File,
+) {
     private val shortNameToFqn = mutableMapOf<String, MutableSet<String>>()
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -23,7 +25,10 @@ class TypeResolver(metadataDir: File) {
         }
     }
 
-    fun resolve(signature: String, context: String = "Unknown"): String {
+    fun resolve(
+        signature: String,
+        context: String = "Unknown",
+    ): String {
         // すでにドットが含まれている場合は解決済みとみなす
         if (signature.contains('.')) return signature
 
@@ -32,21 +37,21 @@ class TypeResolver(metadataDir: File) {
             0 -> {
                 throw RuntimeException(
                     "\n[Xross Error] Failed to resolve type: '$signature'\n" +
-                    "Context: $context\n" +
-                    "Possible solutions:\n" +
-                    "1. Ensure the target type has #[derive(JvmClass)] or opaque_class!.\n" +
-                    "2. If the type is in another crate, ensure its metadata is available.\n"
+                        "Context: $context\n" +
+                        "Possible solutions:\n" +
+                        "1. Ensure the target type has #[derive(JvmClass)] or opaque_class!.\n" +
+                        "2. If the type is in another crate, ensure its metadata is available.\n",
                 )
             }
             1 -> candidates.first()
             else -> {
                 throw RuntimeException(
                     "\n[Xross Error] Ambiguous type reference: '$signature'\n" +
-                    "Context: $context\n" +
-                    "Multiple types with the same name were found in different packages:\n" +
-                    candidates.joinToString("\n") { "  - $it" } +
-                    "\nPlease use an explicit signature in Rust, for example:\n" +
-                    "#[xross(struct = \"${candidates.first()}\")]\n"
+                        "Context: $context\n" +
+                        "Multiple types with the same name were found in different packages:\n" +
+                        candidates.joinToString("\n") { "  - $it" } +
+                        "\nPlease use an explicit signature in Rust, for example:\n" +
+                        "#[xross(struct = \"${candidates.first()}\")]\n",
                 )
             }
         }

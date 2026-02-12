@@ -1,6 +1,6 @@
 use std::ffi::c_void;
 
-pub use xross_macros::{XrossClass, xross_class, opaque_class};
+pub use xross_macros::{XrossClass, opaque_class, xross_class};
 
 #[repr(C)]
 pub struct XrossResult {

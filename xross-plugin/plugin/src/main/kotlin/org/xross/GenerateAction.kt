@@ -20,11 +20,12 @@ abstract class GenerateAction : WorkAction<GenerateParameters> {
         val subPackage = meta.packageName
 
         // 3. フルパッケージ名を生成 (org.example.test.test2)
-        val fullPackage = if (subPackage.isBlank()) {
-            basePackage
-        } else {
-            "$basePackage.$subPackage"
-        }
+        val fullPackage =
+            if (subPackage.isBlank()) {
+                basePackage
+            } else {
+                "$basePackage.$subPackage"
+            }
 
         // 4. 【重要】ディレクトリは「パッケージ階層を含めないベース」を渡す
         // Generator側が内部で fullPackage.replace('.', '/') を実行している前提です
@@ -34,7 +35,7 @@ abstract class GenerateAction : WorkAction<GenerateParameters> {
             meta,
             outputBaseDir, // ここで掘り進めない
             fullPackage,
-            resolver
+            resolver,
         )
     }
 }

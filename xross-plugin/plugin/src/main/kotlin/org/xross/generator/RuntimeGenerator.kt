@@ -9,45 +9,59 @@ object RuntimeGenerator {
 
     fun generate(outputDir: File, basePackage: String) {
         val pkg = "$basePackage.xross.runtime"
-        
+
         // --- XrossException ---
         val xrossException = TypeSpec.classBuilder("XrossException")
             .superclass(Throwable::class)
-            .primaryConstructor(FunSpec.constructorBuilder()
-                .addParameter("error", Any::class)
-                .build())
+            .primaryConstructor(
+                FunSpec.constructorBuilder()
+                    .addParameter("error", Any::class)
+                    .build(),
+            )
             .addProperty(PropertySpec.builder("error", Any::class).initializer("error").build())
             .build()
 
         // --- AliveFlag ---
         val aliveFlag = TypeSpec.classBuilder("AliveFlag")
-            .primaryConstructor(FunSpec.constructorBuilder()
-                .addParameter("initial", Boolean::class)
-                .addParameter(ParameterSpec.builder("parent", ClassName(pkg, "AliveFlag").copy(nullable = true)).defaultValue("null").build())
-                .build())
+            .primaryConstructor(
+                FunSpec.constructorBuilder()
+                    .addParameter("initial", Boolean::class)
+                    .addParameter(ParameterSpec.builder("parent", ClassName(pkg, "AliveFlag").copy(nullable = true)).defaultValue("null").build())
+                    .build(),
+            )
             .addProperty(PropertySpec.builder("parent", ClassName(pkg, "AliveFlag").copy(nullable = true), KModifier.PRIVATE).initializer("parent").build())
-            .addProperty(PropertySpec.builder("_isValid", ClassName("java.util.concurrent.atomic", "AtomicBoolean"), KModifier.PRIVATE)
-                .initializer("java.util.concurrent.atomic.AtomicBoolean(initial)").build())
-            .addProperty(PropertySpec.builder("isValid", Boolean::class)
-                .getter(FunSpec.getterBuilder().addStatement("return _isValid.get() && (parent?.isValid ?: true)").build())
-                .build())
-            .addFunction(FunSpec.builder("invalidate")
-                .addStatement("_isValid.set(false)").build())
-            .addFunction(FunSpec.builder("tryInvalidate")
-                .returns(Boolean::class)
-                .addStatement("return _isValid.compareAndSet(true, false)").build())
+            .addProperty(
+                PropertySpec.builder("_isValid", ClassName("java.util.concurrent.atomic", "AtomicBoolean"), KModifier.PRIVATE)
+                    .initializer("java.util.concurrent.atomic.AtomicBoolean(initial)").build(),
+            )
+            .addProperty(
+                PropertySpec.builder("isValid", Boolean::class)
+                    .getter(FunSpec.getterBuilder().addStatement("return _isValid.get() && (parent?.isValid ?: true)").build())
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("invalidate")
+                    .addStatement("_isValid.set(false)").build(),
+            )
+            .addFunction(
+                FunSpec.builder("tryInvalidate")
+                    .returns(Boolean::class)
+                    .addStatement("return _isValid.compareAndSet(true, false)").build(),
+            )
             .build()
 
         // --- XrossAsync ---
         val xrossAsync = TypeSpec.objectBuilder("XrossAsync")
-            .addFunction(FunSpec.builder("awaitFuture")
-                .addModifiers(KModifier.SUSPEND)
-                .addTypeVariable(TypeVariableName("T"))
-                .addParameter("futurePtr", MEMORY_SEGMENT)
-                .addParameter("pollFunc", LambdaTypeName.get(null, MEMORY_SEGMENT, returnType = MEMORY_SEGMENT))
-                .addParameter("mapper", LambdaTypeName.get(null, MEMORY_SEGMENT, returnType = TypeVariableName("T")))
-                .returns(TypeVariableName("T"))
-                .addCode("""
+            .addFunction(
+                FunSpec.builder("awaitFuture")
+                    .addModifiers(KModifier.SUSPEND)
+                    .addTypeVariable(TypeVariableName("T"))
+                    .addParameter("futurePtr", MEMORY_SEGMENT)
+                    .addParameter("pollFunc", LambdaTypeName.get(null, MEMORY_SEGMENT, returnType = MEMORY_SEGMENT))
+                    .addParameter("mapper", LambdaTypeName.get(null, MEMORY_SEGMENT, returnType = TypeVariableName("T")))
+                    .returns(TypeVariableName("T"))
+                    .addCode(
+                        """
                     while (true) {
                         val result = pollFunc(futurePtr)
                         if (result != %T.NULL) {
@@ -55,8 +69,11 @@ object RuntimeGenerator {
                         }
                         kotlinx.coroutines.delay(1)
                     }
-                """.trimIndent(), MEMORY_SEGMENT)
-                .build())
+                        """.trimIndent(),
+                        MEMORY_SEGMENT,
+                    )
+                    .build(),
+            )
             .build()
 
         val file = FileSpec.builder(pkg, "XrossRuntime")
@@ -65,7 +82,7 @@ object RuntimeGenerator {
             .addType(aliveFlag)
             .addType(xrossAsync)
             .build()
-        
+
         val content = XrossGenerator.cleanupPublic(file.toString())
         val fileDir = outputDir.resolve(pkg.replace('.', '/'))
         if (!fileDir.exists()) fileDir.mkdirs()

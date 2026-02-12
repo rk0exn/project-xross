@@ -9,7 +9,6 @@ import kotlinx.serialization.json.JsonClassDiscriminator
 @Serializable
 @JsonClassDiscriminator("kind")
 sealed class XrossDefinition {
-
     abstract val signature: String
     abstract val symbolPrefix: String
     abstract val packageName: String
@@ -28,7 +27,7 @@ sealed class XrossDefinition {
         val fields: List<XrossField> = emptyList(),
         override val methods: List<XrossMethod> = emptyList(),
         override val docs: List<String> = emptyList(),
-        override val isCopy: Boolean = false
+        override val isCopy: Boolean = false,
     ) : XrossDefinition()
 
     @Serializable
@@ -41,7 +40,7 @@ sealed class XrossDefinition {
         val variants: List<XrossVariant> = emptyList(),
         override val methods: List<XrossMethod> = emptyList(),
         override val docs: List<String> = emptyList(),
-        override val isCopy: Boolean = false
+        override val isCopy: Boolean = false,
     ) : XrossDefinition()
 
     @Serializable
@@ -55,6 +54,6 @@ sealed class XrossDefinition {
         override val methods: List<XrossMethod> = emptyList(),
         override val docs: List<String> = emptyList(),
         val isClonable: Boolean = true,
-        override val isCopy: Boolean = false
+        override val isCopy: Boolean = false,
     ) : XrossDefinition()
 }

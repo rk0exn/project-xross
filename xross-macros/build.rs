@@ -4,7 +4,7 @@ use std::path::PathBuf;
 fn main() {
     // 1. 手動設定の環境変数を最優先
     let mut xross_dir = None;
-    
+
     if let Ok(val) = std::env::var("XROSS_METADATA_DIR") {
         xross_dir = Some(PathBuf::from(val));
     }

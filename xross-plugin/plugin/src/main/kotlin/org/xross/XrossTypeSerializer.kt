@@ -26,7 +26,7 @@ object XrossTypeSerializer : KSerializer<XrossType> {
         "F32" to XrossType.F32,
         "F64" to XrossType.F64,
         "Pointer" to XrossType.Pointer,
-        "String" to XrossType.RustString
+        "String" to XrossType.RustString,
     )
 
     override fun deserialize(decoder: Decoder): XrossType {
@@ -54,7 +54,7 @@ object XrossTypeSerializer : KSerializer<XrossType> {
                         val obj = body.jsonObject
                         XrossType.Result(
                             deserializeRecursive(obj["ok"]!!),
-                            deserializeRecursive(obj["err"]!!)
+                            deserializeRecursive(obj["err"]!!),
                         )
                     }
                     "Async" -> XrossType.Async(deserializeRecursive(body))
@@ -66,9 +66,7 @@ object XrossTypeSerializer : KSerializer<XrossType> {
         }
     }
 
-    private fun deserializeRecursive(element: JsonElement): XrossType {
-        return Json.decodeFromJsonElement(this, element)
-    }
+    private fun deserializeRecursive(element: JsonElement): XrossType = Json.decodeFromJsonElement(this, element)
 
     override fun serialize(encoder: Encoder, value: XrossType) {
         val jsonOutput = encoder as? JsonEncoder ?: throw IllegalStateException("Only JSON is supported")
@@ -96,7 +94,5 @@ object XrossTypeSerializer : KSerializer<XrossType> {
         jsonOutput.encodeJsonElement(element)
     }
 
-    private fun serializeRecursive(type: XrossType): JsonElement {
-        return Json.encodeToJsonElement(this, type)
-    }
+    private fun serializeRecursive(type: XrossType): JsonElement = Json.encodeToJsonElement(this, type)
 }

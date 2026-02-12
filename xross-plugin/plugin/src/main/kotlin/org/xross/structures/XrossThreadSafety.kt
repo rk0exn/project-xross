@@ -7,5 +7,5 @@ enum class XrossThreadSafety {
     Unsafe,
     Lock,
     Atomic,
-    Immutable
+    Immutable,
 }

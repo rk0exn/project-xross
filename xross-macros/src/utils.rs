@@ -153,11 +153,7 @@ pub fn discover_signature(type_name: &str) -> Option<String> {
             Please use an explicit signature to disambiguate, for example:\n\
             #[xross(struct = \"full.package.Name\")]\n",
             type_name,
-            candidates
-                .iter()
-                .map(|s| format!("  - {}", s))
-                .collect::<Vec<_>>()
-                .join("\n")
+            candidates.iter().map(|s| format!("  - {}", s)).collect::<Vec<_>>().join("\n")
         );
     } else {
         None
@@ -199,10 +195,7 @@ pub fn extract_docs(attrs: &[Attribute]) -> Vec<String> {
         .filter(|a| a.path().is_ident("doc"))
         .filter_map(|a| {
             if let Meta::NameValue(nv) = &a.meta {
-                if let Expr::Lit(ExprLit {
-                    lit: Lit::Str(s), ..
-                }) = &nv.value
-                {
+                if let Expr::Lit(ExprLit { lit: Lit::Str(s), .. }) = &nv.value {
                     return Some(s.value().trim().to_string());
                 }
             }
@@ -239,12 +232,7 @@ pub fn build_symbol_base(crate_name: &str, package: &str, type_name: &str) -> St
     if package.is_empty() {
         format!("{}_{}", crate_name, type_snake)
     } else {
-        format!(
-            "{}_{}_{}",
-            crate_name,
-            package.replace(".", "_"),
-            type_snake
-        )
+        format!("{}_{}_{}", crate_name, package.replace(".", "_"), type_snake)
     }
 }
 
@@ -304,20 +292,13 @@ pub fn resolve_type_with_attr(
 
     let (inner_ty, mut ownership) = match ty {
         Type::Reference(r) => {
-            let ow = if r.mutability.is_some() {
-                Ownership::MutRef
-            } else {
-                Ownership::Ref
-            };
+            let ow = if r.mutability.is_some() { Ownership::MutRef } else { Ownership::Ref };
             (&*r.elem, ow)
         }
         _ => (ty, Ownership::Owned),
     };
 
-    if let XrossType::Object {
-        ownership: base_ow, ..
-    } = &base_ty
-    {
+    if let XrossType::Object { ownership: base_ow, .. } = &base_ty {
         if *base_ow == Ownership::Boxed {
             ownership = Ownership::Boxed;
         }
@@ -357,10 +338,7 @@ pub fn resolve_type_with_attr(
                 } else {
                     format!("{}.{}", current_pkg, ident)
                 };
-                return XrossType::Object {
-                    signature: sig,
-                    ownership: ownership.clone(),
-                };
+                return XrossType::Object { signature: sig, ownership: ownership.clone() };
             }
         }
     }
@@ -368,10 +346,7 @@ pub fn resolve_type_with_attr(
     let mut final_ty = map_type(inner_ty);
 
     match &mut final_ty {
-        XrossType::Object {
-            ownership: o,
-            signature,
-        } => {
+        XrossType::Object { ownership: o, signature } => {
             if ownership != Ownership::Owned {
                 *o = ownership;
             }
@@ -446,11 +421,8 @@ pub fn generate_enum_layout(e: &syn::ItemEnum) -> proc_macro2::TokenStream {
                     quote! { #v_name . #index }
                 };
 
-                let f_display_name = field
-                    .ident
-                    .as_ref()
-                    .map(|id| id.to_string())
-                    .unwrap_or_else(|| i.to_string());
+                let f_display_name =
+                    field.ident.as_ref().map(|id| id.to_string()).unwrap_or_else(|| i.to_string());
 
                 fields_info.push(quote! {
                     {

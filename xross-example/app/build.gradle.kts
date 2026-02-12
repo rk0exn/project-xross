@@ -11,7 +11,19 @@ plugins {
     id("org.xross") version "1.0.0"
     // Apply the application plugin to add support for building a CLI application in Java.
     application
+    alias(libs.plugins.spotless)
 }
+
+configure<com.diffplug.gradle.spotless.SpotlessExtension> {
+    kotlin {
+        target("src/**/*.kt")
+        ktlint().editorConfigOverride(mapOf("ktlint_standard_no-wildcard-imports" to "disabled"))
+        trimTrailingWhitespace()
+        leadingTabsToSpaces()
+        endWithNewline()
+    }
+}
+
 xross{
     rustProjectDir = "../rust"
     packageName = "org.example"

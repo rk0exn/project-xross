@@ -43,7 +43,7 @@ object PropertyGenerator {
 
                 val propBuilder = PropertySpec.builder(escapedName, kType)
                     .mutable(isMutable)
-                    .getter(buildGetter(field, vhName, kType, backingFieldName, selfType, basePackage)) 
+                    .getter(buildGetter(field, vhName, kType, backingFieldName, selfType, basePackage))
 
                 if (isMutable) propBuilder.setter(buildSetter(field, vhName, kType, backingFieldName, selfType, basePackage))
                 classBuilder.addProperty(propBuilder.build())
@@ -72,12 +72,15 @@ object PropertyGenerator {
 
                 readCodeBuilder.addStatement(
                     "val resSeg = resolveFieldSegment(this.segment, if (%L) null else $vhName, OFFSET_$baseName, %L, %L)",
-                    isOwned, sizeExpr, isOwned
+                    isOwned,
+                    sizeExpr,
+                    isOwned,
                 )
-                
+
                 readCodeBuilder.addStatement(
                     "res = %L(resSeg, this.autoArena, sharedFlag = %T(true, this.aliveFlag))",
-                    fromPointerExpr, aliveFlagType
+                    fromPointerExpr,
+                    aliveFlagType,
                 )
                 readCodeBuilder.addStatement("this.$backingFieldName = %T(res)", WeakReference::class.asTypeName())
                 readCodeBuilder.endControlFlow()
@@ -86,16 +89,16 @@ object PropertyGenerator {
             is XrossType.RustString -> {
                 readCodeBuilder.addStatement(
                     "val rawSegment = Companion.${baseName}StrGetHandle.invokeExact(this.segment) as %T",
-                    MemorySegment::class
+                    MemorySegment::class,
                 )
                 readCodeBuilder.addStatement(
                     "res = if (rawSegment == %T.NULL) \"\" else rawSegment.reinterpret(%T.MAX_VALUE).getString(0)",
                     MemorySegment::class,
-                    Long::class
+                    Long::class,
                 )
                 readCodeBuilder.addStatement(
                     "if (rawSegment != %T.NULL) Companion.xrossFreeStringHandle.invokeExact(rawSegment)",
-                    MemorySegment::class
+                    MemorySegment::class,
                 )
             }
 
@@ -110,13 +113,16 @@ object PropertyGenerator {
             %L
             if (!this.sl.validate(stamp)) {
                 stamp = this.sl.readLock()
-                try { 
+                try {
                     // Pessimistic read
                     %L
                 } finally { this.sl.unlockRead(stamp) }
             }
             return res
-        """.trimIndent(), kType, readCodeBuilder.build(), readCodeBuilder.build()
+            """.trimIndent(),
+            kType,
+            readCodeBuilder.build(),
+            readCodeBuilder.build(),
         ).build()
     }
     private fun buildSetter(field: XrossField, vhName: String, kType: TypeName, backingFieldName: String?, selfType: ClassName, basePackage: String): FunSpec {
@@ -125,7 +131,7 @@ object PropertyGenerator {
             "if (this.segment == %T.NULL || !this.aliveFlag.isValid) throw %T(%S)",
             MemorySegment::class,
             NullPointerException::class,
-            "Attempted to set field '${field.name}' on a NULL or invalid native object"
+            "Attempted to set field '${field.name}' on a NULL or invalid native object",
         )
 
         val isSelf = kType == selfType
@@ -145,14 +151,14 @@ object PropertyGenerator {
                     "if (v.segment == %T.NULL || !v.aliveFlag.isValid) throw %T(%S)",
                     MemorySegment::class,
                     NullPointerException::class,
-                    "Cannot set field '${field.name}' with a NULL or invalid native reference"
+                    "Cannot set field '${field.name}' with a NULL or invalid native reference",
                 )
 
                 if (field.ty.ownership == XrossType.Ownership.Owned) {
                     val sizeExpr = if (isSelf) "STRUCT_SIZE" else "%T.STRUCT_SIZE"
                     writeCodeBuilder.addStatement(
                         "this.segment.asSlice($offsetName, $sizeExpr).copyFrom(v.segment)",
-                        *(if (isSelf) emptyArray() else arrayOf(kType))
+                        *(if (isSelf) emptyArray() else arrayOf(kType)),
                     )
                 } else {
                     writeCodeBuilder.addStatement("$vhName.set(this.segment, $offsetName, v.segment)")
@@ -170,7 +176,8 @@ object PropertyGenerator {
             """
         val stamp = this.sl.writeLock()
         try { %L } finally { this.sl.unlockWrite(stamp) }
-    """.trimIndent(), writeCodeBuilder.build()
+            """.trimIndent(),
+            writeCodeBuilder.build(),
         ).build()
     }
     private fun generateAtomicProperty(
@@ -178,7 +185,7 @@ object PropertyGenerator {
         baseName: String,
         escapedName: String,
         vhName: String,
-        kType: TypeName
+        kType: TypeName,
     ) {
         val innerClassName = "AtomicFieldOf${baseName.replaceFirstChar { it.uppercase() }}"
         val offsetName = "OFFSET_$baseName"
@@ -188,8 +195,8 @@ object PropertyGenerator {
                     .getter(
                         FunSpec.getterBuilder()
                             .addStatement("return $vhName.getVolatile(this@${className(classBuilder)}.segment, $offsetName) as %T", kType)
-                            .build()
-                    ).build()
+                            .build(),
+                    ).build(),
             )
             .addFunction(
                 FunSpec.builder("update")
@@ -204,12 +211,12 @@ object PropertyGenerator {
                     .nextControlFlow("catch (e: %T)", Throwable::class)
                     .addStatement("throw e")
                     .endControlFlow()
-                    .endControlFlow().build()
+                    .endControlFlow().build(),
             )
             .build()
         classBuilder.addType(innerClass)
         classBuilder.addProperty(
-            PropertySpec.builder(escapedName, ClassName("", innerClassName)).initializer("%L()", innerClassName).build()
+            PropertySpec.builder(escapedName, ClassName("", innerClassName)).initializer("%L()", innerClassName).build(),
         )
     }
 

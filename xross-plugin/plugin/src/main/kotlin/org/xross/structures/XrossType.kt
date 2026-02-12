@@ -1,7 +1,6 @@
 package org.xross.structures
 
 import com.squareup.kotlinpoet.*
-import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import kotlinx.serialization.Serializable
 import org.xross.XrossTypeSerializer
 

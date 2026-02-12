@@ -24,34 +24,34 @@ object OpaqueGenerator {
                 .addParameter("autoArena", ClassName("java.lang.foreign", "Arena"))
                 .addParameter(
                     ParameterSpec.builder("confinedArena", ClassName("java.lang.foreign", "Arena").copy(nullable = true))
-                        .defaultValue("null").build()
+                        .defaultValue("null").build(),
                 )
                 .addParameter(
                     ParameterSpec.builder("sharedFlag", aliveFlagType.copy(nullable = true))
-                        .defaultValue("null").build()
+                        .defaultValue("null").build(),
                 )
-                .build()
+                .build(),
         )
         classBuilder.addProperty(
             PropertySpec.builder("autoArena", ClassName("java.lang.foreign", "Arena"), KModifier.INTERNAL)
                 .initializer("autoArena")
-                .build()
+                .build(),
         )
         classBuilder.addProperty(
             PropertySpec.builder("confinedArena", ClassName("java.lang.foreign", "Arena").copy(nullable = true), KModifier.INTERNAL)
                 .initializer("confinedArena")
-                .build()
+                .build(),
         )
         classBuilder.addProperty(
             PropertySpec.builder("aliveFlag", aliveFlagType, KModifier.INTERNAL)
                 .initializer(CodeBlock.of("sharedFlag ?: %T(true)", aliveFlagType))
-                .build()
+                .build(),
         )
         classBuilder.addProperty(
             PropertySpec.builder("segment", MemorySegment::class, KModifier.INTERNAL)
                 .mutable()
                 .initializer("raw")
-                .build()
+                .build(),
         )
 
         // --- clone メソッド ---
@@ -70,7 +70,7 @@ object OpaqueGenerator {
                     .nextControlFlow("catch (e: Throwable)")
                     .addStatement("throw RuntimeException(e)")
                     .endControlFlow()
-                    .build()
+                    .build(),
             )
         }
 
@@ -87,7 +87,7 @@ object OpaqueGenerator {
                 .endControlFlow()
                 .endControlFlow()
                 .endControlFlow()
-                .build()
+                .build(),
         )
 
         // --- relinquish メソッド ---
@@ -98,7 +98,7 @@ object OpaqueGenerator {
                 .addStatement("segment = MemorySegment.NULL")
                 .addStatement("aliveFlag.invalidate()")
                 .endControlFlow()
-                .build()
+                .build(),
         )
 
         // --- Companion Object ---
@@ -114,9 +114,9 @@ object OpaqueGenerator {
             .returns(ClassName(targetPackage, className))
             .addModifiers(KModifier.INTERNAL)
             .addCode("return %L(ptr, autoArena, confinedArena = confinedArena, sharedFlag = sharedFlag)\n", className)
-        
+
         companion.addFunction(fromPointerBuilder.build())
-            
+
         if (meta.isClonable) {
             companion.addProperty(PropertySpec.builder("cloneHandle", MethodHandle::class, KModifier.PRIVATE).build())
         }
@@ -141,7 +141,7 @@ object OpaqueGenerator {
             .addImport("java.lang.foreign", "Linker", "SymbolLookup", "FunctionDescriptor", "ValueLayout", "Arena")
             .addType(classBuilder.build())
             .build()
-        
+
         writeToDisk(fileSpec, targetPackage, className, outputDir)
     }
 

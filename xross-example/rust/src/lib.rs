@@ -26,11 +26,7 @@ pub struct UnknownStruct {
 impl Clone for UnknownStruct {
     fn clone(&self) -> Self {
         UNKNOWN_STRUCT_COUNT.fetch_add(1, Ordering::SeqCst);
-        Self {
-            i: self.i,
-            f: self.f,
-            s: self.s.clone(),
-        }
+        Self { i: self.i, f: self.f, s: self.s.clone() }
     }
 }
 
@@ -43,11 +39,7 @@ impl Drop for UnknownStruct {
 impl Default for UnknownStruct {
     fn default() -> Self {
         UNKNOWN_STRUCT_COUNT.fetch_add(1, Ordering::SeqCst);
-        Self {
-            i: 32,
-            f: 64.0,
-            s: "Hello, World!".to_string(),
-        }
+        Self { i: 32, f: 64.0, s: "Hello, World!".to_string() }
     }
 }
 
@@ -71,7 +63,10 @@ impl UnknownStruct {
              Active UnknownStruct: {}\n\
              Total Native Objects: {}\n\
              -----------------------------",
-            s1, s2, u, s1 + s2 + u
+            s1,
+            s2,
+            u,
+            s1 + s2 + u
         )
     }
 }
@@ -81,8 +76,14 @@ impl UnknownStruct {
 #[derive(Clone, XrossClass)]
 pub enum XrossTestEnum {
     A,
-    B { #[xross_field] i: i32 },
-    C { #[xross_field] j: Box<UnknownStruct> },
+    B {
+        #[xross_field]
+        i: i32,
+    },
+    C {
+        #[xross_field]
+        j: Box<UnknownStruct>,
+    },
 }
 
 // --- MyService ---
@@ -98,10 +99,7 @@ impl Clone for MyService {
     fn clone(&self) -> Self {
         SERVICE_COUNT.fetch_add(1, Ordering::SeqCst);
         // 内包する UnknownStruct はその Clone 実装でカウントされる
-        Self {
-            _boxes: self._boxes.clone(),
-            unknown_struct: self.unknown_struct.clone(),
-        }
+        Self { _boxes: self._boxes.clone(), unknown_struct: self.unknown_struct.clone() }
     }
 }
 
@@ -112,12 +110,20 @@ impl Drop for MyService {
 }
 
 #[derive(Clone, Copy, XrossClass)]
-pub enum XrossSimpleEnum { V, W, X, Y, Z }
+pub enum XrossSimpleEnum {
+    V,
+    W,
+    X,
+    Y,
+    Z,
+}
 
 #[xross_class]
 impl XrossSimpleEnum {
     #[xross_method]
-    pub fn say_hello(&mut self) { println!("Hello, world!"); }
+    pub fn say_hello(&mut self) {
+        println!("Hello, world!");
+    }
 }
 
 #[xross_class]
@@ -126,10 +132,7 @@ impl MyService {
     pub fn new() -> Self {
         SERVICE_COUNT.fetch_add(1, Ordering::SeqCst);
         // UnknownStruct::default() 内でカウント +1 済み
-        MyService {
-            _boxes: vec![0; 1_000_000],
-            unknown_struct: Box::new(UnknownStruct::default()),
-        }
+        MyService { _boxes: vec![0; 1_000_000], unknown_struct: Box::new(UnknownStruct::default()) }
     }
 
     #[xross_method]
@@ -159,20 +162,12 @@ impl MyService {
 
     #[xross_method]
     pub fn get_option_enum(&self, should_some: bool) -> Option<XrossSimpleEnum> {
-        if should_some {
-            Some(XrossSimpleEnum::V)
-        } else {
-            None
-        }
+        if should_some { Some(XrossSimpleEnum::V) } else { None }
     }
 
     #[xross_method]
     pub fn get_result_struct(&self, should_ok: bool) -> Result<test::MyService2, String> {
-        if should_ok {
-            Ok(test::MyService2::new(1))
-        } else {
-            Err("Error".to_string())
-        }
+        if should_ok { Ok(test::MyService2::new(1)) } else { Err("Error".to_string()) }
     }
 }
 
@@ -216,11 +211,15 @@ pub mod test {
         }
 
         #[xross_method]
-        pub fn get_self_ref(&self) -> &Self { self }
+        pub fn get_self_ref(&self) -> &Self {
+            self
+        }
 
         #[xross_method]
         pub fn execute(&self) -> f64 {
-            if self.val == 0 { return 0.0; }
+            if self.val == 0 {
+                return 0.0;
+            }
             let low = min(-self.val, self.val);
             let high = max(-self.val, self.val);
             rand::random_range(low..high + 1) as f64
@@ -228,5 +227,9 @@ pub mod test {
     }
 }
 
-pub enum UnClonable { S, Y, Z }
+pub enum UnClonable {
+    S,
+    Y,
+    Z,
+}
 xross_core::opaque_class!(UnClonable, false);

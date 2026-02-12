@@ -71,8 +71,10 @@ pub fn xross_class_derive(input: TokenStream) -> TokenStream {
 
                         // RustString (String型) の場合、専用のアクセサを生成
                         if matches!(xross_ty, XrossType::String) {
-                            let get_fn = format_ident!("{}_property_{}_str_get", symbol_base, field_name);
-                            let set_fn = format_ident!("{}_property_{}_str_set", symbol_base, field_name);
+                            let get_fn =
+                                format_ident!("{}_property_{}_str_get", symbol_base, field_name);
+                            let set_fn =
+                                format_ident!("{}_property_{}_str_set", symbol_base, field_name);
                             extra_functions.push(quote! {
                                 #[unsafe(no_mangle)]
                                 pub unsafe extern "C" fn #get_fn(ptr: *const #name) -> *mut std::ffi::c_char {
@@ -185,9 +187,8 @@ pub fn xross_class_derive(input: TokenStream) -> TokenStream {
                             // Box::from_raw は *mut T を取って Box<T> を返すので、単にキャストして呼べばよい。
                             // ただし、シンボルとしての raw_ty をそのまま使うと Box<T> になるため、
                             // ここでは *mut #raw_ty ではなく、型推論に任せるか、明示的な変換を行う。
-                            internal_conversions.push(
-                                quote! { let #arg_id = Box::from_raw(#arg_id as *mut _); },
-                            );
+                            internal_conversions
+                                .push(quote! { let #arg_id = Box::from_raw(#arg_id as *mut _); });
                         } else {
                             // インライン構造体などの場合
                             internal_conversions.push(
@@ -444,10 +445,7 @@ pub fn xross_class(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     format!("{}.{}", package_name, type_name_ident)
                 };
                 // コンストラクタ(xross_new)は常に所有権を返す
-                XrossType::Object {
-                    signature: sig,
-                    ownership: Ownership::Owned,
-                }
+                XrossType::Object { signature: sig, ownership: Ownership::Owned }
             } else {
                 match &method.sig.output {
                     ReturnType::Default => XrossType::Void,
@@ -475,7 +473,7 @@ pub fn xross_class(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
                         // 3. XrossTypeが構造体やオブジェクトの場合、判定したOwnershipを上書きする
                         match &mut xross_ty {
-                            | XrossType::Object { ownership: o, .. } => {
+                            XrossType::Object { ownership: o, .. } => {
                                 *o = ownership;
                             }
                             _ => {}
@@ -502,22 +500,20 @@ pub fn xross_class(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     quote! { *mut std::ffi::c_char },
                     quote! { std::ffi::CString::new(#inner_call).unwrap_or_default().into_raw() },
                 ),
-                XrossType::Object { ownership, .. } => {
-                    match ownership {
-                        Ownership::Ref | Ownership::MutRef => (
-                            quote! { *mut std::ffi::c_void },
-                            quote! { #inner_call as *const _ as *mut std::ffi::c_void },
-                        ),
-                        Ownership::Owned => (
-                            quote! { *mut std::ffi::c_void },
-                            quote! { Box::into_raw(Box::new(#inner_call)) as *mut std::ffi::c_void },
-                        ),
-                        Ownership::Boxed => (
-                            quote! { *mut std::ffi::c_void },
-                            quote! { Box::into_raw(#inner_call) as *mut std::ffi::c_void },
-                        ),
-                    }
-                }
+                XrossType::Object { ownership, .. } => match ownership {
+                    Ownership::Ref | Ownership::MutRef => (
+                        quote! { *mut std::ffi::c_void },
+                        quote! { #inner_call as *const _ as *mut std::ffi::c_void },
+                    ),
+                    Ownership::Owned => (
+                        quote! { *mut std::ffi::c_void },
+                        quote! { Box::into_raw(Box::new(#inner_call)) as *mut std::ffi::c_void },
+                    ),
+                    Ownership::Boxed => (
+                        quote! { *mut std::ffi::c_void },
+                        quote! { Box::into_raw(#inner_call) as *mut std::ffi::c_void },
+                    ),
+                },
                 XrossType::Option(inner) => {
                     match &**inner {
                         XrossType::String => (
@@ -527,7 +523,7 @@ pub fn xross_class(_attr: TokenStream, item: TokenStream) -> TokenStream {
                                     Some(s) => std::ffi::CString::new(s).unwrap_or_default().into_raw(),
                                     None => std::ptr::null_mut(),
                                 }
-                            }
+                            },
                         ),
                         XrossType::Object { .. } => (
                             quote! { *mut std::ffi::c_void },
@@ -536,7 +532,7 @@ pub fn xross_class(_attr: TokenStream, item: TokenStream) -> TokenStream {
                                     Some(val) => Box::into_raw(Box::new(val)) as *mut std::ffi::c_void,
                                     None => std::ptr::null_mut(),
                                 }
-                            }
+                            },
                         ),
                         _ => {
                             // プリミティブ型の場合も Box 化してポインタで返す (Kotlin 側で T? として扱うため)
@@ -547,7 +543,7 @@ pub fn xross_class(_attr: TokenStream, item: TokenStream) -> TokenStream {
                                         Some(val) => Box::into_raw(Box::new(val)) as *mut std::ffi::c_void,
                                         None => std::ptr::null_mut(),
                                     }
-                                }
+                                },
                             )
                         }
                     }
@@ -627,11 +623,7 @@ pub fn opaque_class(input: TokenStream) -> TokenStream {
                 (parts[0].clone(), parts[1].as_str(), true)
             }
         }
-        3 => (
-            parts[0].clone(),
-            parts[1].as_str(),
-            parts[2].to_lowercase().parse().unwrap_or(true),
-        ),
+        3 => (parts[0].clone(), parts[1].as_str(), parts[2].to_lowercase().parse().unwrap_or(true)),
         _ => panic!(
             "opaque_class! expects 1 to 3 arguments: (ClassName), (Pkg, Class), or (Pkg, Class, IsClonable)"
         ),

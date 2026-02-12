@@ -7,7 +7,9 @@ import java.io.File
 import javax.inject.Inject
 
 @Suppress("unused")
-class XrossPlugin @Inject constructor() : Plugin<Project> {
+class XrossPlugin
+@Inject
+constructor() : Plugin<Project> {
     override fun apply(project: Project) {
         val extension = project.extensions.create("xross", XrossExtension::class.java)
         val outputDir = project.layout.buildDirectory.dir("generated/source/xross/main/kotlin")

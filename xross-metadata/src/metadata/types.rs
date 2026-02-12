@@ -23,16 +23,10 @@ pub enum XrossType {
     F64,
     Pointer,
     String,
-    Object {
-        signature: String,
-        ownership: Ownership,
-    },
+    Object { signature: String, ownership: Ownership },
     // 追加: 再帰的な型定義
     Option(Box<XrossType>),
-    Result {
-        ok: Box<XrossType>,
-        err: Box<XrossType>,
-    },
+    Result { ok: Box<XrossType>, err: Box<XrossType> },
     // 追加: 非同期
     Async(Box<XrossType>),
 }

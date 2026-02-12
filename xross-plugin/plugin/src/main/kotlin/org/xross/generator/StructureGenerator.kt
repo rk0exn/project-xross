@@ -2,7 +2,6 @@ package org.xross.generator
 
 import com.squareup.kotlinpoet.*
 import org.xross.structures.XrossDefinition
-import org.xross.structures.XrossMethodType
 import java.lang.foreign.MemorySegment
 
 object StructureGenerator {
@@ -13,7 +12,7 @@ object StructureGenerator {
         val isEnum = meta is XrossDefinition.Enum
         val isPure = GeneratorUtils.isPureEnum(meta)
         val aliveFlagType = ClassName("$basePackage.xross.runtime", "AliveFlag")
-        
+
         val selfType = GeneratorUtils.getClassName(meta.signature, basePackage)
 
         if (isPure) {
@@ -23,22 +22,29 @@ object StructureGenerator {
                 .initializer("%T.NULL", MEMORY_SEGMENT)
                 .build()
             classBuilder.addProperty(segmentProp)
-            
-            classBuilder.addProperty(PropertySpec.builder("aliveFlag", aliveFlagType, KModifier.INTERNAL)
-                .initializer("%T(true)", aliveFlagType).build())
 
-            classBuilder.addProperty(PropertySpec.builder("sl", ClassName("java.util.concurrent.locks", "StampedLock"))
-                .addModifiers(KModifier.INTERNAL)
-                .initializer("%T()", ClassName("java.util.concurrent.locks", "StampedLock"))
-                .build())
+            classBuilder.addProperty(
+                PropertySpec.builder("aliveFlag", aliveFlagType, KModifier.INTERNAL)
+                    .initializer("%T(true)", aliveFlagType).build(),
+            )
 
-            classBuilder.addProperty(PropertySpec.builder("autoArena", ClassName("java.lang.foreign", "Arena"), KModifier.INTERNAL)
-                .initializer("%T.ofAuto()", ClassName("java.lang.foreign", "Arena"))
-                .build())
-            classBuilder.addProperty(PropertySpec.builder("confinedArena", ClassName("java.lang.foreign", "Arena").copy(nullable = true), KModifier.INTERNAL)
-                .initializer("null")
-                .build())
+            classBuilder.addProperty(
+                PropertySpec.builder("sl", ClassName("java.util.concurrent.locks", "StampedLock"))
+                    .addModifiers(KModifier.INTERNAL)
+                    .initializer("%T()", ClassName("java.util.concurrent.locks", "StampedLock"))
+                    .build(),
+            )
 
+            classBuilder.addProperty(
+                PropertySpec.builder("autoArena", ClassName("java.lang.foreign", "Arena"), KModifier.INTERNAL)
+                    .initializer("%T.ofAuto()", ClassName("java.lang.foreign", "Arena"))
+                    .build(),
+            )
+            classBuilder.addProperty(
+                PropertySpec.builder("confinedArena", ClassName("java.lang.foreign", "Arena").copy(nullable = true), KModifier.INTERNAL)
+                    .initializer("null")
+                    .build(),
+            )
         } else {
             // --- Normal Struct / Complex Enum Case ---
             val constructorBuilder = FunSpec.constructorBuilder()
@@ -52,7 +58,7 @@ object StructureGenerator {
             classBuilder.addProperty(PropertySpec.builder("autoArena", ClassName("java.lang.foreign", "Arena"), KModifier.INTERNAL).initializer("autoArena").build())
             classBuilder.addProperty(PropertySpec.builder("confinedArena", ClassName("java.lang.foreign", "Arena").copy(nullable = true), KModifier.INTERNAL).initializer("confinedArena").build())
             classBuilder.addProperty(PropertySpec.builder("aliveFlag", aliveFlagType, KModifier.INTERNAL).initializer(CodeBlock.of("sharedFlag ?: %T(true)", aliveFlagType)).build())
-            
+
             val segmentProp = PropertySpec.builder("segment", MEMORY_SEGMENT, KModifier.INTERNAL)
                 .mutable(true)
                 .initializer("raw")
@@ -71,7 +77,8 @@ object StructureGenerator {
             .addParameter("size", Long::class)
             .addParameter("isOwned", Boolean::class)
             .returns(MEMORY_SEGMENT)
-            .addCode("""
+            .addCode(
+                """
                 if (parent == %T.NULL) return %T.NULL
                 return if (isOwned) {
                     parent.asSlice(offset, size)
@@ -80,7 +87,14 @@ object StructureGenerator {
                     val ptr = vh.get(parent, offset) as %T
                     if (ptr == %T.NULL) %T.NULL else ptr.reinterpret(size)
                 }
-            """.trimIndent(), MEMORY_SEGMENT, MEMORY_SEGMENT, MEMORY_SEGMENT, MEMORY_SEGMENT, MEMORY_SEGMENT, MEMORY_SEGMENT)
+                """.trimIndent(),
+                MEMORY_SEGMENT,
+                MEMORY_SEGMENT,
+                MEMORY_SEGMENT,
+                MEMORY_SEGMENT,
+                MEMORY_SEGMENT,
+                MEMORY_SEGMENT,
+            )
             .build()
         classBuilder.addFunction(resolver)
 
@@ -94,7 +108,7 @@ object StructureGenerator {
                 .returns(selfType)
                 .addModifiers(KModifier.INTERNAL)
                 .addCode("return %T(ptr, autoArena, confinedArena = confinedArena, sharedFlag = sharedFlag)\n", selfType)
-            
+
             companionBuilder.addFunction(fromPointerBuilder.build())
         }
     }
@@ -106,10 +120,12 @@ object StructureGenerator {
             .addStatement("segment = %T.NULL", MEMORY_SEGMENT)
             .addStatement("aliveFlag.invalidate()")
             .build()
-        classBuilder.addFunction(FunSpec.builder("relinquishInternal")
-            .addModifiers(KModifier.INTERNAL)
-            .addCode(relinquishInternalBody)
-            .build())
+        classBuilder.addFunction(
+            FunSpec.builder("relinquishInternal")
+                .addModifiers(KModifier.INTERNAL)
+                .addCode(relinquishInternalBody)
+                .build(),
+        )
 
         val closeBody = CodeBlock.builder()
             .addStatement("val s = segment")

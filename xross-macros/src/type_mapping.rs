@@ -1,11 +1,9 @@
-use syn::{Type, TypePath, PathArguments, GenericArgument};
-use xross_metadata::{XrossType, Ownership};
+use syn::{GenericArgument, PathArguments, Type, TypePath};
+use xross_metadata::{Ownership, XrossType};
 
 pub fn map_type(ty: &syn::Type) -> XrossType {
     match ty {
-        Type::Reference(r) => {
-            map_type(&r.elem)
-        }
+        Type::Reference(r) => map_type(&r.elem),
 
         Type::Path(TypePath { path, .. }) => {
             let last_segment = path.segments.last().unwrap();
@@ -27,13 +25,17 @@ pub fn map_type(ty: &syn::Type) -> XrossType {
                 // ジェネリック型の処理
                 "Box" | "Option" | "Result" => {
                     if let PathArguments::AngleBracketed(args) = &last_segment.arguments {
-                        let generic_types: Vec<XrossType> = args.args.iter().filter_map(|arg| {
-                            if let GenericArgument::Type(inner_ty) = arg {
-                                Some(map_type(inner_ty))
-                            } else {
-                                None
-                            }
-                        }).collect();
+                        let generic_types: Vec<XrossType> = args
+                            .args
+                            .iter()
+                            .filter_map(|arg| {
+                                if let GenericArgument::Type(inner_ty) = arg {
+                                    Some(map_type(inner_ty))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
 
                         match last_ident.as_str() {
                             "Box" => {
@@ -57,10 +59,7 @@ pub fn map_type(ty: &syn::Type) -> XrossType {
 
                 // 構造体や列挙型
                 s if s.chars().next().map_or(false, |c| c.is_uppercase()) => {
-                    XrossType::Object {
-                        signature: s.to_string(),
-                        ownership: Ownership::Owned,
-                    }
+                    XrossType::Object { signature: s.to_string(), ownership: Ownership::Owned }
                 }
                 _ => XrossType::Pointer,
             }
