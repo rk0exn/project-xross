@@ -1,34 +1,60 @@
 package org.xross.generator
 
 import com.squareup.kotlinpoet.*
-import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import org.xross.helper.StringHelper.escapeKotlinKeyword
 import org.xross.helper.StringHelper.toCamelCase
 import org.xross.structures.XrossDefinition
 import org.xross.structures.XrossField
 import org.xross.structures.XrossThreadSafety
 import org.xross.structures.XrossType
-import java.lang.foreign.Arena
 import java.lang.foreign.MemorySegment
 import java.lang.ref.WeakReference
 
 object EnumVariantGenerator {
     private val MEMORY_SEGMENT = MemorySegment::class.asTypeName()
 
-    private fun TypeSpec.Builder.buildRawInitializer(aliveFlagType: ClassName) {
-        this.primaryConstructor(
-            FunSpec.constructorBuilder()
-                .addModifiers(KModifier.INTERNAL)
-                .addParameter("raw", MEMORY_SEGMENT)
-                .addParameter("autoArena", Arena::class.asTypeName())
-                .addParameter(ParameterSpec.builder("confinedArena", Arena::class.asTypeName().copy(nullable = true)).defaultValue("null").build())
-                .addParameter(ParameterSpec.builder("sharedFlag", aliveFlagType.copy(nullable = true)).defaultValue("null").build())
+    private fun addVariantFactoryMethod(
+        companionBuilder: TypeSpec.Builder,
+        factoryMethodName: String,
+        tripleType: TypeName,
+        basePackage: String,
+        handleCall: CodeBlock,
+        fields: List<org.xross.structures.XrossField> = emptyList(),
+    ) {
+        companionBuilder.addFunction(
+            FunSpec.builder(factoryMethodName)
+                .addModifiers(KModifier.PRIVATE)
+                .addParameters(
+                    fields.map { field ->
+                        val kType = if (field.ty is XrossType.Object) {
+                            GeneratorUtils.getClassName(field.ty.signature, basePackage)
+                        } else {
+                            field.ty.kotlinType
+                        }
+                        ParameterSpec.builder("argOf" + field.name.toCamelCase(), kType).build()
+                    },
+                )
+                .returns(tripleType)
+                .addCode(
+                    CodeBlock.builder().apply {
+                        GeneratorUtils.addFactoryBody(
+                            this,
+                            basePackage,
+                            handleCall,
+                            CodeBlock.of("STRUCT_SIZE"),
+                            CodeBlock.of("dropHandle"),
+                        )
+                        fields.forEach { field ->
+                            if (field.ty is XrossType.Object && field.ty.isOwned) {
+                                val argName = "argOf" + field.name.toCamelCase()
+                                addStatement("$argName.relinquish()")
+                            }
+                        }
+                        addStatement("return %T(res, %T(newAutoArena, newOwnerArena), flag)", Triple::class.asTypeName(), Pair::class.asTypeName())
+                    }.build(),
+                )
                 .build(),
         )
-        this.addSuperclassConstructorParameter("raw")
-        this.addSuperclassConstructorParameter("autoArena")
-        this.addSuperclassConstructorParameter("confinedArena")
-        this.addSuperclassConstructorParameter("sharedFlag")
     }
 
     fun generateVariants(
@@ -78,37 +104,27 @@ object EnumVariantGenerator {
                 val variantClassName = baseClassName.nestedClass(variant.name)
                 val isObject = variant.fields.isEmpty()
 
+                val variantTypeBuilder = TypeSpec.classBuilder(variant.name)
+                    .superclass(baseClassName)
+
+                GeneratorUtils.buildRawInitializer(variantTypeBuilder, aliveFlagType)
+
+                variantTypeBuilder.addFunction(
+                    FunSpec.constructorBuilder()
+                        .addModifiers(KModifier.PRIVATE)
+                        .addParameter("p", tripleType)
+                        .callThisConstructor(CodeBlock.of("p.first"), CodeBlock.of("p.second.first"), CodeBlock.of("p.second.second"), CodeBlock.of("p.third"))
+                        .build(),
+                )
+
                 if (isObject) {
-                    val variantTypeBuilder = TypeSpec.classBuilder(variant.name)
-                        .superclass(baseClassName)
-
-                    variantTypeBuilder.buildRawInitializer(aliveFlagType)
                     val factoryMethodName = "xrossNew${variant.name}Internal"
-                    companionBuilder.addFunction(
-                        FunSpec.builder(factoryMethodName)
-                            .addModifiers(KModifier.PRIVATE)
-                            .returns(tripleType)
-                            .addCode(
-                                CodeBlock.builder().apply {
-                                    GeneratorUtils.addFactoryBody(
-                                        this,
-                                        basePackage,
-                                        CodeBlock.of("new${variant.name}Handle.invokeExact()"),
-                                        CodeBlock.of("STRUCT_SIZE"),
-                                        CodeBlock.of("dropHandle"),
-                                    )
-                                    addStatement("return %T(res, %T(newAutoArena, newOwnerArena), flag)", Triple::class.asTypeName(), Pair::class.asTypeName())
-                                }.build(),
-                            )
-                            .build(),
-                    )
-
-                    variantTypeBuilder.addFunction(
-                        FunSpec.constructorBuilder()
-                            .addModifiers(KModifier.PRIVATE)
-                            .addParameter("p", tripleType)
-                            .callThisConstructor(CodeBlock.of("p.first"), CodeBlock.of("p.second.first"), CodeBlock.of("p.second.second"), CodeBlock.of("p.third"))
-                            .build(),
+                    addVariantFactoryMethod(
+                        companionBuilder,
+                        factoryMethodName,
+                        tripleType,
+                        basePackage,
+                        CodeBlock.of("new${variant.name}Handle.invokeExact()"),
                     )
 
                     variantTypeBuilder.addFunction(
@@ -133,77 +149,32 @@ object EnumVariantGenerator {
                             .addStatement("return %S.hashCode()", variant.name)
                             .build(),
                     )
-
-                    classBuilder.addType(variantTypeBuilder.build())
-
-                    fromPointerBuilder.addStatement("%S -> %T(reinterpretedPtr, autoArena, confinedArena = confinedArena, sharedFlag = sharedFlag)", variant.name, variantClassName)
                 } else {
-                    fromPointerBuilder.addStatement("%S -> %T(reinterpretedPtr, autoArena, confinedArena = confinedArena, sharedFlag = sharedFlag)", variant.name, variantClassName)
-
-                    val variantTypeBuilder = TypeSpec.classBuilder(variant.name)
-                    variantTypeBuilder.superclass(baseClassName)
-
-                    variantTypeBuilder.buildRawInitializer(aliveFlagType)
                     val factoryMethodName = "xrossNew${variant.name}Internal"
-                    companionBuilder.addFunction(
-                        FunSpec.builder(factoryMethodName)
-                            .addModifiers(KModifier.PRIVATE)
-                            .addParameters(
-                                variant.fields.map { field ->
-                                    val kType = if (field.ty is XrossType.Object) {
-                                        GeneratorUtils.getClassName(field.ty.signature, basePackage)
-                                    } else {
-                                        field.ty.kotlinType
+                    addVariantFactoryMethod(
+                        companionBuilder,
+                        factoryMethodName,
+                        tripleType,
+                        basePackage,
+                        CodeBlock.of(
+                            "new${variant.name}Handle.invokeExact(${variant.fields.joinToString(", ") { field ->
+                                val argName = "argOf" + field.name.toCamelCase()
+                                when (field.ty) {
+                                    is XrossType.Bool -> {
+                                        "if ($argName) 1.toByte() else 0.toByte()"
                                     }
-                                    ParameterSpec.builder("argOf" + field.name.toCamelCase(), kType).build()
-                                },
-                            )
-                            .returns(tripleType)
-                            .addCode(
-                                CodeBlock.builder().apply {
-                                    val handleCall = CodeBlock.of(
-                                        "new${variant.name}Handle.invokeExact(${variant.fields.joinToString(", ") { field ->
-                                            val argName = "argOf" + field.name.toCamelCase()
-                                            when (field.ty) {
-                                                is XrossType.Bool -> {
-                                                    "if ($argName) 1.toByte() else 0.toByte()"
-                                                }
 
-                                                is XrossType.Object -> {
-                                                    "$argName.segment"
-                                                }
-
-                                                else -> {
-                                                    argName
-                                                }
-                                            }
-                                        }})",
-                                    )
-                                    GeneratorUtils.addFactoryBody(
-                                        this,
-                                        basePackage,
-                                        handleCall,
-                                        CodeBlock.of("STRUCT_SIZE"),
-                                        CodeBlock.of("dropHandle"),
-                                    )
-                                    variant.fields.forEach { field ->
-                                        if (field.ty is XrossType.Object && field.ty.isOwned) {
-                                            val argName = "argOf" + field.name.toCamelCase()
-                                            addStatement("$argName.relinquish()")
-                                        }
+                                    is XrossType.Object -> {
+                                        "$argName.segment"
                                     }
-                                    addStatement("return %T(res, %T(newAutoArena, newOwnerArena), flag)", Triple::class.asTypeName(), Pair::class.asTypeName())
-                                }.build(),
-                            )
-                            .build(),
-                    )
 
-                    variantTypeBuilder.addFunction(
-                        FunSpec.constructorBuilder()
-                            .addModifiers(KModifier.PRIVATE)
-                            .addParameter("p", tripleType)
-                            .callThisConstructor(CodeBlock.of("p.first"), CodeBlock.of("p.second.first"), CodeBlock.of("p.second.second"), CodeBlock.of("p.third"))
-                            .build(),
+                                    else -> {
+                                        argName
+                                    }
+                                }
+                            }})",
+                        ),
+                        variant.fields,
                     )
 
                     variantTypeBuilder.addFunction(
@@ -239,18 +210,7 @@ object EnumVariantGenerator {
                             field.ty.kotlinType
                         }
 
-                        var backingFieldName: String? = null
-                        if (field.ty is XrossType.Object) {
-                            backingFieldName = "_$baseCamelName"
-                            val weakRefType = ClassName("java.lang.ref", "WeakReference").parameterizedBy(kType)
-                            variantTypeBuilder.addProperty(
-                                PropertySpec.builder(backingFieldName, weakRefType.copy(nullable = true))
-                                    .mutable(true)
-                                    .addModifiers(KModifier.PRIVATE)
-                                    .initializer("null")
-                                    .build(),
-                            )
-                        }
+                        val backingFieldName = GeneratorUtils.addBackingPropertyIfNeeded(variantTypeBuilder, field, baseCamelName, kType)
 
                         variantTypeBuilder.addProperty(
                             PropertySpec.builder(baseCamelName.escapeKotlinKeyword(), kType)
@@ -269,9 +229,10 @@ object EnumVariantGenerator {
 
                     equalsBuilder.addStatement("return true")
                     variantTypeBuilder.addFunction(equalsBuilder.build())
-
-                    classBuilder.addType(variantTypeBuilder.build())
                 }
+
+                classBuilder.addType(variantTypeBuilder.build())
+                fromPointerBuilder.addStatement("%S -> %T(reinterpretedPtr, autoArena, confinedArena = confinedArena, sharedFlag = sharedFlag)", variant.name, variantClassName)
             }
 
             fromPointerBuilder.addStatement("else -> throw %T(%S + name)", RuntimeException::class.asTypeName(), "Unknown variant: ")

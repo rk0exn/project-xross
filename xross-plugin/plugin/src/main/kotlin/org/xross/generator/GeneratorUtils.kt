@@ -208,6 +208,25 @@ object GeneratorUtils {
     }
 
     /**
+     * Adds common internal constructor/factory parameters to a FunSpec builder.
+     */
+    private fun FunSpec.Builder.addInternalParameters(
+        aliveFlagType: TypeName,
+        firstParamName: String = "ptr",
+    ): FunSpec.Builder = this.addParameter(firstParamName, MEMORY_SEGMENT)
+        .addParameter("autoArena", ARENA)
+        .addParameter(
+            ParameterSpec.builder("confinedArena", ARENA.copy(nullable = true))
+                .defaultValue("null")
+                .build(),
+        )
+        .addParameter(
+            ParameterSpec.builder("sharedFlag", aliveFlagType.copy(nullable = true))
+                .defaultValue("null")
+                .build(),
+        )
+
+    /**
      * Builds the base for a 'fromPointer' method.
      */
     fun buildFromPointerBase(
@@ -218,19 +237,51 @@ object GeneratorUtils {
         val aliveFlagType = ClassName("$basePackage.xross.runtime", "AliveFlag")
 
         return FunSpec.builder(name)
-            .addParameter("ptr", MEMORY_SEGMENT)
-            .addParameter("autoArena", ARENA)
-            .addParameter(
-                ParameterSpec.builder("confinedArena", ARENA.copy(nullable = true))
-                    .defaultValue("null")
-                    .build(),
-            )
-            .addParameter(
-                ParameterSpec.builder("sharedFlag", aliveFlagType.copy(nullable = true))
-                    .defaultValue("null")
-                    .build(),
-            )
+            .addInternalParameters(aliveFlagType, "ptr")
             .returns(returnType)
             .addModifiers(KModifier.INTERNAL)
+    }
+
+    /**
+     * Adds a backing property for caching object fields if necessary.
+     */
+    fun addBackingPropertyIfNeeded(
+        builder: TypeSpec.Builder,
+        field: org.xross.structures.XrossField,
+        baseName: String,
+        kType: TypeName,
+    ): String? {
+        if (field.ty is XrossType.Object) {
+            val backingFieldName = "_$baseName"
+            val weakRefType = ClassName("java.lang.ref", "WeakReference").parameterizedBy(kType)
+            val backingProp =
+                PropertySpec.builder(backingFieldName, weakRefType.copy(nullable = true))
+                    .mutable(true)
+                    .addModifiers(KModifier.PRIVATE)
+                    .initializer("null")
+                    .build()
+            builder.addProperty(backingProp)
+            return backingFieldName
+        }
+        return null
+    }
+
+    /**
+     * Builds the internal constructor for enum variants or inherited structures.
+     */
+    fun buildRawInitializer(
+        builder: TypeSpec.Builder,
+        aliveFlagType: ClassName,
+    ) {
+        builder.primaryConstructor(
+            FunSpec.constructorBuilder()
+                .addModifiers(KModifier.INTERNAL)
+                .addInternalParameters(aliveFlagType, "raw")
+                .build(),
+        )
+        builder.addSuperclassConstructorParameter("raw")
+        builder.addSuperclassConstructorParameter("autoArena")
+        builder.addSuperclassConstructorParameter("confinedArena")
+        builder.addSuperclassConstructorParameter("sharedFlag")
     }
 }

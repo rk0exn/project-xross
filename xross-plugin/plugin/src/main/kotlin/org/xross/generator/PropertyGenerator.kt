@@ -1,7 +1,6 @@
 package org.xross.generator
 
 import com.squareup.kotlinpoet.*
-import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import org.xross.helper.StringHelper.escapeKotlinKeyword
 import org.xross.helper.StringHelper.toCamelCase
 import org.xross.structures.XrossDefinition
@@ -26,17 +25,7 @@ object PropertyGenerator {
                 field.ty.kotlinType
             }
 
-            var backingFieldName: String? = null
-            if (field.ty is XrossType.Object) {
-                backingFieldName = "_$baseName"
-                val weakRefType = ClassName("java.lang.ref", "WeakReference").parameterizedBy(kType)
-                val backingProp = PropertySpec.builder(backingFieldName, weakRefType.copy(nullable = true))
-                    .mutable(true)
-                    .addModifiers(KModifier.PRIVATE)
-                    .initializer("null")
-                    .build()
-                classBuilder.addProperty(backingProp)
-            }
+            val backingFieldName = GeneratorUtils.addBackingPropertyIfNeeded(classBuilder, field, baseName, kType)
 
             if (field.safety == XrossThreadSafety.Atomic) {
                 generateAtomicProperty(classBuilder, baseName, escapedName, vhName, kType)
