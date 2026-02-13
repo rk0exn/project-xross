@@ -92,7 +92,7 @@ object OpaqueGenerator {
             }
 
             is XrossType.RustString -> {
-                GeneratorUtils.addRustStringResolution(body, "Companion.$getHandle.invokeExact(this.segment)", "s")
+                body.addRustStringResolution("Companion.$getHandle.invokeExact(this.segment)", "s")
                 body.addStatement("return s")
             }
 
@@ -122,7 +122,7 @@ object OpaqueGenerator {
         }
 
         if (field.ty is XrossType.RustString) {
-            body.beginControlFlow("java.lang.foreign.Arena.ofConfined().use { arena ->")
+            body.beginControlFlow("%T.ofConfined().use { arena ->", FFMConstants.ARENA)
             body.addStatement("val allocated = arena.allocateFrom(v)")
             body.addStatement("Companion.$setHandle.invokeExact(this.segment, allocated) as Unit")
             body.endControlFlow()

@@ -3,6 +3,7 @@ package org.xross.generator
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import org.xross.structures.XrossDefinition
+import org.xross.structures.XrossType
 import java.io.File
 
 /**
@@ -99,7 +100,7 @@ object GeneratorUtils {
     }
 
     /**
-     * Builds a getter with optimistic read locking using [StampedLock].
+     * Builds a getter with optimistic read locking using [java.util.concurrent.locks.StampedLock].
      */
     fun buildOptimisticReadGetter(kType: TypeName, readCode: CodeBlock): FunSpec = FunSpec.getterBuilder().addCode(
         CodeBlock.builder()
@@ -121,7 +122,34 @@ object GeneratorUtils {
     ).build()
 
     /**
-     * Adds logic to resolve a Rust string from a [MemorySegment].
+     * Resolves the Kotlin return type for a given XrossType.
+     */
+    fun resolveReturnType(type: XrossType, basePackage: String): TypeName = when (type) {
+        is XrossType.Void -> UNIT
+        is XrossType.RustString -> String::class.asTypeName()
+        is XrossType.Object -> getClassName(type.signature, basePackage)
+        is XrossType.Optional -> resolveReturnType(type.inner, basePackage).copy(nullable = true)
+        is XrossType.Result -> ClassName("kotlin", "Result").parameterizedBy(resolveReturnType(type.ok, basePackage))
+        else -> type.kotlinType
+    }
+
+    /**
+     * Compares the target type with the self type and returns appropriate expressions for size, drop, and fromPointer.
+     */
+    fun compareExprs(
+        targetTypeName: TypeName,
+        selfType: ClassName,
+        dropHandleName: String = "dropHandle",
+    ): Triple<CodeBlock, CodeBlock, CodeBlock> {
+        val isSelf = targetTypeName.copy(nullable = false) == selfType
+        val sizeExpr = if (isSelf) CodeBlock.of("STRUCT_SIZE") else CodeBlock.of("%T.STRUCT_SIZE", targetTypeName)
+        val dropExpr = if (isSelf) CodeBlock.of(dropHandleName) else CodeBlock.of("%T.dropHandle", targetTypeName)
+        val fromPointerExpr = if (isSelf) CodeBlock.of("fromPointer") else CodeBlock.of("%T.fromPointer", targetTypeName)
+        return Triple(sizeExpr, dropExpr, fromPointerExpr)
+    }
+
+    /**
+     * Adds logic to resolve a Rust string from a [java.lang.foreign.MemorySegment].
      */
     fun addRustStringResolution(body: CodeBlock.Builder, call: Any, resultVar: String = "str", isAssignment: Boolean = false, shouldFree: Boolean = true) {
         val resRawName = if (call is String && call.endsWith("Raw")) call else "${resultVar}RawInternal"

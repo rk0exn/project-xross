@@ -75,30 +75,18 @@ sealed class XrossType {
      */
     val layoutMember: MemberName
         get() = when (this) {
-            I32 -> ValueLayouts.JAVA_INT
-            I64 -> ValueLayouts.JAVA_LONG
-            ISize, USize -> if (java.lang.foreign.ValueLayout.ADDRESS.byteSize() <= 4L) ValueLayouts.JAVA_INT else ValueLayouts.JAVA_LONG
-            F32 -> ValueLayouts.JAVA_FLOAT
-            F64 -> ValueLayouts.JAVA_DOUBLE
-            Bool -> ValueLayouts.JAVA_BYTE
-            I8 -> ValueLayouts.JAVA_BYTE
-            I16 -> ValueLayouts.JAVA_SHORT
-            U16 -> ValueLayouts.JAVA_CHAR
+            I32 -> org.xross.generator.FFMConstants.JAVA_INT
+            I64 -> org.xross.generator.FFMConstants.JAVA_LONG
+            ISize, USize -> if (java.lang.foreign.ValueLayout.ADDRESS.byteSize() <= 4L) org.xross.generator.FFMConstants.JAVA_INT else org.xross.generator.FFMConstants.JAVA_LONG
+            F32 -> org.xross.generator.FFMConstants.JAVA_FLOAT
+            F64 -> org.xross.generator.FFMConstants.JAVA_DOUBLE
+            Bool -> org.xross.generator.FFMConstants.JAVA_BYTE
+            I8 -> org.xross.generator.FFMConstants.JAVA_BYTE
+            I16 -> org.xross.generator.FFMConstants.JAVA_SHORT
+            U16 -> org.xross.generator.FFMConstants.JAVA_CHAR
             Void -> throw IllegalStateException("Void has no layout")
-            else -> ValueLayouts.ADDRESS
+            else -> org.xross.generator.FFMConstants.ADDRESS
         }
-
-    private object ValueLayouts {
-        private val VAL_LAYOUT = ClassName("java.lang.foreign", "ValueLayout")
-        val JAVA_INT = MemberName(VAL_LAYOUT, "JAVA_INT")
-        val JAVA_LONG = MemberName(VAL_LAYOUT, "JAVA_LONG")
-        val JAVA_FLOAT = MemberName(VAL_LAYOUT, "JAVA_FLOAT")
-        val JAVA_DOUBLE = MemberName(VAL_LAYOUT, "JAVA_DOUBLE")
-        val JAVA_BYTE = MemberName(VAL_LAYOUT, "JAVA_BYTE")
-        val JAVA_SHORT = MemberName(VAL_LAYOUT, "JAVA_SHORT")
-        val JAVA_CHAR = MemberName(VAL_LAYOUT, "JAVA_CHAR")
-        val ADDRESS = MemberName(VAL_LAYOUT, "ADDRESS")
-    }
 
     /**
      * Returns true if this type represents an owned value.

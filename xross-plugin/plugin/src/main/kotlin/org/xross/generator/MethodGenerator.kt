@@ -1,7 +1,6 @@
 package org.xross.generator
 
 import com.squareup.kotlinpoet.*
-import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import org.xross.helper.StringHelper.escapeKotlinKeyword
 import org.xross.helper.StringHelper.toCamelCase
 import org.xross.structures.*
@@ -15,78 +14,6 @@ object MethodGenerator {
     private val VAL_LAYOUT = ClassName("java.lang.foreign", "ValueLayout")
     private val ADDRESS = MemberName(VAL_LAYOUT, "ADDRESS")
     private val MEMORY_SEGMENT = MemorySegment::class.asTypeName()
-
-    /**
-     * Encapsulates common logic for resource construction and AliveFlag management.
-     */
-    fun CodeBlock.Builder.addResourceConstruction(
-        inner: XrossType,
-        resRaw: String,
-        sizeExpr: CodeBlock,
-        fromPointerExpr: CodeBlock,
-        dropExpr: CodeBlock,
-        flagType: ClassName,
-    ) {
-        if (inner.isOwned) {
-            addStatement("val retAutoArena = Arena.ofAuto()")
-            addStatement("val retOwnerArena = Arena.ofAuto()")
-            addStatement("val flag = %T(true)", flagType)
-            // reinterpretとドロップロジックの統合
-            addStatement(
-                "val res = %L.reinterpret(%L, retAutoArena) { s -> if (flag.tryInvalidate()) { %L.invokeExact(s) } }",
-                resRaw,
-                sizeExpr,
-                dropExpr,
-            )
-            addStatement("%L(res, retAutoArena, confinedArena = retOwnerArena, sharedFlag = flag)", fromPointerExpr)
-        } else {
-            // 非所有(Ownedでない)場合は既存のArenaを流用
-            addStatement(
-                "%L(%L, this.autoArena, sharedFlag = %T(true, this.aliveFlag))",
-                fromPointerExpr,
-                resRaw,
-                flagType,
-            )
-        }
-    }
-
-    /**
-     * Resolves Ok/Err variants for Result types.
-     */
-    private fun CodeBlock.Builder.addResultVariantResolution(
-        type: XrossType,
-        ptrName: String,
-        targetTypeName: TypeName,
-        selfType: ClassName,
-        basePackage: String,
-        dropHandleName: String = "dropHandle",
-    ) {
-        val (sizeExpr, dropExpr, fromPointerExpr) = PropertyGenerator.compareExprs(
-            targetTypeName,
-            selfType,
-            dropHandleName,
-        )
-        val flagType = ClassName("$basePackage.xross.runtime", "AliveFlag")
-
-        beginControlFlow("run")
-        when (type) {
-            is XrossType.Object -> {
-                addResourceConstruction(type, ptrName, sizeExpr, fromPointerExpr, dropExpr, flagType)
-            }
-
-            is XrossType.RustString -> {
-                GeneratorUtils.addRustStringResolution(this, ptrName)
-                addStatement("str")
-            }
-
-            else -> {
-                addStatement("val v = %L.get(%M, 0)", ptrName, type.layoutMember)
-                addStatement("%L.invokeExact(%L)", dropExpr, ptrName)
-                addStatement("v")
-            }
-        }
-        endControlFlow()
-    }
 
     /**
      * Generates Kotlin methods for all methods defined in the metadata.
@@ -115,7 +42,7 @@ object MethodGenerator {
 
             if (isEnum && method.name == "clone") return@forEach
 
-            val returnType = resolveReturnType(method.ret, basePackage)
+            val returnType = GeneratorUtils.resolveReturnType(method.ret, basePackage)
             val kotlinName = method.name.toCamelCase().escapeKotlinKeyword()
             val funBuilder = FunSpec.builder(kotlinName).returns(returnType)
 
@@ -140,7 +67,7 @@ object MethodGenerator {
             method.args.forEach { arg ->
                 funBuilder.addParameter(
                     arg.name.toCamelCase().escapeKotlinKeyword(),
-                    resolveReturnType(arg.ty, basePackage),
+                    GeneratorUtils.resolveReturnType(arg.ty, basePackage),
                 )
             }
 
@@ -214,14 +141,6 @@ object MethodGenerator {
                 classBuilder.addFunction(funBuilder.build())
             }
         }
-    }
-
-    private fun resolveReturnType(type: XrossType, basePackage: String): TypeName = when (type) {
-        is XrossType.RustString -> String::class.asTypeName()
-        is XrossType.Object -> GeneratorUtils.getClassName(type.signature, basePackage)
-        is XrossType.Optional -> resolveReturnType(type.inner, basePackage).copy(nullable = true)
-        is XrossType.Result -> ClassName("kotlin", "Result").parameterizedBy(resolveReturnType(type.ok, basePackage))
-        else -> type.kotlinType
     }
 
     private fun applyMethodCall(
@@ -328,7 +247,7 @@ object MethodGenerator {
                     .addStatement("null")
                 body.nextControlFlow("else")
                 // Optionalの中身(inner)を解決
-                val innerType = resolveReturnType(retTy.inner, basePackage)
+                val innerType = GeneratorUtils.resolveReturnType(retTy.inner, basePackage)
                 body.addResultVariantResolution(retTy.inner, "resRaw", innerType, selfType, basePackage)
                 body.endControlFlow().endControlFlow()
             }
@@ -345,7 +264,7 @@ object MethodGenerator {
                 body.addResultVariantResolution(
                     retTy.ok,
                     "ptr",
-                    resolveReturnType(retTy.ok, basePackage),
+                    GeneratorUtils.resolveReturnType(retTy.ok, basePackage),
                     selfType,
                     basePackage,
                 )
@@ -356,7 +275,7 @@ object MethodGenerator {
                 body.addResultVariantResolution(
                     retTy.err,
                     "ptr",
-                    resolveReturnType(retTy.err, basePackage),
+                    GeneratorUtils.resolveReturnType(retTy.err, basePackage),
                     selfType,
                     basePackage,
                 )
@@ -388,7 +307,7 @@ object MethodGenerator {
                 method.args.map {
                     ParameterSpec.builder(
                         "argOf" + it.name.toCamelCase(),
-                        resolveReturnType(it.ty, basePackage),
+                        GeneratorUtils.resolveReturnType(it.ty, basePackage),
                     ).build()
                 },
             )
@@ -440,7 +359,7 @@ object MethodGenerator {
                 method.args.map {
                     ParameterSpec.builder(
                         "argOf" + it.name.toCamelCase(),
-                        resolveReturnType(it.ty, basePackage),
+                        GeneratorUtils.resolveReturnType(it.ty, basePackage),
                     ).build()
                 },
             )

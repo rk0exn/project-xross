@@ -22,15 +22,16 @@
   <component name="ChangeListManager">
     <list default="true" id="f975a9a1-e29b-4a10-834b-aa32ce0e2a24" name="変更" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-macros/src/codegen/ffi.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/src/codegen/ffi.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-macros/src/macros/xross_class.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/src/macros/xross_class.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/CodeBlockExtensions.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/CodeBlockExtensions.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/CompanionGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/CompanionGenerator.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/EnumVariantGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/EnumVariantGenerator.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/FFMConstants.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/FFMConstants.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/GeneratorUtils.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/GeneratorUtils.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/HandleResolver.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/HandleResolver.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/MethodGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/MethodGenerator.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/OpaqueGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/OpaqueGenerator.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/PropertyGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/PropertyGenerator.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/StructureGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/StructureGenerator.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/structures/XrossType.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/structures/XrossType.kt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -187,7 +188,7 @@
       <workItem from="1770601858892" duration="18896000" />
       <workItem from="1770698046463" duration="18246000" />
       <workItem from="1770771177622" duration="2266000" />
-      <workItem from="1770944913311" duration="9004000" />
+      <workItem from="1770944913311" duration="10797000" />
     </task>
     <servers />
   </component>
@@ -199,7 +200,7 @@
       <breakpoints>
         <line-breakpoint enabled="true" type="kotlin-line">
           <url>file://$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/EnumVariantGenerator.kt</url>
-          <line>217</line>
+          <line>196</line>
           <option name="timeStamp" value="1" />
         </line-breakpoint>
       </breakpoints>

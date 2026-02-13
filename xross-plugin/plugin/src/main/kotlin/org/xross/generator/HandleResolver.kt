@@ -6,7 +6,7 @@ import com.squareup.kotlinpoet.joinToCode
 import org.xross.generator.FFMConstants.ADDRESS
 import org.xross.generator.FFMConstants.FUNCTION_DESCRIPTOR
 import org.xross.generator.FFMConstants.JAVA_INT
-import org.xross.generator.FFMConstants.XROSS_RESULT_LAYOUT_NAME
+import org.xross.generator.FFMConstants.VAL_LAYOUT
 import org.xross.helper.StringHelper.toCamelCase
 import org.xross.structures.XrossDefinition
 import org.xross.structures.XrossMethodType
@@ -17,7 +17,9 @@ object HandleResolver {
         // Basic handles
         init.addStatement(
             "this.xrossFreeStringHandle = linker.downcallHandle(lookup.find(%S).get(), %T.ofVoid(%M))",
-            "xross_free_string", FUNCTION_DESCRIPTOR, ADDRESS
+            "xross_free_string",
+            FUNCTION_DESCRIPTOR,
+            ADDRESS,
         )
 
         listOf("drop", "layout", "clone").forEach { suffix ->
@@ -55,11 +57,17 @@ object HandleResolver {
     private fun resolveEnumHandles(init: CodeBlock.Builder, meta: XrossDefinition.Enum) {
         init.addStatement(
             "this.getTagHandle = linker.downcallHandle(lookup.find(%S).get(), %T.of(%M, %M))",
-            "${meta.symbolPrefix}_get_tag", FUNCTION_DESCRIPTOR, JAVA_INT, ADDRESS
+            "${meta.symbolPrefix}_get_tag",
+            FUNCTION_DESCRIPTOR,
+            JAVA_INT,
+            ADDRESS,
         )
         init.addStatement(
             "this.getVariantNameHandle = linker.downcallHandle(lookup.find(%S).get(), %T.of(%M, %M))",
-            "${meta.symbolPrefix}_get_variant_name", FUNCTION_DESCRIPTOR, ADDRESS, ADDRESS
+            "${meta.symbolPrefix}_get_variant_name",
+            FUNCTION_DESCRIPTOR,
+            ADDRESS,
+            ADDRESS,
         )
 
         meta.variants.forEach { v ->
@@ -82,16 +90,19 @@ object HandleResolver {
             val baseCamel = field.name.toCamelCase()
             when (field.ty) {
                 is XrossType.RustString -> {
-                    addGetterSetter(init, prefix, field.name, baseCamel, "str", "ADDRESS", "ADDRESS", isVoidSetter = true)
+                    addGetterSetter(init, prefix, field.name, baseCamel, "str", "ADDRESS")
                 }
                 is XrossType.Optional -> {
-                    addGetterSetter(init, prefix, field.name, baseCamel, "opt", "ADDRESS", "ADDRESS", isVoidSetter = true)
+                    addGetterSetter(init, prefix, field.name, baseCamel, "opt", "ADDRESS")
                 }
                 is XrossType.Result -> {
                     val getSymbol = "${prefix}_property_${field.name}_res_get"
                     init.addStatement(
-                        "this.${baseCamel}ResGetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.of($XROSS_RESULT_LAYOUT_NAME, %M))",
-                        getSymbol, FUNCTION_DESCRIPTOR, ADDRESS
+                        "this.${baseCamel}ResGetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.of(%L, %M))",
+                        getSymbol,
+                        FUNCTION_DESCRIPTOR,
+                        FFMConstants.XROSS_RESULT_LAYOUT_CODE,
+                        ADDRESS,
                     )
                 }
                 else -> {
@@ -100,11 +111,17 @@ object HandleResolver {
                         val setSymbol = "${prefix}_property_${field.name}_set"
                         init.addStatement(
                             "this.${baseCamel}GetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.of(%M, %M))",
-                            getSymbol, FUNCTION_DESCRIPTOR, field.ty.layoutMember, ADDRESS
+                            getSymbol,
+                            FUNCTION_DESCRIPTOR,
+                            field.ty.layoutMember,
+                            ADDRESS,
                         )
                         init.addStatement(
                             "this.${baseCamel}SetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.ofVoid(%M, %M))",
-                            setSymbol, FUNCTION_DESCRIPTOR, ADDRESS, field.ty.layoutMember
+                            setSymbol,
+                            FUNCTION_DESCRIPTOR,
+                            ADDRESS,
+                            field.ty.layoutMember,
                         )
                     }
                 }
@@ -113,23 +130,35 @@ object HandleResolver {
     }
 
     private fun addGetterSetter(
-        init: CodeBlock.Builder, prefix: String, rawName: String, camelName: String, suffix: String,
-        retLayout: String, argLayout: String, isVoidSetter: Boolean
+        init: CodeBlock.Builder,
+        prefix: String,
+        rawName: String,
+        camelName: String,
+        suffix: String,
+        retLayout: String,
     ) {
+        val retLabel = "ADDRESS"
+        val argLayout = "ADDRESS"
+        val isVoidSetter = true
         val getSymbol = "${prefix}_property_${rawName}_${suffix}_get"
         val setSymbol = "${prefix}_property_${rawName}_${suffix}_set"
         init.addStatement(
             "this.${camelName}${suffix.replaceFirstChar { it.uppercase() }}GetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.of(%M, %M))",
-            getSymbol, FUNCTION_DESCRIPTOR, MemberName(FFMConstants.VAL_LAYOUT, retLayout), ADDRESS
+            getSymbol,
+            FUNCTION_DESCRIPTOR,
+            MemberName(VAL_LAYOUT, retLayout),
+            ADDRESS,
         )
         val setterDesc = if (isVoidSetter) {
-            CodeBlock.of("ofVoid(%M, %M)", ADDRESS, MemberName(FFMConstants.VAL_LAYOUT, argLayout))
+            CodeBlock.of("ofVoid(%M, %M)", ADDRESS, MemberName(VAL_LAYOUT, argLayout))
         } else {
-            CodeBlock.of("of(%M, %M, %M)", MemberName(FFMConstants.VAL_LAYOUT, retLayout), ADDRESS, MemberName(FFMConstants.VAL_LAYOUT, argLayout))
+            CodeBlock.of("of(%M, %M, %M)", MemberName(VAL_LAYOUT, retLayout), ADDRESS, MemberName(VAL_LAYOUT, argLayout))
         }
         init.addStatement(
             "this.${camelName}${suffix.replaceFirstChar { it.uppercase() }}SetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.%L)",
-            setSymbol, FUNCTION_DESCRIPTOR, setterDesc
+            setSymbol,
+            FUNCTION_DESCRIPTOR,
+            setterDesc,
         )
     }
 
@@ -144,7 +173,7 @@ object HandleResolver {
             } else {
                 val argsPart = if (args.isEmpty()) CodeBlock.of("") else CodeBlock.of(", %L", args.joinToCode(", "))
                 val retLayout = when (method.ret) {
-                    is XrossType.Result -> CodeBlock.of(XROSS_RESULT_LAYOUT_NAME)
+                    is XrossType.Result -> FFMConstants.XROSS_RESULT_LAYOUT_CODE
                     else -> CodeBlock.of("%M", method.ret.layoutMember)
                 }
                 CodeBlock.of("%T.of(%L%L)", FUNCTION_DESCRIPTOR, retLayout, argsPart)
@@ -152,7 +181,8 @@ object HandleResolver {
 
             init.addStatement(
                 "this.${method.name.toCamelCase()}Handle = linker.downcallHandle(lookup.find(%S).get(), %L)",
-                method.symbol, desc
+                method.symbol,
+                desc,
             )
         }
     }

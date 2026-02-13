@@ -49,44 +49,26 @@ object EnumVariantGenerator {
             meta.variants.forEach { variant ->
                 classBuilder.addEnumConstant(variant.name)
             }
-
             fromPointerBuilder.addCode(
-                """
-                try {
-                    if (ptr == %T.NULL) throw %T("Pointer is NULL")
-                    val nameRaw = getVariantNameHandle.invokeExact(ptr) as %T
-                    val name = if (nameRaw == %T.NULL) "" else nameRaw.reinterpret(%T.MAX_VALUE).getString(0)
-                    if (nameRaw != %T.NULL) xrossFreeStringHandle.invokeExact(nameRaw)
-                    return valueOf(name)
-                } finally {
-                    // Manual close is removed because we use Arena.ofAuto() for safety
-                }
-                """.trimIndent(),
-                MEMORY_SEGMENT,
-                NullPointerException::class.asTypeName(),
-                MEMORY_SEGMENT,
-                MEMORY_SEGMENT,
-                Long::class.asTypeName(),
-                MEMORY_SEGMENT,
+                CodeBlock.builder()
+                    .beginControlFlow("try")
+                    .addStatement("if (ptr == %T.NULL) throw %T(%S)", MEMORY_SEGMENT, NullPointerException::class.asTypeName(), "Pointer is NULL")
+                    .addRustStringResolution("getVariantNameHandle.invokeExact(ptr)", "name")
+                    .addStatement("return valueOf(name)")
+                    .nextControlFlow("finally")
+                    .add("// Manual close is removed because we use Arena.ofAuto() for safety\n")
+                    .endControlFlow()
+                    .build(),
             )
         } else {
-            fromPointerBuilder.addStatement(
-                """
-                val name = run {
-                    if (ptr == %T.NULL) throw %T(%S)
-                    val nameRaw = getVariantNameHandle.invokeExact(ptr) as %T
-                    val n = if (nameRaw == %T.NULL) "" else nameRaw.reinterpret(%T.MAX_VALUE).getString(0)
-                    if (nameRaw != %T.NULL) xrossFreeStringHandle.invokeExact(nameRaw)
-                    n
-                }
-                """.trimIndent(),
-                MEMORY_SEGMENT,
-                NullPointerException::class.asTypeName(),
-                "Pointer is NULL",
-                MEMORY_SEGMENT,
-                MEMORY_SEGMENT,
-                Long::class.asTypeName(),
-                MEMORY_SEGMENT,
+            fromPointerBuilder.addCode(
+                CodeBlock.builder()
+                    .beginControlFlow("val name = run")
+                    .addStatement("if (ptr == %T.NULL) throw %T(%S)", MEMORY_SEGMENT, NullPointerException::class.asTypeName(), "Pointer is NULL")
+                    .addRustStringResolution("getVariantNameHandle.invokeExact(ptr)", "n")
+                    .addStatement("n")
+                    .endControlFlow()
+                    .build(),
             )
 
             fromPointerBuilder.addStatement("val reinterpretedPtr = if (ptr.byteSize() >= STRUCT_SIZE) ptr else ptr.reinterpret(STRUCT_SIZE)")
@@ -308,7 +290,7 @@ object EnumVariantGenerator {
                     is XrossType.Bool -> addStatement("res = ($vhName.get(this.segment, $offsetName) as Byte) != (0).toByte()")
                     is XrossType.RustString -> {
                         val callExpr = "$vhName.get(this.segment, $offsetName)"
-                        GeneratorUtils.addRustStringResolution(this, callExpr, "res", isAssignment = true, shouldFree = false)
+                        addRustStringResolution(callExpr, "res", isAssignment = true, shouldFree = false)
                     }
                     is XrossType.Object -> {
                         if (backingFieldName != null) {
