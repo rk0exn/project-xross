@@ -8,7 +8,65 @@ use xross_metadata::{
     Ownership, ThreadSafety, XrossField, XrossMethod, XrossMethodType, XrossType,
 };
 
-/// Generates common FFI functions for a type, such as drop, clone, and metadata layout retrieval.
+/// Data container for FFI method generation.
+pub struct MethodFfiData {
+    pub symbol_name: String,
+    pub export_ident: syn::Ident,
+    pub method_type: XrossMethodType,
+    pub args_meta: Vec<XrossField>,
+    pub c_args: Vec<TokenStream>,
+    pub call_args: Vec<TokenStream>,
+    pub conversion_logic: Vec<TokenStream>,
+}
+
+impl MethodFfiData {
+    pub fn new(symbol_base: &str, rust_fn_name: &syn::Ident) -> Self {
+        let symbol_name = format!("{}_{}", symbol_base, rust_fn_name);
+        let export_ident = format_ident!("{}", symbol_name);
+        Self {
+            symbol_name,
+            export_ident,
+            method_type: XrossMethodType::Static,
+            args_meta: Vec::new(),
+            c_args: Vec::new(),
+            call_args: Vec::new(),
+            conversion_logic: Vec::new(),
+        }
+    }
+}
+
+/// Builds a full type signature.
+pub fn build_signature(package: &str, name: &str) -> String {
+    if package.is_empty() {
+        name.to_string()
+    } else {
+        format!("{}.{}", package, name)
+    }
+}
+
+/// Generates the actual FFI wrapper function.
+pub fn write_ffi_function(
+    ffi_data: &MethodFfiData,
+    ret_ty: &XrossType,
+    sig_output: &ReturnType,
+    inner_call: TokenStream,
+    toks: &mut Vec<TokenStream>,
+) {
+    let (c_ret_type, wrapper_body) = gen_ret_wrapping(ret_ty, sig_output, inner_call);
+    let export_ident = &ffi_data.export_ident;
+    let c_args = &ffi_data.c_args;
+    let conv_logic = &ffi_data.conversion_logic;
+
+    toks.push(quote! {
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn #export_ident(#(#c_args),*) -> #c_ret_type {
+            #(#conv_logic)*
+            #wrapper_body
+        }
+    });
+}
+
+/// Generates common FFI functions (drop, clone, layout).
 pub fn generate_common_ffi(
     name: &syn::Ident,
     base: &str,
@@ -22,30 +80,17 @@ pub fn generate_common_ffi(
     let trait_name = format_ident!("Xross{}Class", name);
 
     toks.push(quote! {
-        /// Internal trait for Xross metadata.
-        pub trait #trait_name {
-            /// Returns the JSON metadata for the type.
-            fn xross_layout() -> String;
-        }
+        pub trait #trait_name { fn xross_layout() -> String; }
+        impl #trait_name for #name { fn xross_layout() -> String { #layout_logic } }
 
-        impl #trait_name for #name {
-            fn xross_layout() -> String {
-                #layout_logic
-            }
-        }
-
-        /// Frees the memory of a boxed object passed from JVM.
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn #drop_id(ptr: *mut #name) {
-            if !ptr.is_null() {
-                drop(unsafe { Box::from_raw(ptr) });
-            }
+            if !ptr.is_null() { drop(unsafe { Box::from_raw(ptr) }); }
         }
     });
 
     if is_clonable {
         toks.push(quote! {
-            /// Clones an object and returns a raw pointer to the new instance.
             #[unsafe(no_mangle)]
             pub unsafe extern "C" fn #clone_id(ptr: *const #name) -> *mut #name {
                 if ptr.is_null() { return std::ptr::null_mut(); }
@@ -58,7 +103,6 @@ pub fn generate_common_ffi(
     }
 
     toks.push(quote! {
-        /// Returns a pointer to the JSON metadata string for this type.
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn #layout_id() -> *mut std::ffi::c_char {
             let s = <#name as #trait_name>::xross_layout();
@@ -87,9 +131,7 @@ pub fn generate_enum_aux_ffi(
         pub unsafe extern "C" fn #variant_name_fn_id(ptr: *const #type_ident) -> *mut std::ffi::c_char {
             if ptr.is_null() { return std::ptr::null_mut(); }
             let val = &*ptr;
-            let name = match val {
-                #(#variant_name_arms),*
-            };
+            let name = match val { #(#variant_name_arms),* };
             std::ffi::CString::new(name).unwrap().into_raw()
         }
     });
@@ -108,17 +150,11 @@ pub fn resolve_return_type(
             let mut xty = resolve_type_with_attr(ty, attrs, package, Some(type_ident));
             let ownership = match &**ty {
                 Type::Reference(r) => {
-                    if r.mutability.is_some() {
-                        Ownership::MutRef
-                    } else {
-                        Ownership::Ref
-                    }
+                    if r.mutability.is_some() { Ownership::MutRef } else { Ownership::Ref }
                 }
                 _ => Ownership::Owned,
             };
-            if let XrossType::Object { ownership: o, .. } = &mut xty {
-                *o = ownership;
-            }
+            if let XrossType::Object { ownership: o, .. } = &mut xty { *o = ownership; }
             xty
         }
     }
@@ -150,24 +186,20 @@ pub fn gen_receiver_logic(
     (method_type, c_arg, call_arg)
 }
 
-/// Processes a list of function arguments and generates metadata and FFI tokens.
+/// Processes a list of function arguments.
 pub fn process_method_args(
     inputs: &Punctuated<FnArg, syn::token::Comma>,
     package_name: &str,
     type_name_ident: &syn::Ident,
-    c_args: &mut Vec<TokenStream>,
-    conversion_logic: &mut Vec<TokenStream>,
-    call_args: &mut Vec<TokenStream>,
-    args_meta: &mut Vec<XrossField>,
-    method_type: &mut XrossMethodType,
+    ffi_data: &mut MethodFfiData,
 ) {
     for input in inputs {
         match input {
             FnArg::Receiver(receiver) => {
                 let (m_ty, c_arg, call_arg) = gen_receiver_logic(receiver, type_name_ident);
-                *method_type = m_ty;
-                c_args.push(c_arg);
-                call_args.push(call_arg);
+                ffi_data.method_type = m_ty;
+                ffi_data.c_args.push(c_arg);
+                ffi_data.call_args.push(call_arg);
             }
             FnArg::Typed(pat_type) => {
                 let arg_name = if let Pat::Ident(id) = &*pat_type.pat {
@@ -183,24 +215,23 @@ pub fn process_method_args(
                     Some(type_name_ident),
                 );
 
-                args_meta.push(XrossField {
+                ffi_data.args_meta.push(XrossField {
                     name: arg_name.clone(),
                     ty: xross_ty.clone(),
                     safety: extract_safety_attr(&pat_type.attrs, ThreadSafety::Lock),
                     docs: vec![],
                 });
 
-                let (c_arg, conv, call_arg) =
-                    gen_arg_conversion(&pat_type.ty, &arg_ident, &xross_ty);
-                c_args.push(c_arg);
-                conversion_logic.push(conv);
-                call_args.push(call_arg);
+                let (c_arg, conv, call_arg) = gen_arg_conversion(&pat_type.ty, &arg_ident, &xross_ty);
+                ffi_data.c_args.push(c_arg);
+                ffi_data.conversion_logic.push(conv);
+                ffi_data.call_args.push(call_arg);
             }
         }
     }
 }
 
-/// Adds a standard clone method to the methods list if clonable.
+/// Adds a standard clone method to the methods list.
 pub fn add_clone_method(
     methods: &mut Vec<XrossMethod>,
     symbol_base: &str,
@@ -214,11 +245,7 @@ pub fn add_clone_method(
         is_constructor: false,
         args: vec![],
         ret: XrossType::Object {
-            signature: if package.is_empty() {
-                name.to_string()
-            } else {
-                format!("{}.{}", package, name)
-            },
+            signature: build_signature(package, name),
             ownership: Ownership::Owned,
         },
         safety: ThreadSafety::Lock,
@@ -226,7 +253,7 @@ pub fn add_clone_method(
     });
 }
 
-/// Helper to generate argument conversion logic from C to Rust.
+/// Helper to generate argument conversion logic.
 pub fn gen_arg_conversion(
     arg_ty: &Type,
     arg_id: &syn::Ident,
@@ -244,38 +271,26 @@ pub fn gen_arg_conversion(
                     };
                 },
                 if let Type::Path(p) = arg_ty {
-                    if p.path.is_ident("String") {
-                        quote!(#arg_id.to_string())
-                    } else {
-                        quote!(#arg_id)
-                    }
-                } else {
-                    quote!(#arg_id)
-                },
+                    if p.path.is_ident("String") { quote!(#arg_id.to_string()) }
+                    else { quote!(#arg_id) }
+                } else { quote!(#arg_id) },
             )
         }
         XrossType::Object { ownership, .. } => (
             quote! { #arg_id: *mut std::ffi::c_void },
             match ownership {
-                Ownership::Ref => {
-                    quote! { let #arg_id = unsafe { &*(#arg_id as *const #arg_ty) }; }
-                }
-                Ownership::MutRef => {
-                    quote! { let #arg_id = unsafe { &mut *(#arg_id as *mut #arg_ty) }; }
-                }
+                Ownership::Ref => quote! { let #arg_id = unsafe { &*(#arg_id as *const #arg_ty) }; },
+                Ownership::MutRef => quote! { let #arg_id = unsafe { &mut *(#arg_id as *mut #arg_ty) }; },
                 Ownership::Boxed => {
                     let inner = extract_inner_type(arg_ty);
                     quote! { let #arg_id = unsafe { Box::from_raw(#arg_id as *mut #inner) }; }
                 }
-                Ownership::Owned => {
-                    quote! { let #arg_id = unsafe { *Box::from_raw(#arg_id as *mut #arg_ty) }; }
-                }
+                Ownership::Owned => quote! { let #arg_id = unsafe { *Box::from_raw(#arg_id as *mut #arg_ty) }; },
             },
             quote! { #arg_id },
         ),
         XrossType::Option(inner) => {
-            let raw_ty = arg_ty;
-            let inner_rust_ty = extract_inner_type(raw_ty);
+            let inner_rust_ty = extract_inner_type(arg_ty);
             (
                 quote! { #arg_id: *mut std::ffi::c_void },
                 if matches!(**inner, XrossType::String) {
@@ -287,11 +302,8 @@ pub fn gen_arg_conversion(
                     }
                 } else {
                     quote! {
-                        let #arg_id = if #arg_id.is_null() {
-                            None
-                        } else {
-                            unsafe { Some(*Box::from_raw(#arg_id as *mut #inner_rust_ty)) }
-                        };
+                        let #arg_id = if #arg_id.is_null() { None }
+                        else { unsafe { Some(*Box::from_raw(#arg_id as *mut #inner_rust_ty)) } };
                     }
                 },
                 quote! { #arg_id },
@@ -305,7 +317,6 @@ pub fn gen_arg_conversion(
 pub fn generate_struct_layout(s: &syn::ItemStruct) -> proc_macro2::TokenStream {
     let name = &s.ident;
     let mut field_parts = Vec::new();
-
     if let syn::Fields::Named(fields) = &s.fields {
         for field in &fields.named {
             let f_name = field.ident.as_ref().unwrap();
@@ -319,7 +330,6 @@ pub fn generate_struct_layout(s: &syn::ItemStruct) -> proc_macro2::TokenStream {
             });
         }
     }
-
     quote! {
         let mut parts = vec![format!("{}", std::mem::size_of::<#name>() as u64)];
         #(parts.push(#field_parts);)*
@@ -331,31 +341,17 @@ pub fn generate_struct_layout(s: &syn::ItemStruct) -> proc_macro2::TokenStream {
 pub fn generate_enum_layout(e: &syn::ItemEnum) -> proc_macro2::TokenStream {
     let name = &e.ident;
     let mut variant_specs = Vec::new();
-
     for v in &e.variants {
         let v_name = &v.ident;
-
-        if v.fields.is_empty() {
-            variant_specs.push(quote! {
-                stringify!(#v_name).to_string()
-            });
-        } else {
+        if v.fields.is_empty() { variant_specs.push(quote! { stringify!(#v_name).to_string() }); }
+        else {
             let mut fields_info = Vec::new();
             for (i, field) in v.fields.iter().enumerate() {
                 let f_ty = &field.ty;
-                let f_display_name = field
-                    .ident
-                    .as_ref()
-                    .map(|id| id.to_string())
+                let f_display_name = field.ident.as_ref().map(|id| id.to_string())
                     .unwrap_or_else(|| crate::utils::ordinal_name(i));
-
-                let f_access = if let Some(ident) = &field.ident {
-                    quote! { #ident }
-                } else {
-                    let index = syn::Index::from(i);
-                    quote! { #index }
-                };
-
+                let f_access = if let Some(ident) = &field.ident { quote! { #ident } }
+                    else { let index = syn::Index::from(i); quote! { #index } };
                 fields_info.push(quote! {
                     {
                         let offset = std::mem::offset_of!(#name, #v_name . #f_access) as u64;
@@ -364,13 +360,9 @@ pub fn generate_enum_layout(e: &syn::ItemEnum) -> proc_macro2::TokenStream {
                     }
                 });
             }
-
-            variant_specs.push(quote! {
-                format!("{}{{{}}}", stringify!(#v_name), vec![#(#fields_info),*].join(";"))
-            });
+            variant_specs.push(quote! { format!("{}{{{}}}", stringify!(#v_name), vec![#(#fields_info),*].join(";")) });
         }
     }
-
     quote! {
         let mut parts = vec![format!("{}", std::mem::size_of::<#name>() as u64)];
         let variants: Vec<String> = vec![#(#variant_specs),*];
@@ -379,7 +371,7 @@ pub fn generate_enum_layout(e: &syn::ItemEnum) -> proc_macro2::TokenStream {
     }
 }
 
-/// Helper to generate return value wrapping logic from Rust to C.
+/// Helper to generate return value wrapping logic.
 pub fn gen_ret_wrapping(
     ret_ty: &XrossType,
     sig_output: &ReturnType,
@@ -426,39 +418,24 @@ pub fn gen_ret_wrapping(
             ),
         },
         XrossType::Result { ok, err } => {
-            let gen_ptr = |ty: &XrossType, val_ident: proc_macro2::TokenStream| match ty {
-                XrossType::String => quote! {
-                    std::ffi::CString::new(#val_ident).unwrap_or_default().into_raw() as *mut std::ffi::c_void
-                },
-                _ => quote! {
-                    Box::into_raw(Box::new(#val_ident)) as *mut std::ffi::c_void
-                },
+            let gen_ptr = |ty: &XrossType, val_ident: TokenStream| match ty {
+                XrossType::String => quote! { std::ffi::CString::new(#val_ident).unwrap_or_default().into_raw() as *mut std::ffi::c_void },
+                _ => quote! { Box::into_raw(Box::new(#val_ident)) as *mut std::ffi::c_void },
             };
             let ok_ptr_logic = gen_ptr(ok, quote! { val });
             let err_ptr_logic = gen_ptr(err, quote! { e });
-
             (
                 quote! { xross_core::XrossResult },
                 quote! {
                     match #inner_call {
-                        Ok(val) => xross_core::XrossResult {
-                            is_ok: true,
-                            ptr: #ok_ptr_logic,
-                        },
-                        Err(e) => xross_core::XrossResult {
-                            is_ok: false,
-                            ptr: #err_ptr_logic,
-                        },
+                        Ok(val) => xross_core::XrossResult { is_ok: true, ptr: #ok_ptr_logic },
+                        Err(e) => xross_core::XrossResult { is_ok: false, ptr: #err_ptr_logic },
                     }
                 },
             )
         }
         _ => {
-            let raw_ret = if let ReturnType::Type(_, ty) = sig_output {
-                quote! { #ty }
-            } else {
-                quote! { () }
-            };
+            let raw_ret = if let ReturnType::Type(_, ty) = sig_output { quote! { #ty } } else { quote! { () } };
             (raw_ret, quote! { #inner_call })
         }
     }
@@ -489,8 +466,7 @@ pub fn generate_property_accessors(
                 pub unsafe extern "C" fn #set_fn(ptr: *mut #type_name, val: *const std::ffi::c_char) {
                     if ptr.is_null() || val.is_null() { return; }
                     let obj = &mut *ptr;
-                    let s = std::ffi::CStr::from_ptr(val).to_string_lossy().into_owned();
-                    obj.#field_ident = s;
+                    obj.#field_ident = std::ffi::CStr::from_ptr(val).to_string_lossy().into_owned();
                 }
             });
         }

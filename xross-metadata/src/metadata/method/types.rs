@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Represents the type of a method based on its receiver.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum XrossMethodType {
     /// A static function that does not take a receiver (self).
     Static,

@@ -1,10 +1,10 @@
-use crate::codegen::ffi::{gen_ret_wrapping, process_method_args, resolve_return_type};
+use crate::codegen::ffi::{build_signature, process_method_args, resolve_return_type, write_ffi_function, MethodFfiData};
 use crate::metadata::{load_definition, save_definition};
 use crate::utils::*;
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote};
+use quote::quote;
 use syn::{ImplItem, ItemImpl, Type};
-use xross_metadata::{Ownership, ThreadSafety, XrossDefinition, XrossMethod, XrossMethodType};
+use xross_metadata::{Ownership, ThreadSafety, XrossDefinition, XrossMethod};
 
 pub fn impl_xross_class_attribute(_attr: TokenStream, mut input_impl: ItemImpl) -> TokenStream {
     let type_name_ident = if let Type::Path(tp) = &*input_impl.self_ty {
@@ -30,75 +30,41 @@ pub fn impl_xross_class_attribute(_attr: TokenStream, mut input_impl: ItemImpl) 
             let mut is_new = false;
             let mut is_method = false;
             method.attrs.retain(|attr| {
-                if attr.path().is_ident("xross_new") {
-                    is_new = true;
-                    false
-                } else if attr.path().is_ident("xross_method") {
-                    is_method = true;
-                    false
-                } else {
-                    true
-                }
+                if attr.path().is_ident("xross_new") { is_new = true; false }
+                else if attr.path().is_ident("xross_method") { is_method = true; false }
+                else { true }
             });
 
-            if !is_new && !is_method {
-                continue;
-            }
+            if !is_new && !is_method { continue; }
 
             let rust_fn_name = &method.sig.ident;
-            let symbol_name = format!("{}_{}", symbol_base, rust_fn_name);
-            let export_ident = format_ident!("{}", symbol_name);
+            let mut ffi_data = MethodFfiData::new(&symbol_base, rust_fn_name);
 
-            let mut method_type = XrossMethodType::Static;
-            let mut args_meta = Vec::new();
-            let mut c_args = Vec::new();
-            let mut call_args = Vec::new();
-            let mut conversion_logic = Vec::new();
-
-            process_method_args(
-                &method.sig.inputs,
-                &package_name,
-                type_name_ident,
-                &mut c_args,
-                &mut conversion_logic,
-                &mut call_args,
-                &mut args_meta,
-                &mut method_type,
-            );
+            process_method_args(&method.sig.inputs, &package_name, type_name_ident, &mut ffi_data);
 
             let ret_ty = if is_new {
-                let sig = if package_name.is_empty() {
-                    type_name_ident.to_string()
-                } else {
-                    format!("{}.{}", package_name, type_name_ident)
-                };
-                xross_metadata::XrossType::Object { signature: sig, ownership: Ownership::Owned }
+                xross_metadata::XrossType::Object {
+                    signature: build_signature(&package_name, &type_name_ident.to_string()),
+                    ownership: Ownership::Owned
+                }
             } else {
                 resolve_return_type(&method.sig.output, &method.attrs, &package_name, type_name_ident)
             };
 
             methods_meta.push(XrossMethod {
                 name: rust_fn_name.to_string(),
-                symbol: symbol_name.clone(),
-                method_type,
+                symbol: ffi_data.symbol_name.clone(),
+                method_type: ffi_data.method_type,
                 safety: extract_safety_attr(&method.attrs, ThreadSafety::Lock),
                 is_constructor: is_new,
-                args: args_meta,
+                args: ffi_data.args_meta.clone(),
                 ret: ret_ty.clone(),
                 docs: extract_docs(&method.attrs),
             });
 
+            let call_args = &ffi_data.call_args;
             let inner_call = quote! { #type_name_ident::#rust_fn_name(#(#call_args),*) };
-            let (c_ret_type, wrapper_body) =
-                gen_ret_wrapping(&ret_ty, &method.sig.output, inner_call);
-
-            extra_functions.push(quote! {
-                #[unsafe(no_mangle)]
-                pub unsafe extern "C" fn #export_ident(#(#c_args),*) -> #c_ret_type {
-                    #(#conversion_logic)*
-                    #wrapper_body
-                }
-            });
+            write_ffi_function(&ffi_data, &ret_ty, &method.sig.output, inner_call, &mut extra_functions);
         }
     }
 
