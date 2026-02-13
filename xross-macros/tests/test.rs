@@ -1,4 +1,4 @@
-use xross_macros::{XrossClass, xross_methods, xross_class};
+use xross_macros::{XrossClass, xross_class, xross_methods};
 
 #[derive(Clone)]
 pub struct DslService {
@@ -42,7 +42,7 @@ pub mod test {
         pub val: i32,
     }
 
-    #[xross_methods] 
+    #[xross_methods]
     impl MyService2 {
         #[xross_new]
         pub fn new(val: i32) -> Self {

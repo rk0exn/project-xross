@@ -102,15 +102,23 @@ pub fn generate_enum_layout(e: &syn::ItemEnum) -> proc_macro2::TokenStream {
     let mut variant_specs = Vec::new();
     for v in &e.variants {
         let v_name = &v.ident;
-        if v.fields.is_empty() { variant_specs.push(quote! { stringify!(#v_name).to_string() }); }
-        else {
+        if v.fields.is_empty() {
+            variant_specs.push(quote! { stringify!(#v_name).to_string() });
+        } else {
             let mut fields_info = Vec::new();
             for (i, field) in v.fields.iter().enumerate() {
                 let f_ty = &field.ty;
-                let f_display_name = field.ident.as_ref().map(|id| id.to_string())
+                let f_display_name = field
+                    .ident
+                    .as_ref()
+                    .map(|id| id.to_string())
                     .unwrap_or_else(|| crate::utils::ordinal_name(i));
-                let f_access = if let Some(ident) = &field.ident { quote! { #ident } }
-                    else { let index = syn::Index::from(i); quote! { #index } };
+                let f_access = if let Some(ident) = &field.ident {
+                    quote! { #ident }
+                } else {
+                    let index = syn::Index::from(i);
+                    quote! { #index }
+                };
                 fields_info.push(quote! {
                     {
                         let offset = std::mem::offset_of!(#name, #v_name . #f_access) as u64;

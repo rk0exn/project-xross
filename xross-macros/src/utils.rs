@@ -180,7 +180,7 @@ pub fn ordinal_name(i: usize) -> String {
             format!("{}th", million_part)
         } else {
             format!("{}_{}", million_part, ordinal_name(remainder))
-        }
+        };
     }
 
     if i >= 1_000 {
@@ -197,7 +197,7 @@ pub fn ordinal_name(i: usize) -> String {
             format!("{}th", thousand_part)
         } else {
             format!("{}_{}", thousand_part, ordinal_name(remainder))
-        }
+        };
     }
 
     if i >= 100 {
@@ -214,7 +214,7 @@ pub fn ordinal_name(i: usize) -> String {
             format!("{}th", hundred_part)
         } else {
             format!("{}_{}", hundred_part, ordinal_name(remainder))
-        }
+        };
     }
 
     // 21〜99

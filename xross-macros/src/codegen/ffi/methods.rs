@@ -1,10 +1,12 @@
+use crate::codegen::ffi::{gen_arg_conversion, gen_receiver_logic, gen_ret_wrapping};
+use crate::utils::extract_safety_attr;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::punctuated::Punctuated;
 use syn::{FnArg, Pat, ReturnType};
-use xross_metadata::{Ownership, ThreadSafety, XrossField, XrossMethod, XrossMethodType, XrossType};
-use crate::codegen::ffi::{gen_arg_conversion, gen_receiver_logic, gen_ret_wrapping};
-use crate::utils::extract_safety_attr;
+use xross_metadata::{
+    Ownership, ThreadSafety, XrossField, XrossMethod, XrossMethodType, XrossType,
+};
 
 /// Data container for FFI method generation.
 pub struct MethodFfiData {
@@ -35,11 +37,7 @@ impl MethodFfiData {
 
 /// Builds a full type signature.
 pub fn build_signature(package: &str, name: &str) -> String {
-    if package.is_empty() {
-        name.to_string()
-    } else {
-        format!("{}.{}", package, name)
-    }
+    if package.is_empty() { name.to_string() } else { format!("{}.{}", package, name) }
 }
 
 /// Generates the actual FFI wrapper function.
@@ -100,7 +98,8 @@ pub fn process_method_args(
                     docs: vec![],
                 });
 
-                let (c_arg, conv, call_arg) = gen_arg_conversion(&pat_type.ty, &arg_ident, &xross_ty);
+                let (c_arg, conv, call_arg) =
+                    gen_arg_conversion(&pat_type.ty, &arg_ident, &xross_ty);
                 ffi_data.c_args.push(c_arg);
                 ffi_data.conversion_logic.push(conv);
                 ffi_data.call_args.push(call_arg);

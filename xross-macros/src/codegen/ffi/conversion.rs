@@ -1,9 +1,9 @@
+use crate::types::resolver::resolve_type_with_attr;
+use crate::utils::extract_inner_type;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Attribute, Receiver, ReturnType, Type};
 use xross_metadata::{Ownership, XrossType};
-use crate::types::resolver::resolve_type_with_attr;
-use crate::utils::extract_inner_type;
 
 /// Resolves the Xross return type and ownership.
 pub fn resolve_return_type(
@@ -18,11 +18,17 @@ pub fn resolve_return_type(
             let mut xty = resolve_type_with_attr(ty, attrs, package, Some(type_ident));
             let ownership = match &**ty {
                 Type::Reference(r) => {
-                    if r.mutability.is_some() { Ownership::MutRef } else { Ownership::Ref }
+                    if r.mutability.is_some() {
+                        Ownership::MutRef
+                    } else {
+                        Ownership::Ref
+                    }
                 }
                 _ => Ownership::Owned,
             };
-            if let XrossType::Object { ownership: o, .. } = &mut xty { *o = ownership; }
+            if let XrossType::Object { ownership: o, .. } = &mut xty {
+                *o = ownership;
+            }
             xty
         }
     }
@@ -72,21 +78,32 @@ pub fn gen_arg_conversion(
                     };
                 },
                 if let Type::Path(p) = arg_ty {
-                    if p.path.is_ident("String") { quote!(#arg_id.to_string()) }
-                    else { quote!(#arg_id) }
-                } else { quote!(#arg_id) },
+                    if p.path.is_ident("String") {
+                        quote!(#arg_id.to_string())
+                    } else {
+                        quote!(#arg_id)
+                    }
+                } else {
+                    quote!(#arg_id)
+                },
             )
         }
         XrossType::Object { ownership, .. } => (
             quote! { #arg_id: *mut std::ffi::c_void },
             match ownership {
-                Ownership::Ref => quote! { let #arg_id = unsafe { &*(#arg_id as *const #arg_ty) }; },
-                Ownership::MutRef => quote! { let #arg_id = unsafe { &mut *(#arg_id as *mut #arg_ty) }; },
+                Ownership::Ref => {
+                    quote! { let #arg_id = unsafe { &*(#arg_id as *const #arg_ty) }; }
+                }
+                Ownership::MutRef => {
+                    quote! { let #arg_id = unsafe { &mut *(#arg_id as *mut #arg_ty) }; }
+                }
                 Ownership::Boxed => {
                     let inner = extract_inner_type(arg_ty);
                     quote! { let #arg_id = unsafe { Box::from_raw(#arg_id as *mut #inner) }; }
                 }
-                Ownership::Owned => quote! { let #arg_id = unsafe { *Box::from_raw(#arg_id as *mut #arg_ty) }; },
+                Ownership::Owned => {
+                    quote! { let #arg_id = unsafe { *Box::from_raw(#arg_id as *mut #arg_ty) }; }
+                }
             },
             quote! { #arg_id },
         ),
@@ -162,7 +179,9 @@ pub fn gen_ret_wrapping(
         },
         XrossType::Result { ok, err } => {
             let gen_ptr = |ty: &XrossType, val_ident: TokenStream| match ty {
-                XrossType::String => quote! { std::ffi::CString::new(#val_ident).unwrap_or_default().into_raw() as *mut std::ffi::c_void },
+                XrossType::String => {
+                    quote! { std::ffi::CString::new(#val_ident).unwrap_or_default().into_raw() as *mut std::ffi::c_void }
+                }
                 _ => quote! { Box::into_raw(Box::new(#val_ident)) as *mut std::ffi::c_void },
             };
             let ok_ptr_logic = gen_ptr(ok, quote! { val });
@@ -178,7 +197,11 @@ pub fn gen_ret_wrapping(
             )
         }
         _ => {
-            let raw_ret = if let ReturnType::Type(_, ty) = sig_output { quote! { #ty } } else { quote! { () } };
+            let raw_ret = if let ReturnType::Type(_, ty) = sig_output {
+                quote! { #ty }
+            } else {
+                quote! { () }
+            };
             (raw_ret, quote! { #inner_call })
         }
     }

@@ -1,4 +1,6 @@
-use crate::codegen::ffi::{build_signature, process_method_args, resolve_return_type, write_ffi_function, MethodFfiData};
+use crate::codegen::ffi::{
+    MethodFfiData, build_signature, process_method_args, resolve_return_type, write_ffi_function,
+};
 use crate::metadata::{load_definition, save_definition};
 use crate::utils::*;
 use proc_macro2::TokenStream;
@@ -13,8 +15,9 @@ pub fn impl_xross_class_attribute(_attr: TokenStream, mut input_impl: ItemImpl) 
         panic!("xross_methods must be used on a direct type implementation");
     };
 
-    let mut definition = load_definition(type_name_ident)
-        .expect("XrossClass definition not found. Apply #[derive(XrossClass)] or xross_class! first.");
+    let mut definition = load_definition(type_name_ident).expect(
+        "XrossClass definition not found. Apply #[derive(XrossClass)] or xross_class! first.",
+    );
 
     let (package_name, symbol_base) = match &definition {
         XrossDefinition::Struct(s) => (s.package_name.clone(), s.symbol_prefix.clone()),
@@ -30,12 +33,20 @@ pub fn impl_xross_class_attribute(_attr: TokenStream, mut input_impl: ItemImpl) 
             let mut is_new = false;
             let mut is_method = false;
             method.attrs.retain(|attr| {
-                if attr.path().is_ident("xross_new") { is_new = true; false }
-                else if attr.path().is_ident("xross_method") { is_method = true; false }
-                else { true }
+                if attr.path().is_ident("xross_new") {
+                    is_new = true;
+                    false
+                } else if attr.path().is_ident("xross_method") {
+                    is_method = true;
+                    false
+                } else {
+                    true
+                }
             });
 
-            if !is_new && !is_method { continue; }
+            if !is_new && !is_method {
+                continue;
+            }
 
             let rust_fn_name = &method.sig.ident;
             let mut ffi_data = MethodFfiData::new(&symbol_base, rust_fn_name);
@@ -45,10 +56,15 @@ pub fn impl_xross_class_attribute(_attr: TokenStream, mut input_impl: ItemImpl) 
             let ret_ty = if is_new {
                 xross_metadata::XrossType::Object {
                     signature: build_signature(&package_name, &type_name_ident.to_string()),
-                    ownership: Ownership::Owned
+                    ownership: Ownership::Owned,
                 }
             } else {
-                resolve_return_type(&method.sig.output, &method.attrs, &package_name, type_name_ident)
+                resolve_return_type(
+                    &method.sig.output,
+                    &method.attrs,
+                    &package_name,
+                    type_name_ident,
+                )
             };
 
             methods_meta.push(XrossMethod {
@@ -64,7 +80,13 @@ pub fn impl_xross_class_attribute(_attr: TokenStream, mut input_impl: ItemImpl) 
 
             let call_args = &ffi_data.call_args;
             let inner_call = quote! { #type_name_ident::#rust_fn_name(#(#call_args),*) };
-            write_ffi_function(&ffi_data, &ret_ty, &method.sig.output, inner_call, &mut extra_functions);
+            write_ffi_function(
+                &ffi_data,
+                &ret_ty,
+                &method.sig.output,
+                inner_call,
+                &mut extra_functions,
+            );
         }
     }
 

@@ -74,7 +74,9 @@ impl Parse for XrossClassInput {
                             let f_name = field_content.parse::<syn::Ident>()?.to_string();
                             field_content.parse::<Token![:]>()?;
                             let f_ty = field_content.parse::<Type>()?;
-                            if field_content.peek(Token![;]) { field_content.parse::<Token![;]>()?; }
+                            if field_content.peek(Token![;]) {
+                                field_content.parse::<Token![;]>()?;
+                            }
                             named.push((f_name, f_ty));
                         }
                         VariantFieldInfo::Named(named)
@@ -84,26 +86,38 @@ impl Parse for XrossClassInput {
                         let mut unnamed = Vec::new();
                         while !field_content.is_empty() {
                             unnamed.push(field_content.parse::<Type>()?);
-                            if field_content.peek(Token![,]) { field_content.parse::<Token![,]>()?; }
+                            if field_content.peek(Token![,]) {
+                                field_content.parse::<Token![,]>()?;
+                            }
                         }
                         VariantFieldInfo::Unnamed(unnamed)
                     } else {
                         VariantFieldInfo::Unit
                     };
-                    if content.peek(Token![;]) { content.parse::<Token![;]>()?; }
+                    if content.peek(Token![;]) {
+                        content.parse::<Token![;]>()?;
+                    }
                     v_list.push(VariantInfo { name: v_name, fields: v_fields });
                 }
-                if input.peek(Token![;]) { input.parse::<Token![;]>()?; }
+                if input.peek(Token![;]) {
+                    input.parse::<Token![;]>()?;
+                }
                 items.push(XrossClassItem::Variants(v_list));
             } else if input.peek(clonable) || input.peek(is_clonable) {
-                if input.peek(clonable) { input.parse::<clonable>()?; }
-                else { input.parse::<is_clonable>()?; }
+                if input.peek(clonable) {
+                    input.parse::<clonable>()?;
+                } else {
+                    input.parse::<is_clonable>()?;
+                }
                 let val: syn::LitBool = input.parse()?;
                 input.parse::<Token![;]>()?;
                 items.push(XrossClassItem::IsClonable(val.value));
             } else if input.peek(iscopy) || input.peek(is_copy) {
-                if input.peek(iscopy) { input.parse::<iscopy>()?; }
-                else { input.parse::<is_copy>()?; }
+                if input.peek(iscopy) {
+                    input.parse::<iscopy>()?;
+                } else {
+                    input.parse::<is_copy>()?;
+                }
                 let val: syn::LitBool = input.parse()?;
                 input.parse::<Token![;]>()?;
                 items.push(XrossClassItem::IsCopy(val.value));
@@ -121,7 +135,9 @@ impl Parse for XrossClassInput {
                 if input.peek(Token![&]) || input.peek(Token![mut]) || input.peek(Token![self]) {
                     let receiver = input.parse::<FnArg>()?;
                     inputs.push(receiver);
-                    if input.peek(Token![.]) { input.parse::<Token![.]>()?; }
+                    if input.peek(Token![.]) {
+                        input.parse::<Token![.]>()?;
+                    }
                 } else if input.peek(syn::Ident) && input.peek2(Token![.]) {
                     let type_name = input.parse::<syn::Ident>()?.to_string();
                     type_override = Some(type_name);
@@ -131,14 +147,29 @@ impl Parse for XrossClassInput {
                 let content;
                 parenthesized!(content in input);
                 let args = content.parse_terminated(FnArg::parse, Token![,])?;
-                for arg in args { inputs.push(arg); }
+                for arg in args {
+                    inputs.push(arg);
+                }
                 let output = input.parse::<ReturnType>()?;
-                if input.peek(Token![;]) { input.parse::<Token![;]>()?; }
-                items.push(XrossClassItem::Method(Signature {
-                    constness: None, asyncness: None, unsafety: None, abi: None,
-                    fn_token: <Token![fn]>::default(), ident, generics: syn::Generics::default(),
-                    paren_token: syn::token::Paren::default(), inputs, variadic: None, output,
-                }, type_override));
+                if input.peek(Token![;]) {
+                    input.parse::<Token![;]>()?;
+                }
+                items.push(XrossClassItem::Method(
+                    Signature {
+                        constness: None,
+                        asyncness: None,
+                        unsafety: None,
+                        abi: None,
+                        fn_token: <Token![fn]>::default(),
+                        ident,
+                        generics: syn::Generics::default(),
+                        paren_token: syn::token::Paren::default(),
+                        inputs,
+                        variadic: None,
+                        output,
+                    },
+                    type_override,
+                ));
             } else {
                 return Err(input.error("expected one of: package, class, enum, variants, clonable, iscopy, field, method"));
             }
