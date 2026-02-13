@@ -2,7 +2,7 @@
 
 use std::cmp::{max, min};
 use std::sync::atomic::{AtomicIsize, Ordering};
-use xross_core::{XrossClass, xross_methods, xross_class};
+use xross_core::{XrossClass, xross_class, xross_methods};
 
 // --- グローバル・カウンター ---
 static SERVICE_COUNT: AtomicIsize = AtomicIsize::new(0);
@@ -310,7 +310,7 @@ mod tests {
     fn test_hello_enum_logic() {
         let b = HelloEnum::B { i: 100 };
         let c = HelloEnum::C(Box::new(b));
-        
+
         if let HelloEnum::C(inner) = c {
             if let HelloEnum::B { i } = *inner {
                 assert_eq!(i, 100);

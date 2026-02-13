@@ -1,18 +1,20 @@
-use crate::metadata::{save_definition};
+use crate::metadata::save_definition;
 use crate::types::resolver::resolve_type_with_attr;
 use crate::utils::*;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
-use syn::{FnArg, Pat, ReturnType, Signature, Token, Type, parse_macro_input, parenthesized, braced};
+use syn::{
+    FnArg, Pat, ReturnType, Signature, Token, Type, braced, parenthesized, parse_macro_input,
+};
 use xross_metadata::{
-    Ownership, ThreadSafety, XrossDefinition, XrossField, XrossMethod, XrossMethodType,
-    XrossType, XrossStruct, XrossEnum, XrossVariant,
+    Ownership, ThreadSafety, XrossDefinition, XrossEnum, XrossField, XrossMethod, XrossMethodType,
+    XrossStruct, XrossType, XrossVariant,
 };
 
 syn::custom_keyword!(package);
 syn::custom_keyword!(class);
-syn::custom_keyword!(enum_kw); 
+syn::custom_keyword!(enum_kw);
 syn::custom_keyword!(variants);
 syn::custom_keyword!(clonable);
 syn::custom_keyword!(is_clonable);
@@ -102,7 +104,7 @@ impl Parse for XrossClassInput {
                     } else {
                         VariantFieldInfo::Unit
                     };
-                    
+
                     if content.peek(Token![;]) {
                         content.parse::<Token![;]>()?;
                     }
@@ -113,14 +115,20 @@ impl Parse for XrossClassInput {
                 }
                 items.push(XrossClassItem::Variants(v_list));
             } else if input.peek(clonable) || input.peek(is_clonable) {
-                if input.peek(clonable) { input.parse::<clonable>()?; }
-                else { input.parse::<is_clonable>()?; }
+                if input.peek(clonable) {
+                    input.parse::<clonable>()?;
+                } else {
+                    input.parse::<is_clonable>()?;
+                }
                 let val: syn::LitBool = input.parse()?;
                 input.parse::<Token![;]>()?;
                 items.push(XrossClassItem::IsClonable(val.value));
             } else if input.peek(iscopy) || input.peek(is_copy) {
-                if input.peek(iscopy) { input.parse::<iscopy>()?; }
-                else { input.parse::<is_copy>()?; }
+                if input.peek(iscopy) {
+                    input.parse::<iscopy>()?;
+                } else {
+                    input.parse::<is_copy>()?;
+                }
                 let val: syn::LitBool = input.parse()?;
                 input.parse::<Token![;]>()?;
                 items.push(XrossClassItem::IsCopy(val.value));
@@ -133,7 +141,7 @@ impl Parse for XrossClassInput {
                 items.push(XrossClassItem::Field { name, ty });
             } else if input.peek(method) {
                 input.parse::<method>()?;
-                
+
                 let mut inputs = syn::punctuated::Punctuated::<FnArg, Token![,]>::new();
                 let mut type_override = None;
 
@@ -148,7 +156,7 @@ impl Parse for XrossClassInput {
                     type_override = Some(type_name);
                     input.parse::<Token![.]>()?;
                 }
-                
+
                 let ident = input.parse::<syn::Ident>()?;
                 let content;
                 parenthesized!(content in input);
@@ -156,25 +164,28 @@ impl Parse for XrossClassInput {
                 for arg in args {
                     inputs.push(arg);
                 }
-                
+
                 let output = input.parse::<ReturnType>()?;
                 if input.peek(Token![;]) {
                     input.parse::<Token![;]>()?;
                 }
-                
-                items.push(XrossClassItem::Method(Signature {
-                    constness: None,
-                    asyncness: None,
-                    unsafety: None,
-                    abi: None,
-                    fn_token: <Token![fn]>::default(),
-                    ident,
-                    generics: syn::Generics::default(),
-                    paren_token: syn::token::Paren::default(),
-                    inputs,
-                    variadic: None,
-                    output,
-                }, type_override));
+
+                items.push(XrossClassItem::Method(
+                    Signature {
+                        constness: None,
+                        asyncness: None,
+                        unsafety: None,
+                        abi: None,
+                        fn_token: <Token![fn]>::default(),
+                        ident,
+                        generics: syn::Generics::default(),
+                        paren_token: syn::token::Paren::default(),
+                        inputs,
+                        variadic: None,
+                        output,
+                    },
+                    type_override,
+                ));
             } else {
                 return Err(input.error("expected one of: package, class, enum, variants, clonable, iscopy, field, method"));
             }
@@ -185,7 +196,7 @@ impl Parse for XrossClassInput {
 
 pub fn impl_xross_class(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as XrossClassInput);
-    
+
     let mut package = String::new();
     let mut name = String::new();
     let mut is_enum = false;
@@ -194,12 +205,18 @@ pub fn impl_xross_class(input: proc_macro::TokenStream) -> proc_macro::TokenStre
     let mut fields_raw = Vec::new();
     let mut methods_raw = Vec::new();
     let mut variants_raw = Vec::new();
-    
+
     for item in input.items {
         match item {
             XrossClassItem::Package(p) => package = p,
-            XrossClassItem::Class(c) => { name = c; is_enum = false; },
-            XrossClassItem::Enum(e) => { name = e; is_enum = true; },
+            XrossClassItem::Class(c) => {
+                name = c;
+                is_enum = false;
+            }
+            XrossClassItem::Enum(e) => {
+                name = e;
+                is_enum = true;
+            }
             XrossClassItem::IsClonable(v) => is_clonable = v,
             XrossClassItem::IsCopy(v) => is_copy = v,
             XrossClassItem::Field { name, ty } => fields_raw.push((name, ty)),
@@ -207,59 +224,62 @@ pub fn impl_xross_class(input: proc_macro::TokenStream) -> proc_macro::TokenStre
             XrossClassItem::Variants(v) => variants_raw = v,
         }
     }
-    
+
     if name.is_empty() {
         panic!("xross_class! requires a class or enum name");
     }
-    
+
     let type_ident = format_ident!("{}", name);
     let crate_name = std::env::var("CARGO_PKG_NAME")
         .unwrap_or_else(|_| "unknown_crate".to_string())
         .replace("-", "_");
     let symbol_base = build_symbol_base(&crate_name, &package, &name);
-    
+
     let mut extra_functions = Vec::new();
-    
+
     // Helper to generate argument conversion logic
-    let gen_arg_conversion = |arg_ty: &Type, arg_id: &syn::Ident, x_ty: &XrossType| {
-        match x_ty {
-            XrossType::String => {
-                let raw_id = format_ident!("{}_raw", arg_id);
-                (
-                    quote! { #raw_id: *const std::ffi::c_char },
-                    quote! {
-                        let #arg_id = unsafe {
-                            if #raw_id.is_null() { "" }
-                            else { std::ffi::CStr::from_ptr(#raw_id).to_str().unwrap_or("") }
-                        };
-                    },
-                    if let Type::Path(p) = arg_ty {
-                        if p.path.is_ident("String") { quote!(#arg_id.to_string()) }
-                        else { quote!(#arg_id) }
-                    } else { quote!(#arg_id) }
-                )
-            }
-            XrossType::Object { ownership, .. } => {
-                (
-                    quote! { #arg_id: *mut std::ffi::c_void },
-                    match ownership {
-                        Ownership::Ref => quote! { let #arg_id = unsafe { &*(#arg_id as *const #arg_ty) }; },
-                        Ownership::MutRef => quote! { let #arg_id = unsafe { &mut *(#arg_id as *mut #arg_ty) }; },
-                        Ownership::Boxed => {
-                            let inner = extract_inner_type(arg_ty);
-                            quote! { let #arg_id = unsafe { Box::from_raw(#arg_id as *mut #inner) }; }
-                        },
-                        Ownership::Owned => quote! { let #arg_id = unsafe { *Box::from_raw(#arg_id as *mut #arg_ty) }; },
-                    },
-                    quote! { #arg_id }
-                )
-            }
-            _ => (
-                quote! { #arg_id: #arg_ty },
-                quote! {},
-                quote! { #arg_id }
+    let gen_arg_conversion = |arg_ty: &Type, arg_id: &syn::Ident, x_ty: &XrossType| match x_ty {
+        XrossType::String => {
+            let raw_id = format_ident!("{}_raw", arg_id);
+            (
+                quote! { #raw_id: *const std::ffi::c_char },
+                quote! {
+                    let #arg_id = unsafe {
+                        if #raw_id.is_null() { "" }
+                        else { std::ffi::CStr::from_ptr(#raw_id).to_str().unwrap_or("") }
+                    };
+                },
+                if let Type::Path(p) = arg_ty {
+                    if p.path.is_ident("String") {
+                        quote!(#arg_id.to_string())
+                    } else {
+                        quote!(#arg_id)
+                    }
+                } else {
+                    quote!(#arg_id)
+                },
             )
         }
+        XrossType::Object { ownership, .. } => (
+            quote! { #arg_id: *mut std::ffi::c_void },
+            match ownership {
+                Ownership::Ref => {
+                    quote! { let #arg_id = unsafe { &*(#arg_id as *const #arg_ty) }; }
+                }
+                Ownership::MutRef => {
+                    quote! { let #arg_id = unsafe { &mut *(#arg_id as *mut #arg_ty) }; }
+                }
+                Ownership::Boxed => {
+                    let inner = extract_inner_type(arg_ty);
+                    quote! { let #arg_id = unsafe { Box::from_raw(#arg_id as *mut #inner) }; }
+                }
+                Ownership::Owned => {
+                    quote! { let #arg_id = unsafe { *Box::from_raw(#arg_id as *mut #arg_ty) }; }
+                }
+            },
+            quote! { #arg_id },
+        ),
+        _ => (quote! { #arg_id: #arg_ty }, quote! {}, quote! { #arg_id }),
     };
 
     // Process Common Methods
@@ -268,13 +288,13 @@ pub fn impl_xross_class(input: proc_macro::TokenStream) -> proc_macro::TokenStre
         let rust_fn_name = &sig.ident;
         let symbol_name = format!("{}_{}", symbol_base, rust_fn_name);
         let export_ident = format_ident!("{}", symbol_name);
-        
+
         let mut method_type = XrossMethodType::Static;
         let mut args_meta = Vec::new();
         let mut c_args = Vec::new();
         let mut call_args = Vec::new();
         let mut conversion_logic = Vec::new();
-        
+
         for input_arg in &sig.inputs {
             match input_arg {
                 FnArg::Receiver(receiver) => {
@@ -286,7 +306,7 @@ pub fn impl_xross_class(input: proc_macro::TokenStream) -> proc_macro::TokenStre
                     } else {
                         XrossMethodType::ConstInstance
                     };
-                    
+
                     c_args.push(quote! { #arg_ident: *mut std::ffi::c_void });
                     if receiver.reference.is_none() {
                         call_args.push(quote! { *Box::from_raw(#arg_ident as *mut #type_ident) });
@@ -303,29 +323,37 @@ pub fn impl_xross_class(input: proc_macro::TokenStream) -> proc_macro::TokenStre
                         "arg".into()
                     };
                     let arg_ident = format_ident!("{}", arg_name);
-                    let xross_ty = resolve_type_with_attr(&pat_type.ty, &[], &package, Some(&type_ident));
-                    
+                    let xross_ty =
+                        resolve_type_with_attr(&pat_type.ty, &[], &package, Some(&type_ident));
+
                     args_meta.push(XrossField {
                         name: arg_name.clone(),
                         ty: xross_ty.clone(),
                         safety: ThreadSafety::Lock,
                         docs: vec![],
                     });
-                    
-                    let (c_arg, conv, call_arg) = gen_arg_conversion(&pat_type.ty, &arg_ident, &xross_ty);
+
+                    let (c_arg, conv, call_arg) =
+                        gen_arg_conversion(&pat_type.ty, &arg_ident, &xross_ty);
                     c_args.push(c_arg);
-                    conversion_logic.push(quote!{ #conv });
+                    conversion_logic.push(quote! { #conv });
                     call_args.push(call_arg);
                 }
             }
         }
-        
+
         let ret_ty = match &sig.output {
             ReturnType::Default => XrossType::Void,
             ReturnType::Type(_, ty) => {
                 let mut xty = resolve_type_with_attr(ty, &[], &package, Some(&type_ident));
                 let ownership = match &**ty {
-                    Type::Reference(r) => if r.mutability.is_some() { Ownership::MutRef } else { Ownership::Ref },
+                    Type::Reference(r) => {
+                        if r.mutability.is_some() {
+                            Ownership::MutRef
+                        } else {
+                            Ownership::Ref
+                        }
+                    }
                     _ => Ownership::Owned,
                 };
                 if let XrossType::Object { ownership: o, .. } = &mut xty {
@@ -343,7 +371,7 @@ pub fn impl_xross_class(input: proc_macro::TokenStream) -> proc_macro::TokenStre
         } else {
             false
         };
-        
+
         methods_meta.push(XrossMethod {
             name: rust_fn_name.to_string(),
             symbol: symbol_name.clone(),
@@ -354,7 +382,7 @@ pub fn impl_xross_class(input: proc_macro::TokenStream) -> proc_macro::TokenStre
             ret: ret_ty.clone(),
             docs: vec![],
         });
-        
+
         let type_prefix = if let Some(to) = type_override {
             let ident = format_ident!("{}", to);
             quote! { #ident :: }
@@ -438,7 +466,7 @@ pub fn impl_xross_class(input: proc_macro::TokenStream) -> proc_macro::TokenStre
             let v_name_str = &v.name;
             let constructor_name = format_ident!("{}_new_{}", symbol_base, v.name);
             let mut v_fields_meta = Vec::new();
-            
+
             let mut c_param_defs = Vec::new();
             let mut internal_conversions = Vec::new();
             let mut call_args = Vec::new();
@@ -464,7 +492,7 @@ pub fn impl_xross_class(input: proc_macro::TokenStream) -> proc_macro::TokenStre
                             safety: ThreadSafety::Lock,
                             docs: vec![],
                         });
-                        
+
                         let arg_id = format_ident!("arg_{}", f_name);
                         let f_name_ident = format_ident!("{}", f_name);
                         let f_name_str = f_name.clone();
@@ -503,7 +531,7 @@ pub fn impl_xross_class(input: proc_macro::TokenStream) -> proc_macro::TokenStre
                             safety: ThreadSafety::Lock,
                             docs: vec![],
                         });
-                        
+
                         let arg_id = format_ident!("arg_{}", i);
                         let f_name_str = ordinal_name(i);
 
@@ -534,16 +562,20 @@ pub fn impl_xross_class(input: proc_macro::TokenStream) -> proc_macro::TokenStre
                     variant_name_arms.push(quote! { #type_ident::#v_ident(..) => #v_name_str });
                 }
             }
-            
+
             variants_meta.push(XrossVariant {
                 name: v.name.clone(),
                 fields: v_fields_meta,
                 docs: vec![],
             });
         }
-        
+
         save_definition(&XrossDefinition::Enum(XrossEnum {
-            signature: if package.is_empty() { name.clone() } else { format!("{}.{}", package, name) },
+            signature: if package.is_empty() {
+                name.clone()
+            } else {
+                format!("{}.{}", package, name)
+            },
             symbol_prefix: symbol_base.clone(),
             package_name: package,
             name: name.clone(),
@@ -552,7 +584,7 @@ pub fn impl_xross_class(input: proc_macro::TokenStream) -> proc_macro::TokenStre
             docs: vec![],
             is_copy,
         }));
-        
+
         layout_logic = quote! {
             let mut parts = vec![format!("{}", std::mem::size_of::<#type_ident>() as u64)];
             let variants: Vec<String> = vec![#(#variant_specs),*];
@@ -580,7 +612,6 @@ pub fn impl_xross_class(input: proc_macro::TokenStream) -> proc_macro::TokenStre
                 std::ffi::CString::new(name).unwrap().into_raw()
             }
         });
-        
     } else {
         // Struct Processing
         let mut fields_meta = Vec::new();
@@ -594,7 +625,7 @@ pub fn impl_xross_class(input: proc_macro::TokenStream) -> proc_macro::TokenStre
                 safety: ThreadSafety::Lock,
                 docs: vec![],
             });
-            
+
             let field_ident = format_ident!("{}", f_name);
             let f_name_str = f_name.clone();
 
@@ -644,9 +675,13 @@ pub fn impl_xross_class(input: proc_macro::TokenStream) -> proc_macro::TokenStre
                 }
             }
         }
-        
+
         save_definition(&XrossDefinition::Struct(XrossStruct {
-            signature: if package.is_empty() { name.clone() } else { format!("{}.{}", package, name) },
+            signature: if package.is_empty() {
+                name.clone()
+            } else {
+                format!("{}.{}", package, name)
+            },
             symbol_prefix: symbol_base.clone(),
             package_name: package,
             name,
@@ -662,12 +697,12 @@ pub fn impl_xross_class(input: proc_macro::TokenStream) -> proc_macro::TokenStre
             parts.join(";")
         };
     }
-    
+
     // Generate Common FFI (drop, clone, layout)
     let drop_fn = format_ident!("{}_drop", symbol_base);
     let clone_fn = format_ident!("{}_clone", symbol_base);
     let layout_fn = format_ident!("{}_layout", symbol_base);
-    
+
     let clone_ffi = if is_clonable {
         quote! {
             #[unsafe(no_mangle)]
@@ -685,20 +720,20 @@ pub fn impl_xross_class(input: proc_macro::TokenStream) -> proc_macro::TokenStre
 
     let gen_code = quote! {
         #(#extra_functions)*
-        
+
         #clone_ffi
 
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn #drop_fn(ptr: *mut #type_ident) {
             if !ptr.is_null() { drop(unsafe { Box::from_raw(ptr) }); }
         }
-        
+
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn #layout_fn() -> *mut std::ffi::c_char {
             let s = { #layout_logic };
             std::ffi::CString::new(s).unwrap().into_raw()
         }
     };
-    
+
     gen_code.into()
 }
