@@ -69,7 +69,10 @@ object CompanionGenerator {
     }
 
     private fun defineProperties(builder: TypeSpec.Builder, meta: XrossDefinition) {
-        val handles = mutableListOf("dropHandle", "cloneHandle", "layoutHandle", "xrossFreeStringHandle")
+        val handles = mutableListOf("dropHandle", "layoutHandle", "xrossFreeStringHandle")
+        if (meta.methods.any { it.name == "clone" }) {
+            handles.add("cloneHandle")
+        }
 
         when (meta) {
             is XrossDefinition.Struct -> {
@@ -126,6 +129,7 @@ object CompanionGenerator {
             }
             is XrossType.Result -> {
                 handles.add("${baseCamel}ResGetHandle")
+                handles.add("${baseCamel}ResSetHandle")
             }
             else -> {
                 if (isOpaque) {

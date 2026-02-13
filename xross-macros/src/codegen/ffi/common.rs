@@ -5,8 +5,8 @@ use quote::{format_ident, quote};
 pub fn generate_common_ffi(
     name: &syn::Ident,
     base: &str,
-    layout_logic: proc_macro2::TokenStream,
-    toks: &mut Vec<proc_macro2::TokenStream>,
+    layout_logic: TokenStream,
+    toks: &mut Vec<TokenStream>,
     is_clonable: bool,
 ) {
     let drop_id = format_ident!("{}_drop", base);
@@ -73,7 +73,7 @@ pub fn generate_enum_aux_ffi(
 }
 
 /// Generates the layout metadata logic for a struct.
-pub fn generate_struct_layout(s: &syn::ItemStruct) -> proc_macro2::TokenStream {
+pub fn generate_struct_layout(s: &syn::ItemStruct) -> TokenStream {
     let name = &s.ident;
     let mut field_parts = Vec::new();
     if let syn::Fields::Named(fields) = &s.fields {
@@ -97,7 +97,7 @@ pub fn generate_struct_layout(s: &syn::ItemStruct) -> proc_macro2::TokenStream {
 }
 
 /// Generates the layout metadata logic for an enum.
-pub fn generate_enum_layout(e: &syn::ItemEnum) -> proc_macro2::TokenStream {
+pub fn generate_enum_layout(e: &syn::ItemEnum) -> TokenStream {
     let name = &e.ident;
     let mut variant_specs = Vec::new();
     for v in &e.variants {
@@ -164,6 +164,62 @@ pub fn generate_property_accessors(
                     if ptr.is_null() || val.is_null() { return; }
                     let obj = &mut *ptr;
                     obj.#field_ident = std::ffi::CStr::from_ptr(val).to_string_lossy().into_owned();
+                }
+            });
+        }
+        xross_metadata::XrossType::Option(_inner) => {
+            let get_fn = format_ident!("{}_property_{}_opt_get", symbol_base, field_name);
+            let set_fn = format_ident!("{}_property_{}_opt_set", symbol_base, field_name);
+            let (ret_ffi_ty, ret_wrap) = super::conversion::gen_ret_wrapping(
+                xross_ty,
+                &syn::ReturnType::Default,
+                quote! { obj.#field_ident.clone() },
+            );
+            let arg_id = format_ident!("val");
+            let (arg_ffi_ty, arg_conv, arg_call) =
+                super::conversion::gen_arg_conversion(field_ty, &arg_id, xross_ty);
+
+            toks.push(quote! {
+                #[unsafe(no_mangle)]
+                pub unsafe extern "C" fn #get_fn(ptr: *const #type_name) -> #ret_ffi_ty {
+                    if ptr.is_null() { return std::ptr::null_mut(); }
+                    let obj = &*ptr;
+                    #ret_wrap
+                }
+                #[unsafe(no_mangle)]
+                pub unsafe extern "C" fn #set_fn(ptr: *mut #type_name, #arg_ffi_ty) {
+                    if ptr.is_null() { return; }
+                    let obj = &mut *ptr;
+                    #arg_conv
+                    obj.#field_ident = #arg_call;
+                }
+            });
+        }
+        xross_metadata::XrossType::Result { .. } => {
+            let get_fn = format_ident!("{}_property_{}_res_get", symbol_base, field_name);
+            let set_fn = format_ident!("{}_property_{}_res_set", symbol_base, field_name);
+            let (ret_ffi_ty, ret_wrap) = super::conversion::gen_ret_wrapping(
+                xross_ty,
+                &syn::ReturnType::Default,
+                quote! { obj.#field_ident.clone() },
+            );
+            let arg_id = format_ident!("val");
+            let (arg_ffi_ty, arg_conv, arg_call) =
+                super::conversion::gen_arg_conversion(field_ty, &arg_id, xross_ty);
+
+            toks.push(quote! {
+                #[unsafe(no_mangle)]
+                pub unsafe extern "C" fn #get_fn(ptr: *const #type_name) -> #ret_ffi_ty {
+                    if ptr.is_null() { panic!("NULL pointer in result property get"); }
+                    let obj = &*ptr;
+                    #ret_wrap
+                }
+                #[unsafe(no_mangle)]
+                pub unsafe extern "C" fn #set_fn(ptr: *mut #type_name, #arg_ffi_ty) {
+                    if ptr.is_null() { return; }
+                    let obj = &mut *ptr;
+                    #arg_conv
+                    obj.#field_ident = #arg_call;
                 }
             });
         }

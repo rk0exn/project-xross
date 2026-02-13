@@ -48,7 +48,7 @@ fun CodeBlock.Builder.addRustStringResolution(call: Any, resultVar: String = "st
         Long::class.asTypeName(),
     )
     if (shouldFree) {
-        addStatement("if ($resRawName != %T.NULL) xrossFreeStringHandle.invokeExact($resRawName)", MEMORY_SEGMENT)
+        addStatement("if ($resRawName != %T.NULL) Companion.xrossFreeStringHandle.invokeExact($resRawName)", MEMORY_SEGMENT)
     }
     return this
 }
@@ -73,11 +73,22 @@ fun CodeBlock.Builder.addResultVariantResolution(
             addRustStringResolution(ptrName)
             addStatement("str")
         }
+        is XrossType.F32 -> {
+            addStatement("%T.fromBits(%L.address().toInt())", Float::class, ptrName)
+        }
+        is XrossType.F64 -> {
+            addStatement("%T.fromBits(%L.address())", Double::class, ptrName)
+        }
+        is XrossType.Bool -> {
+            addStatement("%L.address() != 0L", ptrName)
+        }
         else -> {
-            addStatement("val v = %L.get(%M, 0)", ptrName, type.layoutMember)
-            val (_, dropExpr, _) = GeneratorUtils.compareExprs(targetTypeName, selfType, dropHandleName)
-            addStatement("%L.invokeExact(%L)", dropExpr, ptrName)
-            addStatement("v")
+            // For other primitives, they are passed as address (value-in-pointer)
+            if (type.kotlinSize <= 4) {
+                addStatement("%L.address().toInt() as %T", ptrName, type.kotlinType)
+            } else {
+                addStatement("%L.address() as %T", ptrName, type.kotlinType)
+            }
         }
     }
     endControlFlow()

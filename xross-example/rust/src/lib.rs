@@ -22,6 +22,28 @@ pub struct UnknownStruct {
     pub s: String,
 }
 
+pub struct ComplexStruct {
+    pub opt: Option<i32>,
+    pub res: Result<i32, String>,
+}
+impl ComplexStruct {
+    pub fn new(opt: Option<i32>, res: Result<i32, String>) -> Self {
+        Self { opt, res }
+    }
+    pub fn complex() {
+        println!("ComplexStruct:");
+    }
+}
+xross_class! {
+    package complex;
+    class struct ComplexStruct;
+    clonable false;
+    field opt: Option<i32>;
+    field res: Result<i32, String>;
+    method ComplexStruct.new(opt: Option<i32>, res: Result<i32, String>) -> ComplexStruct;
+    method complex()
+}
+
 // Clone時にもカウントを増やす
 impl Clone for UnknownStruct {
     fn clone(&self) -> Self {

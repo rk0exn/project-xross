@@ -109,7 +109,7 @@ object StructureGenerator {
             .beginControlFlow("if (aliveFlag.tryInvalidate())")
             .addStatement("relinquishInternal()")
             .beginControlFlow("if (confinedArena != null)")
-            .addStatement("dropHandle.invokeExact(currentS)")
+            .addStatement("Companion.dropHandle.invokeExact(currentS)")
             .endControlFlow()
             .endControlFlow()
             .endControlFlow()

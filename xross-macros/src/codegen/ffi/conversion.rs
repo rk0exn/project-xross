@@ -111,18 +111,56 @@ pub fn gen_arg_conversion(
             let inner_rust_ty = extract_inner_type(arg_ty);
             (
                 quote! { #arg_id: *mut std::ffi::c_void },
-                if matches!(**inner, XrossType::String) {
-                    quote! {
+                match &**inner {
+                    XrossType::String => quote! {
                         let #arg_id = unsafe {
                             if #arg_id.is_null() { None }
-                            else { Some(std::ffi::CStr::from_ptr(#arg_id as *const _).to_str().unwrap_or("").to_string()) }
+                            else { Some(std::ffi::CStr::from_ptr(#arg_id as *const _).to_string_lossy().into_owned()) }
                         };
-                    }
-                } else {
-                    quote! {
+                    },
+                    XrossType::Object { .. } => quote! {
                         let #arg_id = if #arg_id.is_null() { None }
                         else { unsafe { Some(*Box::from_raw(#arg_id as *mut #inner_rust_ty)) } };
-                    }
+                    },
+                    XrossType::F32 => quote! {
+                        let #arg_id = if #arg_id.is_null() { None }
+                        else { Some(f32::from_bits(#arg_id as u32)) };
+                    },
+                    XrossType::F64 => quote! {
+                        let #arg_id = if #arg_id.is_null() { None }
+                        else { Some(f64::from_bits(#arg_id as u64)) };
+                    },
+                    _ => quote! {
+                        let #arg_id = if #arg_id.is_null() { None }
+                        else { Some(#arg_id as usize as #inner_rust_ty) };
+                    },
+                },
+                quote! { #arg_id },
+            )
+        }
+        XrossType::Result { ok, err: _ } => {
+            let ok_inner = extract_inner_type(arg_ty);
+            let gen_read = |ty: &XrossType, ptr: TokenStream, rust_ty: TokenStream| match ty {
+                XrossType::String => {
+                    quote! { std::ffi::CStr::from_ptr(#ptr as *const _).to_string_lossy().into_owned() }
+                }
+                XrossType::Object { .. } => quote! { *Box::from_raw(#ptr as *mut #rust_ty) },
+                XrossType::F32 => quote! { f32::from_bits(#ptr as u32) },
+                XrossType::F64 => quote! { f64::from_bits(#ptr as u64) },
+                _ => quote! { #ptr as usize as #rust_ty },
+            };
+            let ok_read = gen_read(ok, quote! { #arg_id.ptr }, quote! { #ok_inner });
+            (
+                quote! { #arg_id: xross_core::XrossResult },
+                quote! {
+                    let #arg_id = if #arg_id.is_ok {
+                        Ok(unsafe { #ok_read })
+                    } else {
+                        Err(unsafe {
+                            if #arg_id.ptr.is_null() { "Unknown Error".to_string() }
+                            else { std::ffi::CStr::from_ptr(#arg_id.ptr as *const _).to_string_lossy().into_owned() }
+                        })
+                    };
                 },
                 quote! { #arg_id },
             )
@@ -167,11 +205,38 @@ pub fn gen_ret_wrapping(
                     }
                 },
             ),
-            _ => (
+            XrossType::Object { .. } => (
                 quote! { *mut std::ffi::c_void },
                 quote! {
                     match #inner_call {
                         Some(val) => Box::into_raw(Box::new(val)) as *mut std::ffi::c_void,
+                        None => std::ptr::null_mut(),
+                    }
+                },
+            ),
+            XrossType::F32 => (
+                quote! { *mut std::ffi::c_void },
+                quote! {
+                    match #inner_call {
+                        Some(val) => val.to_bits() as usize as *mut std::ffi::c_void,
+                        None => std::ptr::null_mut(),
+                    }
+                },
+            ),
+            XrossType::F64 => (
+                quote! { *mut std::ffi::c_void },
+                quote! {
+                    match #inner_call {
+                        Some(val) => val.to_bits() as usize as *mut std::ffi::c_void,
+                        None => std::ptr::null_mut(),
+                    }
+                },
+            ),
+            _ => (
+                quote! { *mut std::ffi::c_void },
+                quote! {
+                    match #inner_call {
+                        Some(val) => val as usize as *mut std::ffi::c_void,
                         None => std::ptr::null_mut(),
                     }
                 },
@@ -182,7 +247,12 @@ pub fn gen_ret_wrapping(
                 XrossType::String => {
                     quote! { std::ffi::CString::new(#val_ident).unwrap_or_default().into_raw() as *mut std::ffi::c_void }
                 }
-                _ => quote! { Box::into_raw(Box::new(#val_ident)) as *mut std::ffi::c_void },
+                XrossType::Object { .. } => {
+                    quote! { Box::into_raw(Box::new(#val_ident)) as *mut std::ffi::c_void }
+                }
+                XrossType::F32 => quote! { #val_ident.to_bits() as usize as *mut std::ffi::c_void },
+                XrossType::F64 => quote! { #val_ident.to_bits() as usize as *mut std::ffi::c_void },
+                _ => quote! { #val_ident as usize as *mut std::ffi::c_void },
             };
             let ok_ptr_logic = gen_ptr(ok, quote! { val });
             let err_ptr_logic = gen_ptr(err, quote! { e });

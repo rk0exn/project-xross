@@ -22,7 +22,7 @@ object HandleResolver {
             ADDRESS,
         )
 
-        listOf("drop", "layout", "clone").forEach { suffix ->
+        listOf("drop", "layout").forEach { suffix ->
             val symbol = "${meta.symbolPrefix}_$suffix"
             val desc = when (suffix) {
                 "drop" -> CodeBlock.of("%T.ofVoid(%M)", FUNCTION_DESCRIPTOR, ADDRESS)
@@ -30,6 +30,12 @@ object HandleResolver {
                 else -> CodeBlock.of("%T.of(%M, %M)", FUNCTION_DESCRIPTOR, ADDRESS, ADDRESS)
             }
             init.addStatement("this.${suffix}Handle = linker.downcallHandle(lookup.find(%S).get(), %L)", symbol, desc)
+        }
+
+        if (meta.methods.any { it.name == "clone" }) {
+            val symbol = "${meta.symbolPrefix}_clone"
+            val desc = CodeBlock.of("%T.of(%M, %M)", FUNCTION_DESCRIPTOR, ADDRESS, ADDRESS)
+            init.addStatement("this.cloneHandle = linker.downcallHandle(lookup.find(%S).get(), %L)", symbol, desc)
         }
 
         when (meta) {
@@ -43,7 +49,7 @@ object HandleResolver {
 
     private fun resolveStructHandles(init: CodeBlock.Builder, meta: XrossDefinition.Struct) {
         val constructor = meta.methods.find { it.isConstructor && it.name == "new" }
-        val argLayouts = constructor?.args?.map { CodeBlock.of("%M", it.ty.layoutMember) } ?: emptyList()
+        val argLayouts = constructor?.args?.map { if (it.ty is XrossType.Result) FFMConstants.XROSS_RESULT_LAYOUT_CODE else CodeBlock.of("%M", it.ty.layoutMember) } ?: emptyList()
         val desc = if (argLayouts.isEmpty()) {
             CodeBlock.of("%T.of(%M)", FUNCTION_DESCRIPTOR, ADDRESS)
         } else {
@@ -71,7 +77,7 @@ object HandleResolver {
         )
 
         meta.variants.forEach { v ->
-            val argLayouts = v.fields.map { CodeBlock.of("%M", it.ty.layoutMember) }
+            val argLayouts = v.fields.map { if (it.ty is XrossType.Result) FFMConstants.XROSS_RESULT_LAYOUT_CODE else CodeBlock.of("%M", it.ty.layoutMember) }
             val desc = if (argLayouts.isEmpty()) {
                 CodeBlock.of("%T.of(%M)", FUNCTION_DESCRIPTOR, ADDRESS)
             } else {
@@ -97,12 +103,20 @@ object HandleResolver {
                 }
                 is XrossType.Result -> {
                     val getSymbol = "${prefix}_property_${field.name}_res_get"
+                    val setSymbol = "${prefix}_property_${field.name}_res_set"
                     init.addStatement(
                         "this.${baseCamel}ResGetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.of(%L, %M))",
                         getSymbol,
                         FUNCTION_DESCRIPTOR,
                         FFMConstants.XROSS_RESULT_LAYOUT_CODE,
                         ADDRESS,
+                    )
+                    init.addStatement(
+                        "this.${baseCamel}ResSetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.ofVoid(%M, %L))",
+                        setSymbol,
+                        FUNCTION_DESCRIPTOR,
+                        ADDRESS,
+                        FFMConstants.XROSS_RESULT_LAYOUT_CODE,
                     )
                 }
                 else -> {
@@ -166,7 +180,13 @@ object HandleResolver {
         meta.methods.filter { !it.isConstructor }.forEach { method ->
             val args = mutableListOf<CodeBlock>()
             if (method.methodType != XrossMethodType.Static) args.add(CodeBlock.of("%M", ADDRESS))
-            method.args.forEach { args.add(CodeBlock.of("%M", it.ty.layoutMember)) }
+            method.args.forEach { 
+                if (it.ty is XrossType.Result) {
+                    args.add(FFMConstants.XROSS_RESULT_LAYOUT_CODE)
+                } else {
+                    args.add(CodeBlock.of("%M", it.ty.layoutMember))
+                }
+            }
 
             val desc = if (method.ret is XrossType.Void) {
                 CodeBlock.of("%T.ofVoid(%L)", FUNCTION_DESCRIPTOR, args.joinToCode(", "))

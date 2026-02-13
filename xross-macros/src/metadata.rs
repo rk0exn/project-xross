@@ -55,24 +55,43 @@ pub fn save_definition(def: &XrossDefinition) {
     let signature = def.signature();
     let path = get_path_by_signature(signature);
 
+    let mut final_def = def.clone();
+
+    // Deduplicate methods before saving
+    match &mut final_def {
+        XrossDefinition::Struct(s) => deduplicate_methods(&mut s.methods),
+        XrossDefinition::Enum(e) => deduplicate_methods(&mut e.methods),
+        XrossDefinition::Opaque(o) => deduplicate_methods(&mut o.methods),
+    }
+
     if path.exists()
         && let Ok(existing_content) = fs::read_to_string(&path)
         && let Ok(existing_def) = serde_json::from_str::<XrossDefinition>(&existing_content)
-        && !is_structurally_compatible(&existing_def, def)
+        && !is_structurally_compatible(&existing_def, &final_def)
     {
         panic!(
-                        "
-[Xross Error] Duplicate definition detected for signature: '{}'
-
-                        The same signature is being defined multiple times with different structures.
-",
-                        signature
-                    );
+            "\n[Xross Error] Duplicate definition detected for signature: '{}'\n\
+             The same signature is being defined multiple times with different structures.\n",
+            signature
+        );
     }
 
-    if let Ok(json) = serde_json::to_string(def) {
+    if let Ok(json) = serde_json::to_string(&final_def) {
         fs::write(&path, json).ok();
     }
+}
+
+fn deduplicate_methods(methods: &mut Vec<xross_metadata::XrossMethod>) {
+    let mut seen = std::collections::HashSet::new();
+    methods.retain(|m| {
+        let key = (m.name.clone(), m.symbol.clone());
+        if seen.contains(&key) {
+            false
+        } else {
+            seen.insert(key);
+            true
+        }
+    });
 }
 
 /// Checks if two definitions are structurally compatible.
@@ -143,18 +162,11 @@ pub fn discover_signature(type_name: &str) -> Option<String> {
         Some(candidates.remove(0))
     } else if candidates.len() > 1 {
         panic!(
-            "
-[Xross Error] Ambiguous type reference: '{}'
-
-            Multiple types with the same name were found in different packages:
-
-            {}
-",
+            "\n[Xross Error] Ambiguous type reference: '{}'\n\
+             Multiple types with the same name were found in different packages:\n\
+             {}\n",
             type_name,
-            candidates.iter().map(|s| format!("  - {}", s)).collect::<Vec<_>>().join(
-                "
-"
-            )
+            candidates.iter().map(|s| format!("  - {}", s)).collect::<Vec<_>>().join("\n")
         );
     } else {
         None

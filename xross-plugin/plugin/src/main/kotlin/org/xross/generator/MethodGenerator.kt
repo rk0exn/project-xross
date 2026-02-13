@@ -6,6 +6,7 @@ import org.xross.helper.StringHelper.toCamelCase
 import org.xross.structures.*
 import java.lang.foreign.Arena
 import java.lang.foreign.MemorySegment
+import java.lang.foreign.SegmentAllocator
 
 /**
  * Generates Kotlin methods that wrap native Rust functions using Java FFM.
@@ -86,11 +87,17 @@ object MethodGenerator {
             if (method.methodType != XrossMethodType.Static) callArgs.add(CodeBlock.of("currentSegment"))
 
             val argPrep = CodeBlock.builder()
+            val needsArena = method.args.any { it.ty is XrossType.RustString || it.ty is XrossType.Optional || it.ty is XrossType.Result }
+            
+            if (needsArena) {
+                argPrep.beginControlFlow("%T.ofConfined().use { arena ->", Arena::class.asTypeName())
+            }
+
             method.args.forEach { arg ->
                 val name = arg.name.toCamelCase().escapeKotlinKeyword()
                 when (arg.ty) {
                     is XrossType.RustString -> {
-                        argPrep.addStatement("val ${name}Memory = this.autoArena.allocateFrom($name)")
+                        argPrep.addStatement("val ${name}Memory = arena.allocateFrom($name)")
                         callArgs.add(CodeBlock.of("${name}Memory"))
                     }
 
@@ -105,23 +112,32 @@ object MethodGenerator {
                     }
 
                     is XrossType.Bool -> callArgs.add(CodeBlock.of("if ($name) 1.toByte() else 0.toByte()"))
+                    is XrossType.Optional -> {
+                        argPrep.addStatement("val ${name}Memory = if ($name == null) %T.NULL else %L", MEMORY_SEGMENT, generateAllocMsg(arg.ty.inner, name))
+                        callArgs.add(CodeBlock.of("${name}Memory"))
+                    }
+                    is XrossType.Result -> {
+                        argPrep.addStatement("val ${name}Memory = arena.allocate(%L)", FFMConstants.XROSS_RESULT_LAYOUT_CODE)
+                        argPrep.beginControlFlow("if ($name.isSuccess)")
+                        argPrep.addStatement("${name}Memory.set(%M, 0L, 1.toByte())", FFMConstants.JAVA_BYTE)
+                        argPrep.addStatement("${name}Memory.set(%M, 8L, %L)", FFMConstants.ADDRESS, generateAllocMsg(arg.ty.ok, "$name.getOrNull()!!"))
+                        argPrep.nextControlFlow("else")
+                        argPrep.addStatement("${name}Memory.set(%M, 0L, 0.toByte())", FFMConstants.JAVA_BYTE)
+                        argPrep.addStatement("${name}Memory.set(%M, 8L, %T.NULL)", FFMConstants.ADDRESS, MEMORY_SEGMENT)
+                        argPrep.endControlFlow()
+                        callArgs.add(CodeBlock.of("${name}Memory"))
+                    }
                     else -> callArgs.add(CodeBlock.of("%L", name))
                 }
             }
 
-            val needsArena = method.args.any { it.ty is XrossType.RustString }
-            if (needsArena) {
-                body.beginControlFlow("%T.ofConfined().use { _ ->", Arena::class.asTypeName())
-                body.add(argPrep.build())
-            } else {
-                body.add(argPrep.build())
-            }
+            body.add(argPrep.build())
 
-            val handleName = "${method.name.toCamelCase()}Handle"
+            val handleName = "Companion.${method.name.toCamelCase()}Handle"
             val call = if (method.ret is XrossType.Result) {
                 CodeBlock.of(
                     "$handleName.invokeExact(this.autoArena as %T, %L)",
-                    ClassName("java.lang.foreign", "SegmentAllocator"),
+                    SegmentAllocator::class,
                     callArgs.joinToCode(", "),
                 )
             } else {
@@ -177,7 +193,7 @@ object MethodGenerator {
                 body.addStatement("// Re-initialize consumed segment for fieldless enum")
                 body.addStatement("this.segment = when(this) {")
                 (meta as XrossDefinition.Enum).variants.forEach { v ->
-                    body.addStatement("    %N -> new${v.name}Handle.invokeExact() as %T", v.name, MEMORY_SEGMENT)
+                    body.addStatement("    %N -> Companion.new${v.name}Handle.invokeExact() as %T", v.name, MEMORY_SEGMENT)
                 }
                 body.addStatement("}")
             } else if (!isCopy || !isPureEnum) {
@@ -212,8 +228,8 @@ object MethodGenerator {
 
         // ヘルパー：型が自分自身(Self)かどうかでアクセスするプロパティ/関数を切り替える
         fun getExprs(type: TypeName) = Triple(
-            if (type == selfType) CodeBlock.of("STRUCT_SIZE") else CodeBlock.of("%T.STRUCT_SIZE", type),
-            if (type == selfType) CodeBlock.of("dropHandle") else CodeBlock.of("%T.dropHandle", type),
+            if (type == selfType) CodeBlock.of("Companion.STRUCT_SIZE") else CodeBlock.of("%T.STRUCT_SIZE", type),
+            if (type == selfType) CodeBlock.of("Companion.dropHandle") else CodeBlock.of("%T.dropHandle", type),
             if (type == selfType) CodeBlock.of("fromPointer") else CodeBlock.of("%T.fromPointer", type),
         )
 
@@ -248,7 +264,7 @@ object MethodGenerator {
                 body.nextControlFlow("else")
                 // Optionalの中身(inner)を解決
                 val innerType = GeneratorUtils.resolveReturnType(retTy.inner, basePackage)
-                body.addResultVariantResolution(retTy.inner, "resRaw", innerType, selfType, basePackage)
+                body.addResultVariantResolution(retTy.inner, "resRaw", innerType, selfType, basePackage, "Companion.dropHandle")
                 body.endControlFlow().endControlFlow()
             }
 
@@ -256,7 +272,7 @@ object MethodGenerator {
                 body.beginControlFlow("run")
                 body.addStatement("val resRaw = %L as %T", call, MEMORY_SEGMENT)
                 // Resultのレイアウト: [1 byte: isOk, 7 bytes: padding, 8 bytes: pointer]
-                body.addStatement("val isOk = resRaw.get(%M, 0L) != (0).toByte()", MemberName(VAL_LAYOUT, "JAVA_BYTE"))
+                body.addStatement("val isOk = resRaw.get(%M, 0L) != (0).toByte()", FFMConstants.JAVA_BYTE)
                 body.addStatement("val ptr = resRaw.get(%M, 8L)", ADDRESS)
 
                 body.beginControlFlow("if (isOk)")
@@ -267,6 +283,7 @@ object MethodGenerator {
                     GeneratorUtils.resolveReturnType(retTy.ok, basePackage),
                     selfType,
                     basePackage,
+                    "Companion.dropHandle",
                 )
                 body.addStatement("Result.success(okVal)")
 
@@ -278,6 +295,7 @@ object MethodGenerator {
                     GeneratorUtils.resolveReturnType(retTy.err, basePackage),
                     selfType,
                     basePackage,
+                    "Companion.dropHandle",
                 )
                 body.addStatement("Result.failure(%T(errVal))", ClassName(runtimePkg, "XrossException"))
                 body.endControlFlow()
@@ -315,16 +333,37 @@ object MethodGenerator {
 
         val body = CodeBlock.builder()
         val callArgs = mutableListOf<CodeBlock>()
+        val needsArena = method.args.any { it.ty is XrossType.RustString || it.ty is XrossType.Optional || it.ty is XrossType.Result }
+        
+        if (needsArena) {
+            body.beginControlFlow("%T.ofConfined().use { arena ->", Arena::class)
+        }
+
         method.args.forEach { arg ->
             val name = "argOf" + arg.name.toCamelCase()
             when (arg.ty) {
                 is XrossType.RustString -> {
-                    body.addStatement("val ${name}Memory = %T.ofAuto().allocateFrom($name)", Arena::class)
+                    body.addStatement("val ${name}Memory = arena.allocateFrom($name)")
                     callArgs.add(CodeBlock.of("${name}Memory"))
                 }
 
                 is XrossType.Bool -> callArgs.add(CodeBlock.of("if ($name) 1.toByte() else 0.toByte()"))
                 is XrossType.Object -> callArgs.add(CodeBlock.of("$name.segment"))
+                is XrossType.Optional -> {
+                    body.addStatement("val ${name}Memory = if ($name == null) %T.NULL else %L", MEMORY_SEGMENT, generateAllocMsg(arg.ty.inner, name))
+                    callArgs.add(CodeBlock.of("${name}Memory"))
+                }
+                is XrossType.Result -> {
+                    body.addStatement("val ${name}Memory = arena.allocate(%L)", FFMConstants.XROSS_RESULT_LAYOUT_CODE)
+                    body.beginControlFlow("if ($name.isSuccess)")
+                    body.addStatement("${name}Memory.set(%M, 0L, 1.toByte())", FFMConstants.JAVA_BYTE)
+                    body.addStatement("${name}Memory.set(%M, 8L, %L)", FFMConstants.ADDRESS, generateAllocMsg(arg.ty.ok, "$name.getOrNull()!!"))
+                    body.nextControlFlow("else")
+                    body.addStatement("${name}Memory.set(%M, 0L, 0.toByte())", FFMConstants.JAVA_BYTE)
+                    body.addStatement("${name}Memory.set(%M, 8L, %T.NULL)", FFMConstants.ADDRESS, MEMORY_SEGMENT)
+                    body.endControlFlow()
+                    callArgs.add(CodeBlock.of("${name}Memory"))
+                }
                 else -> callArgs.add(CodeBlock.of("%L", name))
             }
         }
@@ -332,15 +371,19 @@ object MethodGenerator {
         GeneratorUtils.addFactoryBody(
             body,
             basePackage,
-            CodeBlock.of("newHandle.invokeExact(%L)", callArgs.joinToCode(", ")),
-            CodeBlock.of("STRUCT_SIZE"),
-            CodeBlock.of("dropHandle"),
+            CodeBlock.of("Companion.newHandle.invokeExact(%L)", callArgs.joinToCode(", ")),
+            CodeBlock.of("Companion.STRUCT_SIZE"),
+            CodeBlock.of("Companion.dropHandle"),
         )
         body.addStatement(
             "return %T(res, %T(newAutoArena, newOwnerArena), flag)",
             Triple::class.asTypeName(),
             Pair::class.asTypeName(),
         )
+
+        if (needsArena) {
+            body.endControlFlow()
+        }
 
         factoryBuilder.addCode(body.build())
         companionBuilder.addFunction(factoryBuilder.build())
@@ -366,5 +409,18 @@ object MethodGenerator {
                 .callThisConstructor(CodeBlock.of("xrossNewInternal(${method.args.joinToString(", ") { "argOf" + it.name.toCamelCase() }})"))
                 .build(),
         )
+    }
+
+    // ヘルパー: 型に応じた allocate 式を返す
+    private fun generateAllocMsg(ty: XrossType, valueName: String): CodeBlock = when (ty) {
+        is XrossType.Object -> CodeBlock.of("$valueName.segment")
+        is XrossType.RustString -> CodeBlock.of("arena.allocateFrom($valueName)")
+        is XrossType.F32 -> CodeBlock.of("MemorySegment.ofAddress(%L.toRawBits().toLong())", valueName)
+        is XrossType.F64 -> CodeBlock.of("MemorySegment.ofAddress(%L.toRawBits())", valueName)
+        is XrossType.Bool -> CodeBlock.of("MemorySegment.ofAddress(if (%L) 1L else 0L)", valueName)
+        else -> {
+            // Integer types <= 8 bytes
+            CodeBlock.of("MemorySegment.ofAddress(%L.toLong())", valueName)
+        }
     }
 }

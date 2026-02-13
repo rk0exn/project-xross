@@ -1,8 +1,9 @@
 package org.example
 
-import org.example.test.test2.MyService2
-import org.example.some.HelloEnum
+import org.example.complex.ComplexStruct
 import org.example.external.ExternalStruct
+import org.example.some.HelloEnum
+import org.example.test.test2.MyService2
 import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.Executors
@@ -30,7 +31,7 @@ fun main() {
         // 1. メモリリークテスト (高負荷なため1回のみ)
         executeMemoryLeakTest()
 
-        // 2-6. 安定性テストの繰り返し実行
+        // 2-7. 安定性テストの繰り返し実行
         val repeatCount = 100
         println("\n--- Starting Repetitive Stability Test ($repeatCount cycles) ---")
 
@@ -41,6 +42,7 @@ fun main() {
             executeCollectionAndOptionalTest()
             executePropertyTest()
             executeComplexFieldTest()
+            executeComplexStructPropertyTest()
 
             if (i % 10 == 0) {
                 println(">>> Completed cycle $i / $repeatCount")
@@ -64,6 +66,25 @@ fun main() {
         println("\n--- Final Analysis after GC ---")
         println(UnknownStruct.displayAnalysis())
     }
+}
+
+fun executeComplexStructPropertyTest() {
+    println("\n--- [7] ComplexStruct Property (Option/Result) Test ---")
+    val cs = ComplexStruct(42, Result.success(100))
+    println("ComplexStruct opt initial: ${cs.opt}")
+    println("ComplexStruct res initial: ${cs.res}")
+
+    cs.opt = 100
+    cs.res = Result.success(500)
+    println("ComplexStruct opt after set: ${cs.opt}")
+    println("ComplexStruct res after set: ${cs.res}")
+
+    cs.opt = null
+    cs.res = Result.failure(org.example.xross.runtime.XrossException("Native Error"))
+    println("ComplexStruct opt after set null: ${cs.opt}")
+    println("ComplexStruct res after set failure: ${cs.res}")
+
+    cs.close()
 }
 
 private fun loadFromResources(tempDir: File) {
@@ -90,7 +111,7 @@ fun executeComplexFieldTest() {
     // 2. HelloEnum Test (DSL based enum with recursion)
     val b = HelloEnum.B(42)
     val c = HelloEnum.C(b) // b is boxed into c (ownership transfer)
-    
+
     println("HelloEnum.C tag: ${c.zeroth}")
     val inner = c.zeroth
     if (inner is HelloEnum.B) {
@@ -113,10 +134,11 @@ fun executeComplexFieldTest() {
 }
 
 fun executePropertyTest() {
-    val unknownStruct = UnknownStruct(1, "Hello", 1f)
-    println(unknownStruct.s)
-    unknownStruct.s = "Hello, World. from modified, 無限、❤"
-    println(unknownStruct.s)
+    UnknownStruct(1, "Hello", 1f).use { unknownStruct ->
+        println(unknownStruct.s)
+        unknownStruct.s = "Hello, World. from modified, 無限、❤"
+        println(unknownStruct.s)
+    }
 }
 
 fun executeEnumTest() {
