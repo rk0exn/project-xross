@@ -20,14 +20,7 @@
     </cargoProject>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f975a9a1-e29b-4a10-834b-aa32ce0e2a24" name="変更" comment="">
-      <change beforePath="$PROJECT_DIR$/xross-macros/src/utils.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/src/utils.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-macros/tests/test.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/tests/test.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-metadata/src/metadata/method/types.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-metadata/src/metadata/method/types.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/HandleResolver.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/HandleResolver.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/MethodGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/MethodGenerator.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/structures/HandleMode.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/structures/HandleMode.kt" afterDir="false" />
-    </list>
+    <list default="true" id="f975a9a1-e29b-4a10-834b-aa32ce0e2a24" name="変更" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />

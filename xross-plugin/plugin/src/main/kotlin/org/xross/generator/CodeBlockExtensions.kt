@@ -153,3 +153,46 @@ fun CodeBlock.Builder.addResultVariantResolution(
     if (needsRun) endControlFlow()
     this.add("\n")
 }
+
+fun CodeBlock.Builder.addArgumentPreparation(
+    type: XrossType,
+    name: String,
+    callArgs: MutableList<CodeBlock>,
+    checkObjectValidity: Boolean = false,
+) {
+    when (type) {
+        is XrossType.RustString -> {
+            addStatement("val ${name}Memory = arena.allocateFrom($name)")
+            callArgs.add(CodeBlock.of("${name}Memory"))
+        }
+
+        is XrossType.Object -> {
+            if (checkObjectValidity) {
+                beginControlFlow(
+                    "if ($name.segment == %T.NULL || !$name.aliveFlag.isValid)",
+                    MEMORY_SEGMENT,
+                )
+                addStatement("throw %T(%S)", NullPointerException::class.asTypeName(), "Arg invalid")
+                endControlFlow()
+            }
+            callArgs.add(CodeBlock.of("$name.segment"))
+        }
+
+        is XrossType.Bool -> callArgs.add(CodeBlock.of("if ($name) 1.toByte() else 0.toByte()"))
+        is XrossType.Optional -> {
+            addStatement(
+                "val ${name}Memory = if ($name == null) %T.NULL else %L",
+                MEMORY_SEGMENT,
+                GeneratorUtils.generateAllocMsg(type.inner, name),
+            )
+            callArgs.add(CodeBlock.of("${name}Memory"))
+        }
+
+        is XrossType.Result -> {
+            addResultAllocation(type, name, "${name}Memory")
+            callArgs.add(CodeBlock.of("${name}Memory"))
+        }
+
+        else -> callArgs.add(CodeBlock.of("%L", name))
+    }
+}

@@ -1,6 +1,4 @@
-use crate::codegen::ffi::{
-    gen_arg_conversion, gen_receiver_logic, gen_ret_wrapping,
-};
+use crate::codegen::ffi::{gen_arg_conversion, gen_receiver_logic, gen_ret_wrapping};
 use crate::utils::extract_safety_attr;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -68,8 +66,14 @@ pub fn write_ffi_function(
                 XrossType::Void => quote! { std::ptr::null_mut() },
                 XrossType::F32 => quote! { val as usize as *mut std::ffi::c_void },
                 XrossType::F64 => quote! { val as usize as *mut std::ffi::c_void },
-                XrossType::I8 | XrossType::I16 | XrossType::I32 | XrossType::I64 |
-                XrossType::U16 | XrossType::ISize | XrossType::USize | XrossType::Bool => {
+                XrossType::I8
+                | XrossType::I16
+                | XrossType::I32
+                | XrossType::I64
+                | XrossType::U16
+                | XrossType::ISize
+                | XrossType::USize
+                | XrossType::Bool => {
                     quote! { val as usize as *mut std::ffi::c_void }
                 }
                 _ => quote! { val as *mut std::ffi::c_void },
@@ -96,7 +100,7 @@ pub fn write_ffi_function(
                     } else {
                         "Unknown panic".to_string()
                     };
-                    
+
                     xross_core::XrossResult {
                         is_ok: false,
                         ptr: std::ffi::CString::new(msg).unwrap_or_default().into_raw() as *mut std::ffi::c_void,

@@ -95,33 +95,7 @@ object MethodGenerator {
 
             method.args.forEach { arg ->
                 val name = arg.name.toCamelCase().escapeKotlinKeyword()
-                when (arg.ty) {
-                    is XrossType.RustString -> {
-                        argPrep.addStatement("val ${name}Memory = arena.allocateFrom($name)")
-                        callArgs.add(CodeBlock.of("${name}Memory"))
-                    }
-
-                    is XrossType.Object -> {
-                        argPrep.beginControlFlow(
-                            "if ($name.segment == %T.NULL || !$name.aliveFlag.isValid)",
-                            MEMORY_SEGMENT,
-                        )
-                        argPrep.addStatement("throw %T(%S)", NullPointerException::class.asTypeName(), "Arg invalid")
-                        argPrep.endControlFlow()
-                        callArgs.add(CodeBlock.of("$name.segment"))
-                    }
-
-                    is XrossType.Bool -> callArgs.add(CodeBlock.of("if ($name) 1.toByte() else 0.toByte()"))
-                    is XrossType.Optional -> {
-                        argPrep.addStatement("val ${name}Memory = if ($name == null) %T.NULL else %L", MEMORY_SEGMENT, GeneratorUtils.generateAllocMsg(arg.ty.inner, name))
-                        callArgs.add(CodeBlock.of("${name}Memory"))
-                    }
-                    is XrossType.Result -> {
-                        argPrep.addResultAllocation(arg.ty, name, "${name}Memory")
-                        callArgs.add(CodeBlock.of("${name}Memory"))
-                    }
-                    else -> callArgs.add(CodeBlock.of("%L", name))
-                }
+                argPrep.addArgumentPreparation(arg.ty, name, callArgs, checkObjectValidity = true)
             }
 
             body.add(argPrep.build())
@@ -375,24 +349,7 @@ object MethodGenerator {
 
         method.args.forEach { arg ->
             val name = "argOf" + arg.name.toCamelCase()
-            when (arg.ty) {
-                is XrossType.RustString -> {
-                    body.addStatement("val ${name}Memory = arena.allocateFrom($name)")
-                    callArgs.add(CodeBlock.of("${name}Memory"))
-                }
-
-                is XrossType.Bool -> callArgs.add(CodeBlock.of("if ($name) 1.toByte() else 0.toByte()"))
-                is XrossType.Object -> callArgs.add(CodeBlock.of("$name.segment"))
-                is XrossType.Optional -> {
-                    body.addStatement("val ${name}Memory = if ($name == null) %T.NULL else %L", MEMORY_SEGMENT, GeneratorUtils.generateAllocMsg(arg.ty.inner, name))
-                    callArgs.add(CodeBlock.of("${name}Memory"))
-                }
-                is XrossType.Result -> {
-                    body.addResultAllocation(arg.ty, name, "${name}Memory")
-                    callArgs.add(CodeBlock.of("${name}Memory"))
-                }
-                else -> callArgs.add(CodeBlock.of("%L", name))
-            }
+            body.addArgumentPreparation(arg.ty, name, callArgs)
         }
 
         body.addFactoryBody(

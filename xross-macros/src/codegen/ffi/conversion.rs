@@ -230,16 +230,7 @@ pub fn gen_ret_wrapping(
                     }
                 },
             ),
-            XrossType::F32 => (
-                quote! { *mut std::ffi::c_void },
-                quote! {
-                    match #inner_call {
-                        Some(val) => val.to_bits() as usize as *mut std::ffi::c_void,
-                        None => std::ptr::null_mut(),
-                    }
-                },
-            ),
-            XrossType::F64 => (
+            XrossType::F32 | XrossType::F64 => (
                 quote! { *mut std::ffi::c_void },
                 quote! {
                     match #inner_call {

@@ -1,6 +1,7 @@
 use crate::codegen::ffi::{
-    MethodFfiData, add_clone_method, build_signature, generate_common_ffi, generate_enum_aux_ffi,
-    generate_property_accessors, process_method_args, resolve_return_type, write_ffi_function,
+    MethodFfiData, add_clone_method, build_signature, gen_field_layout_spec, generate_common_ffi,
+    generate_enum_aux_ffi, generate_property_accessors, process_method_args, resolve_return_type,
+    write_ffi_function,
 };
 use crate::macros::xross_class::parser::{VariantFieldInfo, XrossClassInput, XrossClassItem};
 use crate::metadata::save_definition;
@@ -139,7 +140,12 @@ pub fn impl_xross_class(input: XrossClassInput) -> proc_macro::TokenStream {
                         c_param_defs.push(c_arg);
                         internal_conversions.push(conv);
                         call_args.push(quote! { #f_name_ident: #c_call_arg });
-                        field_specs.push(quote! { { let offset = std::mem::offset_of!(#type_ident, #v_ident . #f_name_ident) as u64; let size = std::mem::size_of::<#f_ty>() as u64; format!("{}:{}:{}", #f_name, offset, size) } });
+                        field_specs.push(gen_field_layout_spec(
+                            &type_ident,
+                            quote! { #v_ident . #f_name_ident },
+                            f_name,
+                            f_ty,
+                        ));
                     }
                     extra_functions.push(quote! { #[unsafe(no_mangle)] pub unsafe extern "C" fn #constructor_name(#(#c_param_defs),*) -> *mut #type_ident { #(#internal_conversions)* Box::into_raw(Box::new(#type_ident::#v_ident { #(#call_args),* })) } });
                     variant_specs.push(quote! { format!("{}{{{}}}", #v_name_str, vec![#(#field_specs),*].join(";")) });
@@ -162,7 +168,12 @@ pub fn impl_xross_class(input: XrossClassInput) -> proc_macro::TokenStream {
                         internal_conversions.push(conv);
                         call_args.push(c_call_arg);
                         let idx = syn::Index::from(i);
-                        field_specs.push(quote! { { let offset = std::mem::offset_of!(#type_ident, #v_ident . #idx) as u64; let size = std::mem::size_of::<#f_ty>() as u64; format!("{}:{}:{}", #f_name_str, offset, size) } });
+                        field_specs.push(gen_field_layout_spec(
+                            &type_ident,
+                            quote! { #v_ident . #idx },
+                            &f_name_str,
+                            f_ty,
+                        ));
                     }
                     extra_functions.push(quote! { #[unsafe(no_mangle)] pub unsafe extern "C" fn #constructor_name(#(#c_param_defs),*) -> *mut #type_ident { #(#internal_conversions)* Box::into_raw(Box::new(#type_ident::#v_ident(#(#call_args),*))) } });
                     variant_specs.push(quote! { format!("{}{{{}}}", #v_name_str, vec![#(#field_specs),*].join(";")) });
@@ -199,7 +210,12 @@ pub fn impl_xross_class(input: XrossClassInput) -> proc_macro::TokenStream {
                 docs: vec![],
             });
             let field_ident = format_ident!("{}", f_name);
-            field_specs.push(quote! { { let offset = std::mem::offset_of!(#type_ident, #field_ident) as u64; let size = std::mem::size_of::<#f_ty>() as u64; format!("{}:{}:{}", #f_name, offset, size) } });
+            field_specs.push(gen_field_layout_spec(
+                &type_ident,
+                quote! { #field_ident },
+                &f_name,
+                &f_ty,
+            ));
             generate_property_accessors(
                 &type_ident,
                 &field_ident,
