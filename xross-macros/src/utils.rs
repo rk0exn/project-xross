@@ -176,10 +176,10 @@ pub fn ordinal_name(i: usize) -> String {
             format!("{}_million", cardinal_to_ordinal(millions))
         };
 
-        if remainder == 0 {
-            return format!("{}th", million_part);
+        return if remainder == 0 {
+            format!("{}th", million_part)
         } else {
-            return format!("{}_{}", million_part, ordinal_name(remainder));
+            format!("{}_{}", million_part, ordinal_name(remainder))
         }
     }
 
@@ -193,10 +193,10 @@ pub fn ordinal_name(i: usize) -> String {
             format!("{}_thousand", cardinal_to_ordinal(thousands))
         };
 
-        if remainder == 0 {
-            return format!("{}th", thousand_part);
+        return if remainder == 0 {
+            format!("{}th", thousand_part)
         } else {
-            return format!("{}_{}", thousand_part, ordinal_name(remainder));
+            format!("{}_{}", thousand_part, ordinal_name(remainder))
         }
     }
 
@@ -210,10 +210,10 @@ pub fn ordinal_name(i: usize) -> String {
             format!("{}_hundred", cardinal_to_ordinal(hundreds))
         };
 
-        if remainder == 0 {
-            return format!("{}th", hundred_part);
+        return if remainder == 0 {
+            format!("{}th", hundred_part)
         } else {
-            return format!("{}_{}", hundred_part, ordinal_name(remainder));
+            format!("{}_{}", hundred_part, ordinal_name(remainder))
         }
     }
 
