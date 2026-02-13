@@ -4,6 +4,7 @@ use xross_metadata::{HandleMode, ThreadSafety};
 
 pub fn extract_handle_mode(attrs: &[Attribute]) -> HandleMode {
     let mut is_critical = false;
+    let mut allow_heap_access = false;
     let mut is_panicable = false;
 
     for attr in attrs {
@@ -11,6 +12,14 @@ pub fn extract_handle_mode(attrs: &[Attribute]) -> HandleMode {
             let _ = attr.parse_nested_meta(|meta| {
                 if meta.path.is_ident("critical") {
                     is_critical = true;
+                    if meta.input.peek(syn::token::Paren) {
+                        let _ = meta.parse_nested_meta(|inner| {
+                            if inner.path.is_ident("heap_access") {
+                                allow_heap_access = true;
+                            }
+                            Ok(())
+                        });
+                    }
                 } else if meta.path.is_ident("panicable") {
                     is_panicable = true;
                 }
@@ -24,7 +33,7 @@ pub fn extract_handle_mode(attrs: &[Attribute]) -> HandleMode {
     }
 
     if is_critical {
-        HandleMode::Critical
+        HandleMode::Critical { allow_heap_access }
     } else if is_panicable {
         HandleMode::Panicable
     } else {

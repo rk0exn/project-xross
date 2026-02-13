@@ -9,6 +9,7 @@ import org.xross.generator.FFMConstants.FUNCTION_DESCRIPTOR
 import org.xross.generator.FFMConstants.JAVA_INT
 import org.xross.generator.FFMConstants.VAL_LAYOUT
 import org.xross.helper.StringHelper.toCamelCase
+import org.xross.structures.HandleMode
 import org.xross.structures.XrossDefinition
 import org.xross.structures.XrossMethodType
 import org.xross.structures.XrossType
@@ -194,17 +195,18 @@ object HandleResolver {
             } else {
                 val argsPart = if (args.isEmpty()) CodeBlock.of("") else CodeBlock.of(", %L", args.joinToCode(", "))
                 val retLayout = when {
-                    method.handleMode == org.xross.structures.HandleMode.Panicable -> FFMConstants.XROSS_RESULT_LAYOUT_CODE
+                    method.handleMode is HandleMode.Panicable -> FFMConstants.XROSS_RESULT_LAYOUT_CODE
                     method.ret is XrossType.Result -> FFMConstants.XROSS_RESULT_LAYOUT_CODE
                     else -> CodeBlock.of("%M", method.ret.layoutMember)
                 }
                 CodeBlock.of("%T.of(%L%L)", FUNCTION_DESCRIPTOR, retLayout, argsPart)
             }
 
-            val options = if (method.handleMode == org.xross.structures.HandleMode.Critical) {
-                CodeBlock.of(", %T.critical(false)", java.lang.foreign.Linker.Option::class.asTypeName())
-            } else {
-                CodeBlock.of("")
+            val options = when (val mode = method.handleMode) {
+                is HandleMode.Critical -> {
+                    CodeBlock.of(", %T.critical(%L)", java.lang.foreign.Linker.Option::class.asTypeName(), mode.allowHeapAccess)
+                }
+                else -> CodeBlock.of("")
             }
 
             init.addStatement(

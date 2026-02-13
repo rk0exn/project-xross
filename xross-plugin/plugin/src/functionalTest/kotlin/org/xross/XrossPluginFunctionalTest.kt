@@ -35,6 +35,7 @@ class XrossPluginFunctionalTest {
                   "name": "hello",
                   "symbol": "lib_hello",
                   "methodType": "Static",
+                  "handleMode": { "kind": "normal" },
                   "isConstructor": false,
                   "args": [
                     {
@@ -47,6 +48,17 @@ class XrossPluginFunctionalTest {
                   "ret": "Void",
                   "safety": "Lock",
                   "docs": ["Test comment"]
+                },
+                {
+                  "name": "fastMethod",
+                  "symbol": "lib_fast",
+                  "methodType": "Static",
+                  "handleMode": { "kind": "critical", "allowHeapAccess": true },
+                  "isConstructor": false,
+                  "args": [],
+                  "ret": "I32",
+                  "safety": "Lock",
+                  "docs": []
                 }
               ],
               "docs": []
@@ -88,5 +100,6 @@ class XrossPluginFunctionalTest {
         val content = generatedFile.readText()
         assertTrue(content.contains("class MyStruct"), "Generated Kotlin file should contain the MyStruct class")
         assertTrue(content.contains("fun hello"), "Generated Kotlin file should contain the generated method 'hello'")
+        assertTrue(content.contains("critical(true)"), "Generated Kotlin file should contain critical(true) option")
     }
 }

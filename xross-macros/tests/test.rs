@@ -33,6 +33,11 @@ impl MyService {
     pub fn execute(&self, data: i32) -> i32 {
         data * 2
     }
+
+    #[xross_method(critical(heap_access))]
+    pub fn critical_with_heap(&self, a: i32) -> i32 {
+        a
+    }
 }
 
 pub mod test {

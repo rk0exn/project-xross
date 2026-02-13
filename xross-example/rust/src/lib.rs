@@ -188,6 +188,11 @@ impl MyService {
         a + b
     }
 
+    #[xross_method(critical(heap_access))]
+    pub fn add_critical_heap(&self, a: i32, b: i32) -> i32 {
+        a + b
+    }
+
     #[xross_method(panicable)]
     pub fn cause_panic(&self, should_panic: bool) -> String {
         if should_panic {

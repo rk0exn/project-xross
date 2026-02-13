@@ -78,6 +78,10 @@ fun executePanicAndTrivialTest() {
     println("Trivial add(10, 20) = $sum")
     if (sum != 30) throw RuntimeException("Trivial calculation failed!")
 
+    val sumHeap = service.addCriticalHeap(100, 200)
+    println("Critical Heap add(100, 200) = $sumHeap")
+    if (sumHeap != 300) throw RuntimeException("Critical Heap calculation failed!")
+
     // 2. Panicable Test (No Panic)
     val noPanic = service.causePanic(false)
     println("Panicable causePanic(false) = $noPanic")

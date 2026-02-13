@@ -127,7 +127,7 @@ object MethodGenerator {
             body.add(argPrep.build())
 
             val handleName = "${method.name.toCamelCase()}Handle"
-            val isPanicable = method.handleMode == org.xross.structures.HandleMode.Panicable
+            val isPanicable = method.handleMode is HandleMode.Panicable
             val call = if (method.ret is XrossType.Result || isPanicable) {
                 CodeBlock.of(
                     "$handleName.invokeExact(this.autoArena as %T, %L)",
@@ -221,7 +221,7 @@ object MethodGenerator {
         val body = CodeBlock.builder()
         val flagType = ClassName("$basePackage.xross.runtime", "AliveFlag")
         val runtimePkg = "$basePackage.xross.runtime"
-        val isPanicable = method.handleMode == org.xross.structures.HandleMode.Panicable
+        val isPanicable = method.handleMode is HandleMode.Panicable
 
         // ヘルパー：型が自分自身(Self)かどうかでアクセスするプロパティ/関数を切り替える
         fun getExprs(type: TypeName) = Triple(
