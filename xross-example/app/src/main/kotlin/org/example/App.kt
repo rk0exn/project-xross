@@ -1,6 +1,8 @@
 package org.example
 
 import org.example.test.test2.MyService2
+import org.example.some.HelloEnum
+import org.example.external.ExternalStruct
 import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.Executors
@@ -75,7 +77,39 @@ private fun loadFromResources(tempDir: File) {
     println("Native library loaded from: ${libFile.absolutePath}")
 }
 fun executeComplexFieldTest() {
-    println("\nComplex field test:")
+    println("\n--- [6] Complex Field & External/Enum Test ---")
+
+    // 1. ExternalStruct Test (DSL based external binding)
+    val ext = ExternalStruct(100, "Xross Native")
+    println("ExternalStruct property 'value': ${ext.value}")
+    ext.value = 500
+    println("ExternalStruct getter after set: ${ext.getValue()}")
+    println("ExternalStruct greet: ${ext.greet("Hello")}")
+    ext.close()
+
+    // 2. HelloEnum Test (DSL based enum with recursion)
+    val b = HelloEnum.B(42)
+    val c = HelloEnum.C(b) // b is boxed into c (ownership transfer)
+    
+    println("HelloEnum.C tag: ${c.zeroth}")
+    val inner = c.zeroth
+    if (inner is HelloEnum.B) {
+        println("HelloEnum nested B.i: ${inner.i}")
+    }
+
+    // Deeper recursion
+    val deep = HelloEnum.C(HelloEnum.C(HelloEnum.B(1000)))
+    val mid = deep.zeroth
+    if (mid is HelloEnum.C) {
+        val inner = mid.zeroth
+        if (inner is HelloEnum.B) {
+            println("HelloEnum deep recursive value: ${inner.i}")
+        }
+    }
+
+    c.close()
+    deep.close()
+    println("✅ Complex field tests passed.")
 }
 
 fun executePropertyTest() {

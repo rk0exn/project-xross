@@ -15,40 +15,15 @@ pub fn xross_class_derive(input: TokenStream) -> TokenStream {
     macros::derive::impl_xross_class_derive(input).into()
 }
 
-/// Attribute macro for `xross_class`.
-/// Applied to an `impl` block to generate FFI wrappers for methods.
+/// Macro to define a class with its fields and methods in a DSL.
+#[proc_macro]
+pub fn xross_class(input: TokenStream) -> TokenStream {
+    macros::xross_class::impl_xross_class(input.into()).into()
+}
+
+/// Attribute macro for methods within an `impl` block.
 #[proc_macro_attribute]
-pub fn xross_class(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn xross_methods(attr: TokenStream, item: TokenStream) -> TokenStream {
     let input_impl = parse_macro_input!(item as ItemImpl);
     macros::attribute::impl_xross_class_attribute(attr.into(), input_impl).into()
-}
-
-/// Macro to define an opaque class managed via pointers.
-#[proc_macro]
-pub fn opaque_class(input: TokenStream) -> TokenStream {
-    macros::opaque::impl_opaque_class(input.into()).into()
-}
-
-/// Macro to define an external class for which only FFI bindings are needed.
-#[proc_macro]
-pub fn external_class(input: TokenStream) -> TokenStream {
-    macros::external::impl_external_class(input)
-}
-
-/// Macro to define an external method.
-#[proc_macro]
-pub fn external_method(input: TokenStream) -> TokenStream {
-    macros::external::impl_external_method(input)
-}
-
-/// Macro to define an external constructor.
-#[proc_macro]
-pub fn external_new(input: TokenStream) -> TokenStream {
-    macros::external::impl_external_new(input)
-}
-
-/// Macro to define an external field.
-#[proc_macro]
-pub fn external_field(input: TokenStream) -> TokenStream {
-    macros::external::impl_external_field(input)
 }

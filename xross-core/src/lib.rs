@@ -1,9 +1,6 @@
 use std::ffi::c_void;
 
-pub use xross_macros::{
-    XrossClass, external_class, external_field, external_method, external_new, opaque_class,
-    xross_class,
-};
+pub use xross_macros::{XrossClass, xross_class, xross_methods};
 
 /// A standard result structure for FFI calls.
 /// Used to pass success/failure status and a pointer to the result or error message.

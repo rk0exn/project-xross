@@ -2,7 +2,7 @@
 
 use std::cmp::{max, min};
 use std::sync::atomic::{AtomicIsize, Ordering};
-use xross_core::{XrossClass, xross_class};
+use xross_core::{XrossClass, xross_methods, xross_class};
 
 // --- グローバル・カウンター ---
 static SERVICE_COUNT: AtomicIsize = AtomicIsize::new(0);
@@ -43,7 +43,7 @@ impl Default for UnknownStruct {
     }
 }
 
-#[xross_class]
+#[xross_methods]
 impl UnknownStruct {
     #[xross_new]
     pub fn new(i: i32, s: String, f: f32) -> Self {
@@ -121,7 +121,7 @@ pub enum XrossSimpleEnum {
     Z,
 }
 
-#[xross_class]
+#[xross_methods]
 impl XrossSimpleEnum {
     #[xross_method]
     pub fn say_hello(&mut self) {
@@ -135,7 +135,7 @@ impl Default for MyService {
     }
 }
 
-#[xross_class]
+#[xross_methods]
 impl MyService {
     #[xross_new]
     pub fn new() -> Self {
@@ -206,7 +206,7 @@ pub mod test {
         }
     }
 
-    #[xross_class]
+    #[xross_methods]
     impl MyService2 {
         #[xross_new]
         pub fn new(val: i32) -> Self {
@@ -241,7 +241,11 @@ pub enum UnClonable {
     Y,
     Z,
 }
-xross_core::opaque_class!(UnClonable, false);
+
+xross_class! {
+    class struct UnClonable;
+    is_clonable false;
+}
 
 #[derive(Clone)]
 pub struct ExternalStruct {
@@ -264,17 +268,66 @@ impl ExternalStruct {
     }
 }
 
-xross_core::external_class!("external", ExternalStruct);
-xross_core::external_new!(external.ExternalStruct, new(value: i32, name: String));
-xross_core::external_method!(
-    external.ExternalStruct,
-    get_value(&self) -> i32
-);
-xross_core::external_method!(
-    external.ExternalStruct,
-    set_value(&mut self, v: i32)
-);
-xross_core::external_method!(
-    external.ExternalStruct, greet(&self, prefix: String) -> String
-);
-xross_core::external_field!(external.ExternalStruct, value: i32);
+#[derive(Clone)]
+pub enum HelloEnum {
+    A,
+    B { i: i32 },
+    C(Box<HelloEnum>),
+    D,
+}
+
+xross_class! {
+    package some;
+    enum HelloEnum;
+    variants {
+        A;
+        B {
+            i: i32;
+        }
+        C(Box<HelloEnum>)
+        D
+    };
+    clonable true;
+    is_copy false;
+}
+
+xross_class! {
+    package external;
+    class struct ExternalStruct;
+    is_clonable true;
+    field value: i32;
+    method ExternalStruct.new(value: i32, name: String) -> ExternalStruct;
+    method &self.get_value() -> i32;
+    method &mut self.set_value(v: i32);
+    method &self.greet(prefix: String) -> String;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hello_enum_logic() {
+        let b = HelloEnum::B { i: 100 };
+        let c = HelloEnum::C(Box::new(b));
+        
+        if let HelloEnum::C(inner) = c {
+            if let HelloEnum::B { i } = *inner {
+                assert_eq!(i, 100);
+            } else {
+                panic!("Expected variant B");
+            }
+        } else {
+            panic!("Expected variant C");
+        }
+    }
+
+    #[test]
+    fn test_external_struct_logic() {
+        let mut ext = ExternalStruct::new(10, "Test".to_string());
+        assert_eq!(ext.get_value(), 10);
+        ext.set_value(20);
+        assert_eq!(ext.value, 20);
+        assert_eq!(ext.greet("Hi".to_string()), "Hi Test");
+    }
+}
