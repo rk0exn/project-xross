@@ -1,5 +1,5 @@
-mod macros;
 mod codegen;
+mod macros;
 mod metadata;
 mod types;
 mod utils;

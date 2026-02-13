@@ -57,9 +57,10 @@ pub fn save_definition(def: &XrossDefinition) {
 
     if path.exists()
         && let Ok(existing_content) = fs::read_to_string(&path)
-            && let Ok(existing_def) = serde_json::from_str::<XrossDefinition>(&existing_content)
-                && !is_structurally_compatible(&existing_def, def) {
-                    panic!(
+        && let Ok(existing_def) = serde_json::from_str::<XrossDefinition>(&existing_content)
+        && !is_structurally_compatible(&existing_def, def)
+    {
+        panic!(
                         "
 [Xross Error] Duplicate definition detected for signature: '{}'
 
@@ -67,7 +68,7 @@ pub fn save_definition(def: &XrossDefinition) {
 ",
                         signature
                     );
-                }
+    }
 
     if let Ok(json) = serde_json::to_string(def) {
         fs::write(&path, json).ok();
@@ -105,9 +106,10 @@ pub fn load_definition(ident: &syn::Ident) -> Option<XrossDefinition> {
         for entry in entries.flatten() {
             if let Ok(content) = fs::read_to_string(entry.path())
                 && let Ok(def) = serde_json::from_str::<XrossDefinition>(&content)
-                    && *ident == def.name() {
-                        return Some(def);
-                    }
+                && *ident == def.name()
+            {
+                return Some(def);
+            }
         }
     }
     None
@@ -127,9 +129,10 @@ pub fn discover_signature(type_name: &str) -> Option<String> {
         for entry in entries.flatten() {
             if let Ok(content) = fs::read_to_string(entry.path())
                 && let Ok(def) = serde_json::from_str::<XrossDefinition>(&content)
-                    && def.name() == type_name {
-                        candidates.push(def.signature().to_string());
-                    }
+                && def.name() == type_name
+            {
+                candidates.push(def.signature().to_string());
+            }
         }
     }
 
