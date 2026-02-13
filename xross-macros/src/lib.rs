@@ -18,7 +18,7 @@ pub fn xross_class_derive(input: TokenStream) -> TokenStream {
 /// Macro to define a class with its fields and methods in a DSL.
 #[proc_macro]
 pub fn xross_class(input: TokenStream) -> TokenStream {
-    macros::xross_class::impl_xross_class(input.into()).into()
+    macros::xross_class::impl_xross_class(input)
 }
 
 /// Attribute macro for methods within an `impl` block.

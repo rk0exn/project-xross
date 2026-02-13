@@ -1,7 +1,6 @@
 use crate::metadata::save_definition;
 use crate::types::resolver::resolve_type_with_attr;
 use crate::utils::*;
-use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
 use syn::{
