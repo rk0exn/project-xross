@@ -57,7 +57,7 @@ where
         let _ = tx.send(mapper(res));
     });
 
-    unsafe extern "C" fn poll_task<T>(ptr: *mut c_void) -> XrossResult {
+    unsafe extern "C" fn poll_task(ptr: *mut c_void) -> XrossResult {
         let rx = unsafe { &mut *(ptr as *mut tokio::sync::mpsc::UnboundedReceiver<XrossResult>) };
         match rx.try_recv() {
             Ok(res) => res,
@@ -66,14 +66,14 @@ where
         }
     }
 
-    unsafe extern "C" fn drop_task<T>(ptr: *mut c_void) {
+    unsafe extern "C" fn drop_task(ptr: *mut c_void) {
         let _ = unsafe { Box::from_raw(ptr as *mut tokio::sync::mpsc::UnboundedReceiver<XrossResult>) };
     }
 
     XrossTask {
         task_ptr: Box::into_raw(Box::new(rx)) as *mut c_void,
-        poll_fn: poll_task::<T>,
-        drop_fn: drop_task::<T>,
+        poll_fn: poll_task,
+        drop_fn: drop_task,
     }
 }
 

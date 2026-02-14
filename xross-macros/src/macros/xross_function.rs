@@ -1,11 +1,10 @@
 use crate::codegen::ffi::{
-    MethodFfiData, build_signature, process_method_args, resolve_return_type, write_ffi_function,
+    MethodFfiData, process_method_args, resolve_return_type, write_ffi_function,
 };
-use crate::metadata::save_definition;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
 use syn::{Signature, Token};
-use xross_metadata::{HandleMode, ThreadSafety, XrossDefinition, XrossMethod};
+use xross_metadata::{HandleMode, ThreadSafety};
 
 mod kw {
     syn::custom_keyword!(package);
@@ -88,20 +87,13 @@ impl Parse for XrossFunctionInput {
 
 pub fn impl_xross_function(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as XrossFunctionInput);
-    let crate_name = std::env::var("CARGO_PKG_NAME")
-        .unwrap_or_else(|_| "unknown_crate".to_string())
-        .replace("-", "_");
 
     let package_name = input.package_name;
     let rust_fn_name = &input.signature.ident;
     let name_str = rust_fn_name.to_string();
     let is_async = input.signature.asyncness.is_some();
 
-    let symbol_prefix = if package_name.is_empty() {
-        crate_name.clone()
-    } else {
-        format!("{}_{}", crate_name, package_name.replace(".", "_"))
-    };
+    let symbol_prefix = crate::utils::get_symbol_prefix(&package_name);
 
     let mut ffi_data = MethodFfiData::new(&symbol_prefix, rust_fn_name);
     ffi_data.is_async = is_async;
@@ -115,29 +107,15 @@ pub fn impl_xross_function(input: proc_macro::TokenStream) -> proc_macro::TokenS
         &dummy_ident,
     );
 
-    let method_meta = XrossMethod {
-        name: name_str.clone(),
-        symbol: ffi_data.symbol_name.clone(),
-        method_type: ffi_data.method_type,
-        handle_mode: input.handle_mode,
-        safety: input.safety,
-        is_constructor: false,
-        is_async,
-        args: ffi_data.args_meta.clone(),
-        ret: ret_ty.clone(),
-        docs: vec![],
-    };
-
-    let definition = xross_metadata::XrossFunction {
-        signature: build_signature(&package_name, &name_str),
-        symbol: ffi_data.symbol_name.clone(),
-        package_name: package_name.clone(),
-        name: name_str,
-        method: method_meta,
-        docs: vec![],
-    };
-
-    save_definition(&XrossDefinition::Function(definition));
+    crate::utils::register_xross_function(
+        &package_name,
+        &name_str,
+        &ffi_data,
+        input.handle_mode,
+        input.safety,
+        &ret_ty,
+        vec![],
+    );
 
     let mut extra_functions = Vec::new();
     let call_args = &ffi_data.call_args;

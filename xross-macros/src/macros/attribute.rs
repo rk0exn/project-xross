@@ -118,10 +118,6 @@ pub fn impl_xross_class_attribute(_attr: TokenStream, mut input_impl: ItemImpl) 
 }
 
 pub fn impl_xross_function_attribute(attr: TokenStream, input_fn: syn::ItemFn) -> TokenStream {
-    let crate_name = std::env::var("CARGO_PKG_NAME")
-        .unwrap_or_else(|_| "unknown_crate".to_string())
-        .replace("-", "_");
-
     let mut package_name = String::new();
     let mut handle_mode = None;
     let mut safety = None;
@@ -136,15 +132,7 @@ pub fn impl_xross_function_attribute(attr: TokenStream, input_fn: syn::ItemFn) -
                     package_name = id.to_string();
                 }
             } else if meta.path.is_ident("critical") {
-                let mut allow_heap_access = false;
-                if meta.input.peek(syn::token::Paren) {
-                    let _ = meta.parse_nested_meta(|inner| {
-                        if inner.path.is_ident("heap_access") {
-                            allow_heap_access = true;
-                        }
-                        Ok(())
-                    });
-                }
+                let allow_heap_access = crate::utils::parse_critical_nested(&meta)?;
                 handle_mode = Some(xross_metadata::HandleMode::Critical { allow_heap_access });
             } else if meta.path.is_ident("panicable") {
                 handle_mode = Some(xross_metadata::HandleMode::Panicable);
@@ -170,11 +158,7 @@ pub fn impl_xross_function_attribute(attr: TokenStream, input_fn: syn::ItemFn) -
     let name_str = rust_fn_name.to_string();
     let is_async = input_fn.sig.asyncness.is_some();
 
-    let symbol_prefix = if package_name.is_empty() {
-        crate_name.clone()
-    } else {
-        format!("{}_{}", crate_name, package_name.replace(".", "_"))
-    };
+    let symbol_prefix = crate::utils::get_symbol_prefix(&package_name);
 
     let mut ffi_data = MethodFfiData::new(&symbol_prefix, rust_fn_name);
     ffi_data.is_async = is_async;
@@ -191,30 +175,17 @@ pub fn impl_xross_function_attribute(attr: TokenStream, input_fn: syn::ItemFn) -
 
     let handle_mode = handle_mode.unwrap_or_else(|| extract_handle_mode(&input_fn.attrs));
     let safety = safety.unwrap_or_else(|| extract_safety_attr(&input_fn.attrs, ThreadSafety::Lock));
+    let docs = extract_docs(&input_fn.attrs);
 
-    let method_meta = XrossMethod {
-        name: name_str.clone(),
-        symbol: ffi_data.symbol_name.clone(),
-        method_type: ffi_data.method_type,
+    crate::utils::register_xross_function(
+        &package_name,
+        &name_str,
+        &ffi_data,
         handle_mode,
         safety,
-        is_constructor: false,
-        is_async,
-        args: ffi_data.args_meta.clone(),
-        ret: ret_ty.clone(),
-        docs: extract_docs(&input_fn.attrs),
-    };
-
-    let definition = xross_metadata::XrossFunction {
-        signature: build_signature(&package_name, &name_str),
-        symbol: ffi_data.symbol_name.clone(),
-        package_name: package_name.clone(),
-        name: name_str,
-        method: method_meta,
-        docs: extract_docs(&input_fn.attrs),
-    };
-
-    save_definition(&XrossDefinition::Function(definition));
+        &ret_ty,
+        docs,
+    );
 
     let mut extra_functions = Vec::new();
     let call_args = &ffi_data.call_args;

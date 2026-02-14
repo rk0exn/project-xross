@@ -214,10 +214,10 @@ object EnumVariantGenerator {
                         variantTypeBuilder.addProperty(
                             PropertySpec.builder(baseCamelName.escapeKotlinKeyword(), kType)
                                 .mutable(field.safety != XrossThreadSafety.Immutable)
-                                .getter(buildVariantGetter(field, vhName, offsetName, kType, baseClassName, backingFieldName, basePackage))
+                                .getter(GeneratorUtils.buildFullGetter(kType, buildVariantGetterBody(field, vhName, offsetName, kType, baseClassName, backingFieldName, basePackage)))
                                 .apply {
                                     if (field.safety != XrossThreadSafety.Immutable) {
-                                        setter(buildVariantSetter(field, vhName, offsetName, kType, backingFieldName))
+                                        setter(GeneratorUtils.buildFullSetter(field.safety, kType, buildVariantSetterBody(field, vhName, offsetName, kType, backingFieldName)))
                                     }
                                 }
                                 .build(),
@@ -241,9 +241,9 @@ object EnumVariantGenerator {
         companionBuilder.addFunction(fromPointerBuilder.build())
     }
 
-    private fun buildVariantGetter(field: XrossField, vhName: String, offsetName: String, kType: TypeName, selfType: ClassName, backingFieldName: String?, basePackage: String): FunSpec {
+    private fun buildVariantGetterBody(field: XrossField, vhName: String, offsetName: String, kType: TypeName, selfType: ClassName, backingFieldName: String?, basePackage: String): CodeBlock {
         val isSelf = kType == selfType
-        val readLogic = CodeBlock.builder()
+        val body = CodeBlock.builder()
             .addStatement("if (this.segment == %T.NULL || !this.aliveFlag.isValid) throw %T(%S)", MEMORY_SEGMENT, NullPointerException::class.asTypeName(), "Access error")
             .apply {
                 when (field.ty) {
@@ -293,40 +293,13 @@ object EnumVariantGenerator {
                     }
                     else -> addStatement("res = $vhName.get(this.segment, $offsetName) as %T", kType)
                 }
-            }.build()
-
-        val optimisticReadCode = CodeBlock.builder()
-            .addStatement("var stamp = this.sl.tryOptimisticRead()")
-            .addStatement("var res: %T", kType)
-            .add("\n// Optimistic read\n")
-            .add(readLogic)
-            .beginControlFlow("if (!this.sl.validate(stamp))")
-            .addStatement("stamp = this.sl.readLock()")
-            .beginControlFlow("try")
-            .add("\n// Pessimistic read\n")
-            .add(readLogic)
-            .nextControlFlow("finally")
-            .addStatement("this.sl.unlockRead(stamp)")
-            .endControlFlow()
-            .endControlFlow()
-            .addStatement("return res")
-            .build()
-
-        val fullBody = CodeBlock.builder()
-            .addStatement("this.al.lockReadBlocking()")
-            .beginControlFlow("try")
-            .add(optimisticReadCode)
-            .nextControlFlow("finally")
-            .addStatement("this.al.unlockReadBlocking()")
-            .endControlFlow()
-            .build()
-
-        return FunSpec.getterBuilder().addCode(fullBody).build()
+            }
+        return body.build()
     }
 
-    private fun buildVariantSetter(field: XrossField, vhName: String, offsetName: String, kType: TypeName, backingFieldName: String?): FunSpec {
+    private fun buildVariantSetterBody(field: XrossField, vhName: String, offsetName: String, kType: TypeName, backingFieldName: String?): CodeBlock {
         val isOwnedObject = field.ty is XrossType.Object && field.ty.ownership == XrossType.Ownership.Owned
-        val writeCode = CodeBlock.builder()
+        val body = CodeBlock.builder()
             .addStatement("if (this.segment == %T.NULL || !this.aliveFlag.isValid) throw %T(%S)", MEMORY_SEGMENT, NullPointerException::class.asTypeName(), "Object invalid")
             .apply {
                 if (isOwnedObject) {
@@ -343,33 +316,8 @@ object EnumVariantGenerator {
                 if (backingFieldName != null) {
                     addStatement("this.$backingFieldName = null")
                 }
-            }.build()
-
-        val lockCode = when (field.safety) {
-            XrossThreadSafety.Immutable -> {
-                """
-                this.fl.lock()
-                try {
-                    this.al.lockWriteBlocking()
-                    try {
-                        %L
-                    } finally { this.al.unlockWriteBlocking() }
-                } finally { this.fl.unlock() }
-                """.trimIndent()
             }
-            else -> {
-                """
-                val stamp = this.sl.writeLock()
-                try {
-                    this.al.lockWriteBlocking()
-                    try {
-                        %L
-                    } finally { this.al.unlockWriteBlocking() }
-                } finally { this.sl.unlockWrite(stamp) }
-                """.trimIndent()
-            }
-        }
-
-        return FunSpec.setterBuilder().addParameter("v", kType).addCode(lockCode, writeCode).build()
+        return body.build()
     }
+
 }

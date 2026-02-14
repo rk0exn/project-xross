@@ -21,32 +21,16 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="f975a9a1-e29b-4a10-834b-aa32ce0e2a24" name="変更" comment="">
-      <change afterPath="$PROJECT_DIR$/xross-example/rust/src/lib.rs.tmp" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-core/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/xross-core/Cargo.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-core/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-core/src/lib.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-example/app/src/main/kotlin/org/example/App.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/app/src/main/kotlin/org/example/App.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-example/app/src/main/resource" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/app/src/main/resource" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-example/app/src/main/resources/libxross_example.so" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/app/src/main/resources/libxross_example.so" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-example/rust/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/rust/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-example/rust/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-example/rust/src/lib.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-macros/src/codegen/ffi/methods.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/src/codegen/ffi/methods.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-macros/src/macros/attribute.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/src/macros/attribute.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-macros/src/macros/xross_class/expander.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/src/macros/xross_class/expander.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-macros/src/macros/xross_function.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/src/macros/xross_function.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-metadata/src/metadata/method.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-metadata/src/metadata/method.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossPlugin.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/XrossPlugin.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/CompanionGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/CompanionGenerator.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-macros/src/utils.rs" beforeDir="false" afterPath="$PROJECT_DIR$/xross-macros/src/utils.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/EnumVariantGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/EnumVariantGenerator.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/FFMConstants.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/FFMConstants.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/HandleResolver.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/HandleResolver.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/MethodGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/MethodGenerator.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/GeneratorUtils.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/GeneratorUtils.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/OpaqueGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/OpaqueGenerator.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/PropertyGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/PropertyGenerator.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/RuntimeGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/RuntimeGenerator.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/StructureGenerator.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/generator/StructureGenerator.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/structures/XrossMethod.kt" beforeDir="false" afterPath="$PROJECT_DIR$/xross-plugin/plugin/src/main/kotlin/org/xross/structures/XrossMethod.kt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -204,7 +188,7 @@
       <workItem from="1770698046463" duration="18246000" />
       <workItem from="1770771177622" duration="2266000" />
       <workItem from="1770944913311" duration="18437000" />
-      <workItem from="1771032545441" duration="3244000" />
+      <workItem from="1771032545441" duration="4179000" />
     </task>
     <servers />
   </component>

@@ -35,7 +35,7 @@ object OpaqueGenerator {
             val propBuilder = PropertySpec.builder(escapedName, kType)
                 .mutable(true) // External fields are assumed mutable
                 .getter(buildOpaqueGetter(field, kType, basePackage))
-                .setter(buildOpaqueSetter(field, kType))
+                .setter(GeneratorUtils.buildFullSetter(field.safety, kType, buildOpaqueSetterBody(field), useAsyncLock = false))
             classBuilder.addProperty(propBuilder.build())
         }
 
@@ -104,7 +104,7 @@ object OpaqueGenerator {
         return FunSpec.getterBuilder().addCode(body.build()).build()
     }
 
-    private fun buildOpaqueSetter(field: XrossField, kType: TypeName): FunSpec {
+    private fun buildOpaqueSetterBody(field: XrossField): CodeBlock {
         val baseName = field.name.toCamelCase()
         val body = CodeBlock.builder()
         body.addStatement("if (this.segment == %T.NULL || !this.aliveFlag.isValid) throw %T(%S)", MemorySegment::class, NullPointerException::class, "Object invalid")
@@ -115,37 +115,16 @@ object OpaqueGenerator {
             else -> "${baseName}SetHandle"
         }
 
-        val writeCode = CodeBlock.builder().apply {
-            if (field.ty is XrossType.RustString) {
-                beginControlFlow("%T.ofConfined().use { arena ->", FFMConstants.ARENA)
-                addStatement("val allocated = arena.allocateFrom(v)")
-                addStatement("$setHandle.invokeExact(this.segment, allocated) as Unit")
-                endControlFlow()
-            } else {
-                addStatement("$setHandle.invokeExact(this.segment, v) as Unit")
-            }
-        }.build()
-
-        val lockCode = when (field.safety) {
-            org.xross.structures.XrossThreadSafety.Immutable -> {
-                """
-                this.fl.lock()
-                try {
-                    %L
-                } finally { this.fl.unlock() }
-                """.trimIndent()
-            }
-            org.xross.structures.XrossThreadSafety.Unsafe -> "%L"
-            else -> {
-                """
-                val stamp = this.sl.writeLock()
-                try {
-                    %L
-                } finally { this.sl.unlockWrite(stamp) }
-                """.trimIndent()
-            }
+        if (field.ty is XrossType.RustString) {
+            body.beginControlFlow("%T.ofConfined().use { arena ->", FFMConstants.ARENA)
+            body.addStatement("val allocated = arena.allocateFrom(v)")
+            body.addStatement("$setHandle.invokeExact(this.segment, allocated) as Unit")
+            body.endControlFlow()
+        } else {
+            body.addStatement("$setHandle.invokeExact(this.segment, v) as Unit")
         }
 
-        return FunSpec.setterBuilder().addParameter("v", kType).addCode(lockCode, writeCode).build()
+        return body.build()
     }
 }
+

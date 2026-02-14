@@ -40,13 +40,14 @@ impl MyService {
     }
 }
 
+use xross_macros::xross_function;
 #[xross_function(package = "test_func")]
 pub fn global_add(a: i32, b: i32) -> i32 {
     a + b
 }
 
-use xross_macros::xross_function;
-xross_function! {
+use xross_macros::xross_function_dsl;
+xross_function_dsl! {
     package test_func;
     fn global_concat(a: String, b: String) -> String;
 }

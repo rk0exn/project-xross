@@ -2,6 +2,68 @@ use heck::ToSnakeCase;
 use syn::{Attribute, Expr, ExprLit, Lit, Meta, Token};
 use xross_metadata::{HandleMode, ThreadSafety};
 
+pub fn get_symbol_prefix(package_name: &str) -> String {
+    let crate_name = std::env::var("CARGO_PKG_NAME")
+        .unwrap_or_else(|_| "unknown_crate".to_string())
+        .replace("-", "_");
+
+    if package_name.is_empty() {
+        crate_name
+    } else {
+        format!("{}_{}", crate_name, package_name.replace(".", "_"))
+    }
+}
+
+pub fn register_xross_function(
+    package_name: &str,
+    name_str: &str,
+    ffi_data: &crate::codegen::ffi::MethodFfiData,
+    handle_mode: HandleMode,
+    safety: ThreadSafety,
+    ret_ty: &xross_metadata::XrossType,
+    docs: Vec<String>,
+) {
+    use crate::metadata::save_definition;
+    use xross_metadata::{XrossDefinition, XrossMethod};
+
+    let method_meta = XrossMethod {
+        name: name_str.to_string(),
+        symbol: ffi_data.symbol_name.clone(),
+        method_type: ffi_data.method_type,
+        handle_mode,
+        safety,
+        is_constructor: false,
+        is_async: ffi_data.is_async,
+        args: ffi_data.args_meta.clone(),
+        ret: ret_ty.clone(),
+        docs: docs.clone(),
+    };
+
+    let definition = xross_metadata::XrossFunction {
+        signature: crate::codegen::ffi::build_signature(package_name, name_str),
+        symbol: ffi_data.symbol_name.clone(),
+        package_name: package_name.to_string(),
+        name: name_str.to_string(),
+        method: method_meta,
+        docs,
+    };
+
+    save_definition(&XrossDefinition::Function(definition));
+}
+
+pub fn parse_critical_nested(meta: &syn::meta::ParseNestedMeta) -> syn::Result<bool> {
+    let mut allow_heap_access = false;
+    if meta.input.peek(syn::token::Paren) {
+        let _ = meta.parse_nested_meta(|inner| {
+            if inner.path.is_ident("heap_access") {
+                allow_heap_access = true;
+            }
+            Ok(())
+        });
+    }
+    Ok(allow_heap_access)
+}
+
 pub fn extract_handle_mode(attrs: &[Attribute]) -> HandleMode {
     let mut is_critical = false;
     let mut allow_heap_access = false;
@@ -12,14 +74,7 @@ pub fn extract_handle_mode(attrs: &[Attribute]) -> HandleMode {
             let _ = attr.parse_nested_meta(|meta| {
                 if meta.path.is_ident("critical") {
                     is_critical = true;
-                    if meta.input.peek(syn::token::Paren) {
-                        let _ = meta.parse_nested_meta(|inner| {
-                            if inner.path.is_ident("heap_access") {
-                                allow_heap_access = true;
-                            }
-                            Ok(())
-                        });
-                    }
+                    allow_heap_access = parse_critical_nested(&meta)?;
                 } else if meta.path.is_ident("panicable") {
                     is_panicable = true;
                 }

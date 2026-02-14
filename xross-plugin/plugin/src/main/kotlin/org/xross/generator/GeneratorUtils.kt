@@ -3,6 +3,7 @@ package org.xross.generator
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import org.xross.structures.XrossDefinition
+import org.xross.structures.XrossThreadSafety
 import org.xross.structures.XrossType
 import java.io.File
 
@@ -101,9 +102,10 @@ object GeneratorUtils {
 
     /**
      * Builds a getter with optimistic read locking using [java.util.concurrent.locks.StampedLock].
+     * Optionally wraps with XrossAsyncLock read lock.
      */
-    fun buildOptimisticReadGetter(kType: TypeName, readCode: CodeBlock): FunSpec = FunSpec.getterBuilder().addCode(
-        CodeBlock.builder()
+    fun buildFullGetter(kType: TypeName, readCode: CodeBlock, useAsyncLock: Boolean = true): FunSpec {
+        val optimisticReadCode = CodeBlock.builder()
             .addStatement("var stamp = this.sl.tryOptimisticRead()")
             .addStatement("var res: %T", kType)
             .add("\n// Optimistic read\n")
@@ -118,8 +120,63 @@ object GeneratorUtils {
             .endControlFlow()
             .endControlFlow()
             .addStatement("return res")
-            .build(),
-    ).build()
+            .build()
+
+        return if (useAsyncLock) {
+            FunSpec.getterBuilder()
+                .addStatement("this.al.lockReadBlocking()")
+                .beginControlFlow("try")
+                .addCode(optimisticReadCode)
+                .nextControlFlow("finally")
+                .addStatement("this.al.unlockReadBlocking()")
+                .endControlFlow()
+                .build()
+        } else {
+            FunSpec.getterBuilder().addCode(optimisticReadCode).build()
+        }
+    }
+
+    /**
+     * Builds a setter with appropriate locking based on thread safety.
+     * Optionally wraps with XrossAsyncLock write lock.
+     */
+    fun buildFullSetter(safety: XrossThreadSafety, kType: TypeName, writeCode: CodeBlock, useAsyncLock: Boolean = true): FunSpec {
+        val alLock = if (useAsyncLock) {
+            """
+            this.al.lockWriteBlocking()
+            try {
+                %L
+            } finally { this.al.unlockWriteBlocking() }
+            """.trimIndent()
+        } else {
+            "%L"
+        }
+
+        val lockPattern = when (safety) {
+            XrossThreadSafety.Immutable -> {
+                """
+                this.fl.lock()
+                try {
+                    $alLock
+                } finally { this.fl.unlock() }
+                """.trimIndent()
+            }
+            XrossThreadSafety.Unsafe -> alLock
+            else -> {
+                """
+                val stamp = this.sl.writeLock()
+                try {
+                    $alLock
+                } finally { this.sl.unlockWrite(stamp) }
+                """.trimIndent()
+            }
+        }
+
+        return FunSpec.setterBuilder()
+            .addParameter("v", kType)
+            .addCode(lockPattern, writeCode)
+            .build()
+    }
 
     /**
      * Resolves the Kotlin return type for a given XrossType.
