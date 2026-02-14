@@ -1,6 +1,7 @@
 package org.xross.generator
 
 import com.squareup.kotlinpoet.*
+import org.xross.generator.util.GeneratorUtils
 import org.xross.structures.XrossDefinition
 import java.lang.foreign.MemorySegment
 

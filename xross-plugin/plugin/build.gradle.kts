@@ -43,7 +43,7 @@ gradlePlugin {
     // Define the plugin
     val xross by plugins.creating {
         id = "org.xross"
-        implementationClass = "org.xross.XrossPlugin"
+        implementationClass = "org.xross.gradle.XrossPlugin"
     }
 }
 

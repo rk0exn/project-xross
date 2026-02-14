@@ -1,6 +1,9 @@
 package org.xross.generator
 
 import com.squareup.kotlinpoet.*
+import org.xross.generator.util.GeneratorUtils
+import org.xross.generator.util.addFactoryBody
+import org.xross.generator.util.addRustStringResolution
 import org.xross.helper.StringHelper.escapeKotlinKeyword
 import org.xross.helper.StringHelper.toCamelCase
 import org.xross.structures.XrossDefinition
@@ -19,7 +22,7 @@ object EnumVariantGenerator {
         tripleType: TypeName,
         basePackage: String,
         handleCall: CodeBlock,
-        fields: List<org.xross.structures.XrossField> = emptyList(),
+        fields: List<XrossField> = emptyList(),
     ) {
         companionBuilder.addFunction(
             FunSpec.builder(factoryMethodName)

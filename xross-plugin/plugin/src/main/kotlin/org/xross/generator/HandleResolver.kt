@@ -4,15 +4,13 @@ import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.MemberName
 import com.squareup.kotlinpoet.asTypeName
 import com.squareup.kotlinpoet.joinToCode
-import org.xross.generator.FFMConstants.ADDRESS
-import org.xross.generator.FFMConstants.FUNCTION_DESCRIPTOR
-import org.xross.generator.FFMConstants.JAVA_INT
-import org.xross.generator.FFMConstants.VAL_LAYOUT
+import org.xross.generator.util.FFMConstants
+import org.xross.generator.util.FFMConstants.ADDRESS
+import org.xross.generator.util.FFMConstants.FUNCTION_DESCRIPTOR
+import org.xross.generator.util.FFMConstants.JAVA_INT
+import org.xross.generator.util.FFMConstants.VAL_LAYOUT
 import org.xross.helper.StringHelper.toCamelCase
-import org.xross.structures.HandleMode
-import org.xross.structures.XrossDefinition
-import org.xross.structures.XrossMethodType
-import org.xross.structures.XrossType
+import org.xross.structures.*
 
 object HandleResolver {
     fun resolveAllHandles(init: CodeBlock.Builder, meta: XrossDefinition) {
@@ -96,7 +94,7 @@ object HandleResolver {
         resolvePropertyHandles(init, meta.symbolPrefix, meta.fields, isOpaque = true)
     }
 
-    private fun resolvePropertyHandles(init: CodeBlock.Builder, prefix: String, fields: List<org.xross.structures.XrossField>, isOpaque: Boolean = false) {
+    private fun resolvePropertyHandles(init: CodeBlock.Builder, prefix: String, fields: List<XrossField>, isOpaque: Boolean = false) {
         fields.forEach { field ->
             val baseCamel = field.name.toCamelCase()
             when (field.ty) {

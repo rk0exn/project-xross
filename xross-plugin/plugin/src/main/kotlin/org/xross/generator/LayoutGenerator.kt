@@ -2,7 +2,7 @@ package org.xross.generator
 
 import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.asTypeName
-import org.xross.generator.FFMConstants.MEMORY_LAYOUT
+import org.xross.generator.util.FFMConstants.MEMORY_LAYOUT
 import org.xross.helper.StringHelper.toCamelCase
 import org.xross.structures.XrossDefinition
 import org.xross.structures.XrossThreadSafety

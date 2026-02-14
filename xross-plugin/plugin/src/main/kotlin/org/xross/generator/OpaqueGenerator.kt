@@ -1,6 +1,9 @@
 package org.xross.generator
 
 import com.squareup.kotlinpoet.*
+import org.xross.generator.util.FFMConstants
+import org.xross.generator.util.GeneratorUtils
+import org.xross.generator.util.addRustStringResolution
 import org.xross.helper.StringHelper.escapeKotlinKeyword
 import org.xross.helper.StringHelper.toCamelCase
 import org.xross.structures.XrossDefinition

@@ -2,7 +2,7 @@ package org.xross.structures
 
 import com.squareup.kotlinpoet.*
 import kotlinx.serialization.Serializable
-import org.xross.XrossTypeSerializer
+import org.xross.generator.util.FFMConstants
 
 /**
  * Represents the data types supported by Xross in Kotlin.
@@ -75,17 +75,17 @@ sealed class XrossType {
      */
     val layoutMember: MemberName
         get() = when (this) {
-            I32 -> org.xross.generator.FFMConstants.JAVA_INT
-            I64 -> org.xross.generator.FFMConstants.JAVA_LONG
-            ISize, USize -> if (java.lang.foreign.ValueLayout.ADDRESS.byteSize() <= 4L) org.xross.generator.FFMConstants.JAVA_INT else org.xross.generator.FFMConstants.JAVA_LONG
-            F32 -> org.xross.generator.FFMConstants.JAVA_FLOAT
-            F64 -> org.xross.generator.FFMConstants.JAVA_DOUBLE
-            Bool -> org.xross.generator.FFMConstants.JAVA_BYTE
-            I8 -> org.xross.generator.FFMConstants.JAVA_BYTE
-            I16 -> org.xross.generator.FFMConstants.JAVA_SHORT
-            U16 -> org.xross.generator.FFMConstants.JAVA_CHAR
+            I32 -> FFMConstants.JAVA_INT
+            I64 -> FFMConstants.JAVA_LONG
+            ISize, USize -> if (java.lang.foreign.ValueLayout.ADDRESS.byteSize() <= 4L) FFMConstants.JAVA_INT else FFMConstants.JAVA_LONG
+            F32 -> FFMConstants.JAVA_FLOAT
+            F64 -> FFMConstants.JAVA_DOUBLE
+            Bool -> FFMConstants.JAVA_BYTE
+            I8 -> FFMConstants.JAVA_BYTE
+            I16 -> FFMConstants.JAVA_SHORT
+            U16 -> FFMConstants.JAVA_CHAR
             Void -> throw IllegalStateException("Void has no layout")
-            else -> org.xross.generator.FFMConstants.ADDRESS
+            else -> FFMConstants.ADDRESS
         }
 
     /**
