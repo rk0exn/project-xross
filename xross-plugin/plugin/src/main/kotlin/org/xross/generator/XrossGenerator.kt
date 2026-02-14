@@ -133,7 +133,7 @@ object XrossGenerator {
                 }
 
                 isPure -> {
-                    TypeSpec.enumBuilder(className)
+                    TypeSpec.enumBuilder(className).addSuperinterface(AutoCloseable::class)
                 }
 
                 isEnum -> {
@@ -170,9 +170,7 @@ object XrossGenerator {
         }
 
         classBuilder.addType(companionBuilder.build())
-        if (!isPure) {
-            StructureGenerator.addFinalBlocks(classBuilder, meta)
-        }
+        StructureGenerator.addFinalBlocks(classBuilder, meta)
 
         GeneratorUtils.writeToDisk(classBuilder.build(), targetPackage, className, outputDir)
     }

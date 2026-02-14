@@ -19,7 +19,6 @@ object StructureGenerator {
         val selfType = GeneratorUtils.getClassName(meta.signature, basePackage)
 
         // --- Class Level (Static) Locks ---
-        // Always add locks to the companion object so static methods can use them.
         companionBuilder.addProperty(
             PropertySpec.builder("sl", ClassName("java.util.concurrent.locks", "StampedLock"))
                 .addModifiers(KModifier.INTERNAL)
@@ -50,49 +49,22 @@ object StructureGenerator {
         val isPure = GeneratorUtils.isPureEnum(meta)
 
         if (isPure) {
-            // --- Pure Enum Case (enum class) ---
-            val segmentProp = PropertySpec.builder("segment", MEMORY_SEGMENT, KModifier.INTERNAL)
-                .mutable(true)
-                .initializer("%T.NULL", MEMORY_SEGMENT)
-                .build()
-            classBuilder.addProperty(segmentProp)
-
+            classBuilder.addProperty(
+                PropertySpec.builder("segment", MEMORY_SEGMENT, KModifier.INTERNAL)
+                    .mutable(true)
+                    .initializer("%T.NULL", MEMORY_SEGMENT)
+                    .build()
+            )
             classBuilder.addProperty(
                 PropertySpec.builder("aliveFlag", aliveFlagType, KModifier.INTERNAL)
                     .initializer("%T(true)", aliveFlagType).build(),
             )
-
-            classBuilder.addProperty(
-                PropertySpec.builder("sl", ClassName("java.util.concurrent.locks", "StampedLock"))
-                    .addModifiers(KModifier.INTERNAL)
-                    .initializer("%T()", ClassName("java.util.concurrent.locks", "StampedLock"))
-                    .build(),
-            )
-            classBuilder.addProperty(
-                PropertySpec.builder("fl", ClassName("java.util.concurrent.locks", "ReentrantLock"))
-                    .addModifiers(KModifier.INTERNAL)
-                    .initializer("%T(true)", ClassName("java.util.concurrent.locks", "ReentrantLock"))
-                    .build(),
-            )
-            classBuilder.addProperty(
-                PropertySpec.builder("al", ClassName("$basePackage.xross.runtime", "XrossAsyncLock"))
-                    .addModifiers(KModifier.INTERNAL)
-                    .initializer("%T()", ClassName("$basePackage.xross.runtime", "XrossAsyncLock"))
-                    .build(),
-            )
-
-            classBuilder.addProperty(
-                PropertySpec.builder("autoArena", ClassName("java.lang.foreign", "Arena"), KModifier.INTERNAL)
-                    .initializer("%T.ofAuto()", ClassName("java.lang.foreign", "Arena"))
-                    .build(),
-            )
-            classBuilder.addProperty(
-                PropertySpec.builder("confinedArena", ClassName("java.lang.foreign", "Arena").copy(nullable = true), KModifier.INTERNAL)
-                    .initializer("null")
-                    .build(),
-            )
+            classBuilder.addProperty(PropertySpec.builder("sl", ClassName("java.util.concurrent.locks", "StampedLock")).addModifiers(KModifier.INTERNAL).initializer("%T()", ClassName("java.util.concurrent.locks", "StampedLock")).build())
+            classBuilder.addProperty(PropertySpec.builder("fl", ClassName("java.util.concurrent.locks", "ReentrantLock")).addModifiers(KModifier.INTERNAL).initializer("%T(true)", ClassName("java.util.concurrent.locks", "ReentrantLock")).build())
+            classBuilder.addProperty(PropertySpec.builder("al", ClassName("$basePackage.xross.runtime", "XrossAsyncLock")).addModifiers(KModifier.INTERNAL).initializer("%T()", ClassName("$basePackage.xross.runtime", "XrossAsyncLock")).build())
+            classBuilder.addProperty(PropertySpec.builder("autoArena", ClassName("java.lang.foreign", "Arena"), KModifier.INTERNAL).initializer("%T.ofAuto()", ClassName("java.lang.foreign", "Arena")).build())
+            classBuilder.addProperty(PropertySpec.builder("confinedArena", ClassName("java.lang.foreign", "Arena").copy(nullable = true), KModifier.INTERNAL).initializer("null").build())
         } else {
-            // --- Normal Struct / Complex Enum Case ---
             val constructorBuilder = FunSpec.constructorBuilder()
                 .addModifiers(if (isEnum) KModifier.PROTECTED else KModifier.INTERNAL)
                 .addParameter("raw", MEMORY_SEGMENT)
@@ -116,11 +88,9 @@ object StructureGenerator {
             classBuilder.addProperty(PropertySpec.builder("al", ClassName("$basePackage.xross.runtime", "XrossAsyncLock")).addModifiers(KModifier.INTERNAL).initializer("%T()", ClassName("$basePackage.xross.runtime", "XrossAsyncLock")).build())
         }
 
-        // --- fromPointer メソッド ---
         if (!isEnum) {
             val fromPointerBuilder = GeneratorUtils.buildFromPointerBase("fromPointer", selfType, basePackage)
                 .addCode("return %T(ptr, autoArena, confinedArena = confinedArena, sharedFlag = sharedFlag)\n", selfType)
-
             companionBuilder.addFunction(fromPointerBuilder.build())
         }
     }
@@ -129,8 +99,9 @@ object StructureGenerator {
      * Adds finalization logic, such as `close` and `relinquish` methods.
      */
     fun addFinalBlocks(classBuilder: TypeSpec.Builder, meta: XrossDefinition) {
-        if (GeneratorUtils.isPureEnum(meta)) return
+        val isPure = GeneratorUtils.isPureEnum(meta)
 
+        // RelinquishInternal
         val relinquishInternalBody = CodeBlock.builder()
             .addStatement("segment = %T.NULL", MEMORY_SEGMENT)
             .addStatement("aliveFlag.invalidate()")
@@ -142,37 +113,57 @@ object StructureGenerator {
                 .build(),
         )
 
+        // Close
         val closeBody = CodeBlock.builder()
-            .addStatement("val s = segment")
-            .beginControlFlow("if (s != %T.NULL)", MEMORY_SEGMENT)
-            .addStatement("val stamp = sl.writeLock()")
-            .beginControlFlow("try")
-            .beginControlFlow("if (segment != %T.NULL)", MEMORY_SEGMENT)
-            .addStatement("val currentS = segment")
-            .beginControlFlow("if (aliveFlag.tryInvalidate())")
-            .addStatement("relinquishInternal()")
-            .beginControlFlow("if (confinedArena != null)")
-            .addStatement("dropHandle.invokeExact(currentS)")
-            .endControlFlow()
-            .endControlFlow()
-            .endControlFlow()
-            .nextControlFlow("finally")
-            .addStatement("sl.unlockWrite(stamp)")
-            .endControlFlow()
-            .endControlFlow()
+        if (isPure) {
+            closeBody.add("// Pure enum constants are not manually closable\n")
+        } else {
+            closeBody.addStatement("val s = segment")
+                .beginControlFlow("if (s != %T.NULL)", MEMORY_SEGMENT)
+                .addStatement("val stamp = sl.writeLock()")
+                .beginControlFlow("try")
+                .beginControlFlow("if (segment != %T.NULL)", MEMORY_SEGMENT)
+                .addStatement("val currentS = segment")
+                .beginControlFlow("if (aliveFlag.tryInvalidate())")
+                .addStatement("relinquishInternal()")
+                .beginControlFlow("if (confinedArena != null)")
+                .addStatement("dropHandle.invokeExact(currentS)")
+                .endControlFlow()
+                .endControlFlow()
+                .endControlFlow()
+                .nextControlFlow("finally")
+                .addStatement("sl.unlockWrite(stamp)")
+                .endControlFlow()
+                .endControlFlow()
+        }
 
-        classBuilder.addFunction(FunSpec.builder("close").addModifiers(KModifier.OVERRIDE).addCode(closeBody.build()).build())
+        classBuilder.addFunction(
+            FunSpec.builder("close")
+                .addModifiers(KModifier.PUBLIC, KModifier.OVERRIDE, KModifier.FINAL)
+                .addCode(closeBody.build())
+                .build()
+        )
 
+        // Relinquish
         val relinquishBody = CodeBlock.builder()
-            .beginControlFlow("if (segment != %T.NULL)", MEMORY_SEGMENT)
-            .addStatement("val stamp = sl.writeLock()")
-            .beginControlFlow("try")
-            .addStatement("relinquishInternal()")
-            .nextControlFlow("finally")
-            .addStatement("sl.unlockWrite(stamp)")
-            .endControlFlow()
-            .endControlFlow()
+        if (isPure) {
+            relinquishBody.add("// No-op for pure enums\n")
+        } else {
+            relinquishBody.beginControlFlow("if (segment != %T.NULL)", MEMORY_SEGMENT)
+                .addStatement("val stamp = sl.writeLock()")
+                .beginControlFlow("try")
+                .addStatement("relinquishInternal()")
+                .nextControlFlow("finally")
+                .addStatement("sl.unlockWrite(stamp)")
+                .endControlFlow()
+                .endControlFlow()
+        }
 
-        classBuilder.addFunction(FunSpec.builder("relinquish").addModifiers(KModifier.INTERNAL).addCode(relinquishBody.build()).build())
+        classBuilder.addFunction(
+            FunSpec.builder("relinquish")
+                .addModifiers(KModifier.PUBLIC)
+                .addCode(relinquishBody.build())
+                .build()
+        )
     }
 }
