@@ -13,6 +13,7 @@ Java 25 で標準化された **Project Panama (Foreign Function & Memory API)**
 *   **🛡️ Rust の安全性を JVM へ**: Rust の所有権モデル（Owned, Ref, MutRef）をメタデータとして抽出し、Kotlin 側のライフサイクル管理と型システムに統合。
 *   **🛠️ 完全自動バインディング**: Rust のコードにアノテーションを付けるだけで、スレッドセーフで慣習的な Kotlin コードが自動生成されます。
 *   **🔒 強固なスレッド安全性**: データの性質に合わせて `StampedLock`, `VarHandle`, `Atomic` 等の同期機構を自動選択し、データ競合を防ぎます。
+*   **🌐 非同期処理の統合 (Async/Await)**: Rust の `Future` と Kotlin の `Coroutines` をシームレスにブリッジ。ネイティブの非同期ロジックを `suspend` 関数として呼び出せます。
 *   **💎 高度な型サポート**: 構造体はもちろん、Rust 特有の列挙型 (Algebraic Data Types) や不透明型 (Opaque Types) もシームレスに扱えます。
 
 ## 🏗️ アーキテクチャ
@@ -83,6 +84,7 @@ Xross は Rust の型定義を解析し、最適な Kotlin コードを生成し
 | `#[derive(XrossClass)] struct S` | `class S : AutoCloseable` | ネイティブメモリを管理するクラス |
 | `#[xross_new] fn new() -> Self` | `constructor(...)` | Rust のインスタンスを生成 |
 | `&self` / `&mut self` | 普通のメソッド | スレッド安全性が自動的に付与される |
+| `async fn foo()` | `suspend fun foo()` | Coroutines 統合された非同期関数 |
 | `self` (所有権消費) | `fun consume()...` | 呼び出し後に Kotlin 側でも無効化される |
 | `Option<T>` | `T?` (Nullable) | `null` を使った自然な表現 |
 | `Result<T, E>` | `Result<T>` | 例外を内包した標準の Result 型 |
@@ -94,15 +96,18 @@ Xross は Rust の型定義を解析し、最適な Kotlin コードを生成し
 #[xross_class]
 impl MyService {
     #[xross_method]
-    pub fn process(&self, input: String) -> Option<String> {
-        if input.is_empty() { None } else { Some(format!("Processed: {}", input)) }
+    pub async fn process(&self, input: String) -> Result<String, String> {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        Ok(format!("Processed: {}", input))
     }
 }
 ```
 
 **Kotlin (生成後):**
 ```kotlin
-val result: String? = service.process("hello")
+val result: Result<String> = runBlocking {
+    service.process("hello")
+}
 ```
 
 ## 🔍 開発者向けノート: 内部実装の仕組み
@@ -174,6 +179,9 @@ fun main() {
 
 ## 🔥 高度な機能
 
+### 🌐 Async/Await 統合
+Rust 側の `async fn` は、Kotlin 側では `suspend` 関数として生成されます。内部的には Rust の `Future` をポーリングし、完了時に Coroutine を再開する効率的なブリッジが構築されます。
+
 ### 🧵 スレッド安全性 (Thread Safety)
 Xross は Rust の借用チェッカーの概念を Kotlin に持ち込みます。
 - **Atomic**: `VarHandle` による CAS 操作を提供。
@@ -182,7 +190,10 @@ Xross は Rust の借用チェッカーの概念を Kotlin に持ち込みます
 ### 🧬 代数的データ型 (ADTs)
 Rust の `enum` は Kotlin の `sealed class` として生成され、`when` 式による安全なパターンマッチングが可能です。
 
-### 🔍 不透明型 (Opaque Types)
+### 🔍 スタンドアロン関数
+`#[xross_function]` を使用することで、クラスに属さないグローバルな関数もバインディング可能です。
+
+### 🔎 不透明型 (Opaque Types)
 `#[xross_core::opaque_class]` を使用することで、Rust 側の詳細を隠蔽したまま Kotlin へポインタを安全に渡すことができます。
 
 ## 🛡️ ベストプラクティス
@@ -194,7 +205,7 @@ Rust の `enum` は Kotlin の `sealed class` として生成され、`when` 式
 ## ⚠️ 必要条件と実行時設定
 
 *   **Rust**: 1.80+ (Edition 2024 推奨)
-*   **Java**: 25+
+*   **Java**: 25+ (Project Panama / FFM API)
 *   **Gradle**: 8.0+
 
 実行時には、FFM API へのアクセスを許可するために以下の JVM 引数が必要です。

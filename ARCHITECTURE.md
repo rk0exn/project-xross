@@ -71,6 +71,9 @@ Xross は `java.lang.foreign.Arena` を活用してメモリのライフサイ�
     - 親オブジェクトの `AliveFlag` を共有し、親が解放された後のアクセスは `NullPointerException` をスローします。
 - **MutRef (`&mut T`)**:
     - 可変参照。Kotlin 側で書き込み操作が許可されます。
+- **Async (`async fn`)**:
+    - Rust の `Future` は、Kotlin 側の `XrossTask` 構造体にマッピングされ、最終的に `suspend` 関数としてラップされます。
+    - 内部的なポーリングループにより、Coroutines の非ブロッキングな待機を実現します。
 
 ### 4.2 文字列の扱い
 Rust の `String` はヒープ確保されるため、呼び出しごとに `Arena` を通じてコピーまたは確保が行われます。戻り値としての `String` は、Xross が提供する専用の Free 関数によって解放されます。
@@ -100,6 +103,7 @@ Rust の `String` はヒープ確保されるため、呼び出しごとに `Are
 
 ## 7. 今後の展望
 
-- **Async/Await**: Rust の `Future` と Kotlin の `Coroutines` の統合。
 - **Callback**: JVM 側の関数を Rust 側から呼び出すための Upcall サポート。
 - **Collection**: `Vec<T>` と `List<T>` のシームレスな共有。
+- **Memory View**: `&[u8]` などのスライスを `MemorySegment` として効率的に共有。
+- **Static Analysis**: Rust 側の型定義と Kotlin 側のバインディングの整合性を検証するビルド時チェックの強化。
