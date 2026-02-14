@@ -24,14 +24,16 @@ object HandleResolver {
             ADDRESS,
         )
 
-        listOf("drop", "layout").forEach { suffix ->
-            val symbol = "${meta.symbolPrefix}_$suffix"
-            val desc = when (suffix) {
-                "drop" -> CodeBlock.of("%T.ofVoid(%M)", FUNCTION_DESCRIPTOR, ADDRESS)
-                "layout" -> CodeBlock.of("%T.of(%M)", FUNCTION_DESCRIPTOR, ADDRESS)
-                else -> CodeBlock.of("%T.of(%M, %M)", FUNCTION_DESCRIPTOR, ADDRESS, ADDRESS)
+        if (meta !is XrossDefinition.Function) {
+            listOf("drop", "layout").forEach { suffix ->
+                val symbol = "${meta.symbolPrefix}_$suffix"
+                val desc = when (suffix) {
+                    "drop" -> CodeBlock.of("%T.ofVoid(%M)", FUNCTION_DESCRIPTOR, ADDRESS)
+                    "layout" -> CodeBlock.of("%T.of(%M)", FUNCTION_DESCRIPTOR, ADDRESS)
+                    else -> CodeBlock.of("%T.of(%M, %M)", FUNCTION_DESCRIPTOR, ADDRESS, ADDRESS)
+                }
+                init.addStatement("this.${suffix}Handle = linker.downcallHandle(lookup.find(%S).get(), %L)", symbol, desc)
             }
-            init.addStatement("this.${suffix}Handle = linker.downcallHandle(lookup.find(%S).get(), %L)", symbol, desc)
         }
 
         if (meta.methods.any { it.name == "clone" }) {
@@ -44,6 +46,7 @@ object HandleResolver {
             is XrossDefinition.Struct -> resolveStructHandles(init, meta)
             is XrossDefinition.Enum -> resolveEnumHandles(init, meta)
             is XrossDefinition.Opaque -> resolveOpaqueHandles(init, meta)
+            is XrossDefinition.Function -> {}
         }
 
         resolveMethodHandles(init, meta)

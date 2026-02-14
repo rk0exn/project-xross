@@ -11,6 +11,8 @@ pub enum XrossDefinition {
     Enum(XrossEnum),
     /// A type that is managed via pointers and does not expose its fields to JVM.
     Opaque(XrossOpaque),
+    /// A standalone function.
+    Function(XrossFunction),
 }
 
 impl XrossDefinition {
@@ -20,6 +22,7 @@ impl XrossDefinition {
             XrossDefinition::Struct(s) => &s.signature,
             XrossDefinition::Enum(e) => &e.signature,
             XrossDefinition::Opaque(o) => &o.signature,
+            XrossDefinition::Function(f) => &f.signature,
         }
     }
     /// Returns the name of this definition.
@@ -28,11 +31,13 @@ impl XrossDefinition {
             XrossDefinition::Struct(s) => &s.name,
             XrossDefinition::Enum(e) => &e.name,
             XrossDefinition::Opaque(o) => &o.name,
+            XrossDefinition::Function(f) => &f.name,
         }
     }
 }
 
 /// Metadata for a Rust struct to be bridged to JVM.
+// ... (existing XrossStruct)
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct XrossStruct {
@@ -55,6 +60,7 @@ pub struct XrossStruct {
 }
 
 /// Metadata for a Rust enum to be bridged to JVM.
+// ... (existing XrossEnum)
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct XrossEnum {
@@ -77,6 +83,7 @@ pub struct XrossEnum {
 }
 
 /// Metadata for an opaque type managed via pointers.
+// ... (existing XrossOpaque)
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct XrossOpaque {
@@ -98,6 +105,24 @@ pub struct XrossOpaque {
     pub is_clonable: bool,
     /// Whether the type implements Copy trait.
     pub is_copy: bool,
+}
+
+/// Metadata for a standalone function.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct XrossFunction {
+    /// Unique signature of the function.
+    pub signature: String,
+    /// Native symbol name.
+    pub symbol: String,
+    /// Target JVM package name.
+    pub package_name: String,
+    /// Name of the function.
+    pub name: String,
+    /// The method metadata for this function.
+    pub method: XrossMethod,
+    /// Documentation comments from Rust source.
+    pub docs: Vec<String>,
 }
 
 /// Metadata for a single variant of an enum.

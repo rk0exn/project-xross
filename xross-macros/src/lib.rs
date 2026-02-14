@@ -27,3 +27,16 @@ pub fn xross_methods(attr: TokenStream, item: TokenStream) -> TokenStream {
     let input_impl = parse_macro_input!(item as ItemImpl);
     macros::attribute::impl_xross_class_attribute(attr.into(), input_impl).into()
 }
+
+/// Attribute macro for standalone functions.
+#[proc_macro_attribute]
+pub fn xross_function(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let input_fn = parse_macro_input!(item as syn::ItemFn);
+    macros::attribute::impl_xross_function_attribute(attr.into(), input_fn).into()
+}
+
+/// Macro to define standalone functions in a DSL.
+#[proc_macro]
+pub fn xross_function_dsl(input: TokenStream) -> TokenStream {
+    macros::xross_function::impl_xross_function(input)
+}

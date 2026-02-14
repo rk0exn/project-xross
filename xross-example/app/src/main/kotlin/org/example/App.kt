@@ -3,6 +3,9 @@ package org.example
 import org.example.complex.ComplexStruct
 import org.example.external.ExternalStruct
 import org.example.some.HelloEnum
+import org.example.standalone.GlobalAdd
+import org.example.standalone.GlobalGreet
+import org.example.standalone.GlobalMultiply
 import org.example.test.test2.MyService2
 import java.io.File
 import java.nio.file.Files
@@ -44,6 +47,7 @@ fun main() {
             executeComplexFieldTest()
             executeComplexStructPropertyTest()
             executePanicAndTrivialTest()
+            executeStandaloneFunctionTest()
 
             if (i % 10 == 0) {
                 println(">>> Completed cycle $i / $repeatCount")
@@ -99,6 +103,26 @@ fun executePanicAndTrivialTest() {
     }
 
     service.close()
+}
+
+fun executeStandaloneFunctionTest() {
+    println("\n--- [9] Standalone Function Test ---")
+
+    // 1. #[xross_function]
+    val sum = GlobalAdd.globalAdd(10, 20)
+    println("GlobalAdd.globalAdd(10, 20) = $sum")
+    if (sum != 30) throw RuntimeException("Global function add failed!")
+
+    val greeting = GlobalGreet.globalGreet("Xross")
+    println("GlobalGreet.globalGreet(\"Xross\") = $greeting")
+    if (greeting != "Hello, Xross!") throw RuntimeException("Global function greet failed!")
+
+    // 2. xross_function_dsl!
+    val product = GlobalMultiply.globalMultiply(5, 6)
+    println("GlobalMultiply.globalMultiply(5, 6) = $product")
+    if (product != 30) throw RuntimeException("Global function multiply failed!")
+
+    println("✅ Standalone function tests passed.")
 }
 
 fun executeComplexStructPropertyTest() {

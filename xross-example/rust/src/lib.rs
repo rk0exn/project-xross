@@ -342,6 +342,28 @@ xross_class! {
     method &self.greet(prefix: String) -> String;
 }
 
+use xross_core::{xross_function, xross_function_dsl};
+
+#[xross_function(package = "standalone", critical)]
+pub fn global_add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+#[xross_function(package = "standalone")]
+pub fn global_greet(name: String) -> String {
+    format!("Hello, {}!", name)
+}
+
+xross_function_dsl! {
+    package standalone;
+    safety Atomic;
+    fn global_multiply(a: i32, b: i32) -> i32;
+}
+
+pub fn global_multiply(a: i32, b: i32) -> i32 {
+    a * b
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

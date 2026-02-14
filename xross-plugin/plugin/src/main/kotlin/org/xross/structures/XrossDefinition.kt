@@ -68,4 +68,22 @@ sealed class XrossDefinition {
         val isClonable: Boolean = true,
         override val isCopy: Boolean = false,
     ) : XrossDefinition()
+
+    /**
+     * A standalone function.
+     */
+    @Serializable
+    @SerialName("function")
+    data class Function(
+        override val signature: String,
+        val symbol: String,
+        override val packageName: String,
+        override val name: String,
+        val method: XrossMethod,
+        override val docs: List<String> = emptyList(),
+    ) : XrossDefinition() {
+        override val symbolPrefix: String get() = symbol
+        override val methods: List<XrossMethod> get() = listOf(method)
+        override val isCopy: Boolean get() = false
+    }
 }

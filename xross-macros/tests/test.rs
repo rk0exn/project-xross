@@ -40,6 +40,21 @@ impl MyService {
     }
 }
 
+#[xross_macros::xross_function(package = "test_func")]
+pub fn global_add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+use xross_macros::xross_function;
+xross_function! {
+    package test_func;
+    fn global_concat(a: String, b: String) -> String;
+}
+
+pub fn global_concat(a: String, b: String) -> String {
+    format!("{}{}", a, b)
+}
+
 pub mod test {
     use super::*;
     #[derive(XrossClass, Clone)]

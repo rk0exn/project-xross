@@ -23,36 +23,39 @@ object CompanionGenerator {
 
         HandleResolver.resolveAllHandles(init, meta)
 
-        init.add("\n// --- Native Layout Resolution ---\n")
-        init.addStatement("var layoutRaw: %T = %T.NULL", MEMORY_SEGMENT, MEMORY_SEGMENT)
-        init.addStatement("var layoutStr = %S", "")
+        if (meta !is XrossDefinition.Function) {
+            init.add("\n// --- Native Layout Resolution ---\n")
+            init.addStatement("var layoutRaw: %T = %T.NULL", MEMORY_SEGMENT, MEMORY_SEGMENT)
+            init.addStatement("var layoutStr = %S", "")
 
-        init.beginControlFlow("try")
-            .addStatement("layoutRaw = layoutHandle.invokeExact() as %T", MEMORY_SEGMENT)
-            .beginControlFlow("if (layoutRaw != %T.NULL)", MEMORY_SEGMENT)
-            .addStatement("layoutStr = layoutRaw.reinterpret(%T.MAX_VALUE).getString(0)", Long::class.asTypeName())
-            .endControlFlow()
-            .nextControlFlow("catch (e: %T)", Throwable::class.asTypeName())
-            .addStatement("throw %T(e)", RuntimeException::class.asTypeName())
-            .endControlFlow()
+            init.beginControlFlow("try")
+                .addStatement("layoutRaw = layoutHandle.invokeExact() as %T", MEMORY_SEGMENT)
+                .beginControlFlow("if (layoutRaw != %T.NULL)", MEMORY_SEGMENT)
+                .addStatement("layoutStr = layoutRaw.reinterpret(%T.MAX_VALUE).getString(0)", Long::class.asTypeName())
+                .endControlFlow()
+                .nextControlFlow("catch (e: %T)", Throwable::class.asTypeName())
+                .addStatement("throw %T(e)", RuntimeException::class.asTypeName())
+                .endControlFlow()
 
-        init.beginControlFlow("if (layoutStr.isNotEmpty())")
-            .addStatement("val parts = layoutStr.split(';')")
-            .addStatement("this.STRUCT_SIZE = parts[0].toLong()")
+            init.beginControlFlow("if (layoutStr.isNotEmpty())")
+                .addStatement("val parts = layoutStr.split(';')")
+                .addStatement("this.STRUCT_SIZE = parts[0].toLong()")
 
-        when (meta) {
-            is XrossDefinition.Struct -> LayoutGenerator.buildStructLayoutInit(init, meta)
-            is XrossDefinition.Enum -> LayoutGenerator.buildEnumLayoutInit(init, meta)
-            is XrossDefinition.Opaque -> {}
+            when (meta) {
+                is XrossDefinition.Struct -> LayoutGenerator.buildStructLayoutInit(init, meta)
+                is XrossDefinition.Enum -> LayoutGenerator.buildEnumLayoutInit(init, meta)
+                is XrossDefinition.Opaque -> {}
+                is XrossDefinition.Function -> {}
+            }
+
+            init.beginControlFlow("if (layoutRaw != %T.NULL)", MEMORY_SEGMENT)
+                .addStatement("xrossFreeStringHandle.invokeExact(layoutRaw)")
+                .endControlFlow()
+                .nextControlFlow("else")
+                .addStatement("this.STRUCT_SIZE = 0L")
+                .addStatement("this.LAYOUT = %T.structLayout()", MEMORY_LAYOUT)
+                .endControlFlow()
         }
-
-        init.beginControlFlow("if (layoutRaw != %T.NULL)", MEMORY_SEGMENT)
-            .addStatement("xrossFreeStringHandle.invokeExact(layoutRaw)")
-            .endControlFlow()
-            .nextControlFlow("else")
-            .addStatement("this.STRUCT_SIZE = 0L")
-            .addStatement("this.LAYOUT = %T.structLayout()", MEMORY_LAYOUT)
-            .endControlFlow()
 
         if (GeneratorUtils.isPureEnum(meta)) {
             init.add("\n// --- Enum Segment Initialization ---\n")
@@ -69,9 +72,15 @@ object CompanionGenerator {
     }
 
     private fun defineProperties(builder: TypeSpec.Builder, meta: XrossDefinition) {
-        val handles = mutableListOf("dropHandle", "layoutHandle", "xrossFreeStringHandle")
-        if (meta.methods.any { it.name == "clone" }) {
-            handles.add("cloneHandle")
+        val handles = mutableListOf<String>()
+
+        if (meta !is XrossDefinition.Function) {
+            handles.addAll(listOf("dropHandle", "layoutHandle", "xrossFreeStringHandle"))
+            if (meta.methods.any { it.name == "clone" }) {
+                handles.add("cloneHandle")
+            }
+        } else {
+            handles.add("xrossFreeStringHandle")
         }
 
         when (meta) {
@@ -105,6 +114,7 @@ object CompanionGenerator {
                     addPropertyHandles(handles, field, baseCamel, isOpaque = true)
                 }
             }
+            is XrossDefinition.Function -> {}
         }
 
         meta.methods.filter { !it.isConstructor }.forEach { handles.add("${it.name.toCamelCase()}Handle") }
@@ -113,8 +123,10 @@ object CompanionGenerator {
             builder.addProperty(PropertySpec.builder(name, HANDLE_TYPE, KModifier.INTERNAL).mutable().build())
         }
 
-        builder.addProperty(PropertySpec.builder("LAYOUT", LAYOUT_TYPE, KModifier.INTERNAL).mutable().initializer("%T.structLayout()", MEMORY_LAYOUT).build())
-        builder.addProperty(PropertySpec.builder("STRUCT_SIZE", Long::class.asTypeName(), KModifier.INTERNAL).mutable().initializer("0L").build())
+        if (meta !is XrossDefinition.Function) {
+            builder.addProperty(PropertySpec.builder("LAYOUT", LAYOUT_TYPE, KModifier.INTERNAL).mutable().initializer("%T.structLayout()", MEMORY_LAYOUT).build())
+            builder.addProperty(PropertySpec.builder("STRUCT_SIZE", Long::class.asTypeName(), KModifier.INTERNAL).mutable().initializer("0L").build())
+        }
     }
 
     private fun addPropertyHandles(handles: MutableList<String>, field: XrossField, baseCamel: String, isOpaque: Boolean = false) {

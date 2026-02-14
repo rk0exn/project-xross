@@ -14,6 +14,8 @@ object StructureGenerator {
      * Builds the base properties and constructors for the generated class.
      */
     fun buildBase(classBuilder: TypeSpec.Builder, companionBuilder: TypeSpec.Builder, meta: XrossDefinition, basePackage: String) {
+        if (meta is XrossDefinition.Function) return
+
         val isEnum = meta is XrossDefinition.Enum
         val isPure = GeneratorUtils.isPureEnum(meta)
         val aliveFlagType = ClassName("$basePackage.xross.runtime", "AliveFlag")

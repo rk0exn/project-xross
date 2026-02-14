@@ -1,7 +1,9 @@
 package org.xross.generator
 
+import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.TypeSpec
+import org.xross.helper.StringHelper.toCamelCase
 import org.xross.structures.XrossDefinition
 import org.xross.structures.XrossMethod
 import org.xross.structures.XrossType
@@ -43,6 +45,10 @@ object XrossGenerator {
             is XrossDefinition.Struct, is XrossDefinition.Enum -> {
                 generateComplexType(resolvedMeta, outputDir, targetPackage, basePackage)
             }
+
+            is XrossDefinition.Function -> {
+                generateFunction(resolvedMeta, outputDir, targetPackage, basePackage)
+            }
         }
     }
 
@@ -78,6 +84,11 @@ object XrossGenerator {
             )
 
         is XrossDefinition.Opaque -> meta
+
+        is XrossDefinition.Function ->
+            meta.copy(
+                method = resolveMethods(listOf(meta.method), resolver, meta.name).first(),
+            )
     }
 
     private fun resolveMethods(methods: List<XrossMethod>, resolver: TypeResolver, context: String): List<XrossMethod> = methods.map { m ->
@@ -161,6 +172,27 @@ object XrossGenerator {
         if (!isPure) {
             StructureGenerator.addFinalBlocks(classBuilder, meta)
         }
+
+        GeneratorUtils.writeToDisk(classBuilder.build(), targetPackage, className, outputDir)
+    }
+
+    private fun generateFunction(
+        meta: XrossDefinition.Function,
+        outputDir: File,
+        targetPackage: String,
+        basePackage: String,
+    ) {
+        val className = meta.name.toCamelCase().replaceFirstChar { it.uppercase() }
+        val classBuilder = TypeSpec.classBuilder(className)
+            .addKdoc(meta.docs.joinToString("\n"))
+            .primaryConstructor(FunSpec.constructorBuilder().addModifiers(KModifier.PRIVATE).build())
+
+        val companionBuilder = TypeSpec.companionObjectBuilder()
+        StructureGenerator.buildBase(classBuilder, companionBuilder, meta, basePackage)
+        CompanionGenerator.generateCompanions(companionBuilder, meta)
+        MethodGenerator.generateMethods(classBuilder, companionBuilder, meta, basePackage)
+
+        classBuilder.addType(companionBuilder.build())
 
         GeneratorUtils.writeToDisk(classBuilder.build(), targetPackage, className, outputDir)
     }

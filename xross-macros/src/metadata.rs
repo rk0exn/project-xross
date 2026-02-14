@@ -62,6 +62,7 @@ pub fn save_definition(def: &XrossDefinition) {
         XrossDefinition::Struct(s) => deduplicate_methods(&mut s.methods),
         XrossDefinition::Enum(e) => deduplicate_methods(&mut e.methods),
         XrossDefinition::Opaque(o) => deduplicate_methods(&mut o.methods),
+        XrossDefinition::Function(_) => {}
     }
 
     if path.exists()
@@ -109,6 +110,9 @@ fn is_structurally_compatible(a: &XrossDefinition, b: &XrossDefinition) -> bool 
         }
         (XrossDefinition::Opaque(oa), XrossDefinition::Opaque(ob)) => {
             oa.package_name == ob.package_name && oa.name == ob.name
+        }
+        (XrossDefinition::Function(fa), XrossDefinition::Function(fb)) => {
+            fa.package_name == fb.package_name && fa.name == fb.name
         }
         _ => false,
     }
