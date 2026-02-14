@@ -1,7 +1,9 @@
 use std::ffi::c_void;
 use std::sync::OnceLock;
 
-pub use xross_macros::{XrossClass, xross_class, xross_function, xross_function_dsl, xross_methods};
+pub use xross_macros::{
+    XrossClass, xross_class, xross_function, xross_function_dsl, xross_methods,
+};
 
 /// A standard result structure for FFI calls.
 /// Used to pass success/failure status and a pointer to the result or error message.
@@ -61,13 +63,16 @@ where
         let rx = unsafe { &mut *(ptr as *mut tokio::sync::mpsc::UnboundedReceiver<XrossResult>) };
         match rx.try_recv() {
             Ok(res) => res,
-            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => XrossResult { is_ok: true, ptr: std::ptr::null_mut() }, // Still running
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
+                XrossResult { is_ok: true, ptr: std::ptr::null_mut() }
+            } // Still running
             Err(_) => XrossResult { is_ok: false, ptr: std::ptr::null_mut() }, // Channel closed
         }
     }
 
     unsafe extern "C" fn drop_task(ptr: *mut c_void) {
-        let _ = unsafe { Box::from_raw(ptr as *mut tokio::sync::mpsc::UnboundedReceiver<XrossResult>) };
+        let _ =
+            unsafe { Box::from_raw(ptr as *mut tokio::sync::mpsc::UnboundedReceiver<XrossResult>) };
     }
 
     XrossTask {

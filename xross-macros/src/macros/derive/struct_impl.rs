@@ -32,7 +32,8 @@ pub fn impl_struct_derive(
             if field.attrs.iter().any(|a| a.path().is_ident("xross_field")) {
                 let field_ident = field.ident.as_ref().unwrap();
                 let field_name = field_ident.to_string();
-                let xross_ty = resolve_type_with_attr(&field.ty, &field.attrs, &package, Some(name));
+                let xross_ty =
+                    resolve_type_with_attr(&field.ty, &field.attrs, &package, Some(name));
                 fields.push(XrossField {
                     name: field_name.clone(),
                     ty: xross_ty.clone(),
@@ -67,12 +68,6 @@ pub fn impl_struct_derive(
     }));
 
     let mut toks = Vec::new();
-    generate_common_ffi(
-        name,
-        &symbol_base,
-        layout_logic,
-        &mut toks,
-        is_clonable,
-    );
+    generate_common_ffi(name, &symbol_base, layout_logic, &mut toks, is_clonable);
     quote::quote!(#(#toks)*)
 }

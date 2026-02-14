@@ -1,5 +1,5 @@
 use crate::codegen::ffi::{
-    MethodFfiData, resolve_return_type, write_ffi_function, process_method_args,
+    MethodFfiData, process_method_args, resolve_return_type, write_ffi_function,
 };
 use crate::utils::*;
 use proc_macro2::TokenStream;
@@ -56,12 +56,8 @@ pub fn impl_xross_function_attribute(attr: TokenStream, input_fn: syn::ItemFn) -
     let dummy_ident = syn::Ident::new("Global", proc_macro2::Span::call_site());
     process_method_args(&input_fn.sig.inputs, &package_name, &dummy_ident, &mut ffi_data);
 
-    let ret_ty = resolve_return_type(
-        &input_fn.sig.output,
-        &input_fn.attrs,
-        &package_name,
-        &dummy_ident,
-    );
+    let ret_ty =
+        resolve_return_type(&input_fn.sig.output, &input_fn.attrs, &package_name, &dummy_ident);
 
     let handle_mode = handle_mode.unwrap_or_else(|| extract_handle_mode(&input_fn.attrs));
     let safety = safety.unwrap_or_else(|| extract_safety_attr(&input_fn.attrs, ThreadSafety::Lock));

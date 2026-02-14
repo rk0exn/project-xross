@@ -216,7 +216,9 @@ pub fn write_async_ffi_function(
     let conv_logic = &ffi_data.conversion_logic;
 
     let res_mapper = match ret_ty {
-        XrossType::Void => quote! { |_| xross_core::XrossResult { is_ok: true, ptr: std::ptr::null_mut() } },
+        XrossType::Void => {
+            quote! { |_| xross_core::XrossResult { is_ok: true, ptr: std::ptr::null_mut() } }
+        }
         _ => {
             let ptr_logic = super::conversion::gen_single_value_to_ptr(ret_ty, quote! { val });
             quote! { |val| xross_core::XrossResult { is_ok: true, ptr: #ptr_logic } }

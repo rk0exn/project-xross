@@ -2,7 +2,7 @@
 
 use std::cmp::{max, min};
 use std::sync::atomic::{AtomicIsize, Ordering};
-use xross_core::{XrossClass, xross_class, xross_methods, xross_function, xross_function_dsl};
+use xross_core::{XrossClass, xross_class, xross_function, xross_function_dsl, xross_methods};
 
 // --- グローバル・カウンター ---
 static SERVICE_COUNT: AtomicIsize = AtomicIsize::new(0);

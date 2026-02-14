@@ -40,11 +40,8 @@ pub fn impl_enum_derive(
         let mut call_args = Vec::new();
 
         for (i, field) in v.fields.iter().enumerate() {
-            let field_name = field
-                .ident
-                .as_ref()
-                .map(|id| id.to_string())
-                .unwrap_or_else(|| ordinal_name(i));
+            let field_name =
+                field.ident.as_ref().map(|id| id.to_string()).unwrap_or_else(|| ordinal_name(i));
             let ty = resolve_type_with_attr(&field.ty, &field.attrs, &package, Some(name));
 
             v_fields.push(XrossField {
@@ -86,11 +83,7 @@ pub fn impl_enum_derive(
             }
         });
 
-        variants.push(XrossVariant {
-            name: v_str,
-            fields: v_fields,
-            docs: extract_docs(&v.attrs),
-        });
+        variants.push(XrossVariant { name: v_str, fields: v_fields, docs: extract_docs(&v.attrs) });
     }
 
     save_definition(&XrossDefinition::Enum(XrossEnum {
@@ -109,13 +102,7 @@ pub fn impl_enum_derive(
     }));
 
     let mut toks = Vec::new();
-    generate_common_ffi(
-        name,
-        &symbol_base,
-        layout_logic,
-        &mut toks,
-        is_clonable,
-    );
+    generate_common_ffi(name, &symbol_base, layout_logic, &mut toks, is_clonable);
 
     generate_enum_aux_ffi(name, &symbol_base, variant_name_arms, &mut toks);
     quote!(#(#toks)*)

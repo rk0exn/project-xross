@@ -76,12 +76,7 @@ impl Parse for XrossFunctionInput {
             input.parse::<Token![;]>()?;
         }
 
-        Ok(XrossFunctionInput {
-            package_name,
-            handle_mode,
-            safety: safety_level,
-            signature,
-        })
+        Ok(XrossFunctionInput { package_name, handle_mode, safety: safety_level, signature })
     }
 }
 
@@ -100,12 +95,7 @@ pub fn impl_xross_function(input: proc_macro::TokenStream) -> proc_macro::TokenS
     let dummy_ident = syn::Ident::new("Global", proc_macro2::Span::call_site());
     process_method_args(&input.signature.inputs, &package_name, &dummy_ident, &mut ffi_data);
 
-    let ret_ty = resolve_return_type(
-        &input.signature.output,
-        &[],
-        &package_name,
-        &dummy_ident,
-    );
+    let ret_ty = resolve_return_type(&input.signature.output, &[], &package_name, &dummy_ident);
 
     crate::utils::register_xross_function(
         &package_name,
