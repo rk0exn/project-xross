@@ -64,15 +64,8 @@ object ConstructorGenerator {
         factoryBuilder.addCode(body.build())
         companionBuilder.addFunction(factoryBuilder.build())
 
-        classBuilder.addFunction(
-            FunSpec.constructorBuilder().addModifiers(KModifier.PRIVATE).addParameter("p", tripleType)
-                .callThisConstructor(
-                    CodeBlock.of("p.first"),
-                    CodeBlock.of("p.second.first"),
-                    CodeBlock.of("p.second.second"),
-                    CodeBlock.of("p.third"),
-                ).build(),
-        )
+        GeneratorUtils.addInternalConstructor(classBuilder, tripleType)
+
         classBuilder.addFunction(
             FunSpec.constructorBuilder().addParameters(
                 method.args.map {

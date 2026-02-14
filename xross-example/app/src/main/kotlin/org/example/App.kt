@@ -129,7 +129,7 @@ fun executeStandaloneFunctionTest() {
 
 fun executeAsyncTest() = runBlocking {
     println("\n--- [10] Async (suspend fun) Test ---")
-    
+
     // 1. Standalone Async Function
     val sum = org.example.standalone.AsyncAdd.asyncAdd(100, 200)
     println("asyncAdd(100, 200) = $sum")
@@ -144,7 +144,7 @@ fun executeAsyncTest() = runBlocking {
     val res = service.asyncExecute(42)
     println("MyService.asyncExecute(42) = $res")
     if (res != 84) throw RuntimeException("Async method execution failed")
-    
+
     service.close()
     println("✅ Async tests passed.")
 }

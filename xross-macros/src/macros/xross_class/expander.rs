@@ -126,60 +126,66 @@ pub fn impl_xross_class(input: XrossClassInput) -> proc_macro::TokenStream {
                     variant_specs.push(quote! { #v_name_str .to_string() });
                     variant_name_arms.push(quote! { #type_ident::#v_ident => #v_name_str });
                 }
-                VariantFieldInfo::Named(fields) => {
-                    for (f_name, f_ty) in fields {
+                _ => {
+                    let is_named = matches!(v.fields, VariantFieldInfo::Named(_));
+                    let fields_iter: Vec<(Option<String>, &Type)> = match &v.fields {
+                        VariantFieldInfo::Named(f) => {
+                            f.iter().map(|(n, t)| (Some(n.clone()), t)).collect()
+                        }
+                        VariantFieldInfo::Unnamed(f) => f.iter().map(|t| (None, t)).collect(),
+                        _ => unreachable!(),
+                    };
+
+                    for (i, (f_name, f_ty)) in fields_iter.into_iter().enumerate() {
                         let ty = resolve_type_with_attr(f_ty, &[], &package, Some(&type_ident));
-                        v_fields_meta.push(XrossField {
-                            name: f_name.clone(),
-                            ty: ty.clone(),
-                            safety: ThreadSafety::Lock,
-                            docs: vec![],
-                        });
-                        let arg_id = format_ident!("arg_{}", f_name);
-                        let f_name_ident = format_ident!("{}", f_name);
-                        let (c_arg, conv, c_call_arg) =
-                            crate::codegen::ffi::gen_arg_conversion(f_ty, &arg_id, &ty);
-                        c_param_defs.push(c_arg);
-                        internal_conversions.push(conv);
-                        call_args.push(quote! { #f_name_ident: #c_call_arg });
-                        field_specs.push(gen_field_layout_spec(
-                            &type_ident,
-                            quote! { #v_ident . #f_name_ident },
-                            f_name,
-                            f_ty,
-                        ));
-                    }
-                    extra_functions.push(quote! { #[unsafe(no_mangle)] pub unsafe extern "C" fn #constructor_name(#(#c_param_defs),*) -> *mut #type_ident { #(#internal_conversions)* Box::into_raw(Box::new(#type_ident::#v_ident { #(#call_args),* })) } });
-                    variant_specs.push(quote! { format!("{}{{{}}}", #v_name_str, vec![#(#field_specs),*].join(";")) });
-                    variant_name_arms.push(quote! { #type_ident::#v_ident { .. } => #v_name_str });
-                }
-                VariantFieldInfo::Unnamed(fields) => {
-                    for (i, f_ty) in fields.iter().enumerate() {
-                        let ty = resolve_type_with_attr(f_ty, &[], &package, Some(&type_ident));
-                        let f_name_str = ordinal_name(i);
+                        let f_name_str = f_name.clone().unwrap_or_else(|| ordinal_name(i));
                         v_fields_meta.push(XrossField {
                             name: f_name_str.clone(),
                             ty: ty.clone(),
                             safety: ThreadSafety::Lock,
                             docs: vec![],
                         });
-                        let arg_id = format_ident!("arg_{}", i);
+                        let arg_id = f_name
+                            .as_ref()
+                            .map(|n| format_ident!("arg_{}", n))
+                            .unwrap_or_else(|| format_ident!("arg_{}", i));
                         let (c_arg, conv, c_call_arg) =
                             crate::codegen::ffi::gen_arg_conversion(f_ty, &arg_id, &ty);
                         c_param_defs.push(c_arg);
                         internal_conversions.push(conv);
-                        call_args.push(c_call_arg);
-                        let idx = syn::Index::from(i);
-                        field_specs.push(gen_field_layout_spec(
-                            &type_ident,
-                            quote! { #v_ident . #idx },
-                            &f_name_str,
-                            f_ty,
-                        ));
+
+                        if is_named {
+                            let f_name_ident = format_ident!("{}", f_name.unwrap());
+                            call_args.push(quote! { #f_name_ident: #c_call_arg });
+                            field_specs.push(gen_field_layout_spec(
+                                &type_ident,
+                                quote! { #v_ident . #f_name_ident },
+                                &f_name_str,
+                                f_ty,
+                            ));
+                        } else {
+                            call_args.push(c_call_arg);
+                            let idx = syn::Index::from(i);
+                            field_specs.push(gen_field_layout_spec(
+                                &type_ident,
+                                quote! { #v_ident . #idx },
+                                &f_name_str,
+                                f_ty,
+                            ));
+                        }
                     }
-                    extra_functions.push(quote! { #[unsafe(no_mangle)] pub unsafe extern "C" fn #constructor_name(#(#c_param_defs),*) -> *mut #type_ident { #(#internal_conversions)* Box::into_raw(Box::new(#type_ident::#v_ident(#(#call_args),*))) } });
-                    variant_specs.push(quote! { format!("{}{{{}}}", #v_name_str, vec![#(#field_specs),*].join(";")) });
-                    variant_name_arms.push(quote! { #type_ident::#v_ident(..) => #v_name_str });
+
+                    if is_named {
+                        extra_functions.push(quote! { #[unsafe(no_mangle)] pub unsafe extern "C" fn #constructor_name(#(#c_param_defs),*) -> *mut #type_ident { #(#internal_conversions)* Box::into_raw(Box::new(#type_ident::#v_ident { #(#call_args),* })) } });
+                        variant_name_arms
+                            .push(quote! { #type_ident::#v_ident { .. } => #v_name_str });
+                    } else {
+                        extra_functions.push(quote! { #[unsafe(no_mangle)] pub unsafe extern "C" fn #constructor_name(#(#c_param_defs),*) -> *mut #type_ident { #(#internal_conversions)* Box::into_raw(Box::new(#type_ident::#v_ident(#(#call_args),*))) } });
+                        variant_name_arms.push(quote! { #type_ident::#v_ident(..) => #v_name_str });
+                    }
+                    variant_specs.push(
+                        quote! { format!("{}{{{}}}", #v_name_str, vec![#(#field_specs),*].join(";")) },
+                    );
                 }
             }
             variants_meta.push(XrossVariant {

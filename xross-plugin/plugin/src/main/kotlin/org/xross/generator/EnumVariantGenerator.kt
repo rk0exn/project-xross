@@ -110,14 +110,7 @@ object EnumVariantGenerator {
                     .superclass(baseClassName)
 
                 GeneratorUtils.buildRawInitializer(variantTypeBuilder, aliveFlagType)
-
-                variantTypeBuilder.addFunction(
-                    FunSpec.constructorBuilder()
-                        .addModifiers(KModifier.PRIVATE)
-                        .addParameter("p", tripleType)
-                        .callThisConstructor(CodeBlock.of("p.first"), CodeBlock.of("p.second.first"), CodeBlock.of("p.second.second"), CodeBlock.of("p.third"))
-                        .build(),
-                )
+                GeneratorUtils.addInternalConstructor(variantTypeBuilder, tripleType)
 
                 if (isObject) {
                     val factoryMethodName = "xrossNew${variant.name}Internal"

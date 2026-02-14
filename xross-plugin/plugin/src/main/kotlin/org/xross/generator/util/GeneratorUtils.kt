@@ -306,4 +306,22 @@ object GeneratorUtils {
         builder.addSuperclassConstructorParameter("confinedArena")
         builder.addSuperclassConstructorParameter("sharedFlag")
     }
+
+    /**
+     * Adds an internal constructor that takes a factory result (Triple) and calls 'this' constructor.
+     */
+    fun addInternalConstructor(typeBuilder: TypeSpec.Builder, tripleType: TypeName) {
+        typeBuilder.addFunction(
+            FunSpec.constructorBuilder()
+                .addModifiers(KModifier.PRIVATE)
+                .addParameter("p", tripleType)
+                .callThisConstructor(
+                    CodeBlock.of("p.first"),
+                    CodeBlock.of("p.second.first"),
+                    CodeBlock.of("p.second.second"),
+                    CodeBlock.of("p.third"),
+                )
+                .build(),
+        )
+    }
 }
