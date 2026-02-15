@@ -78,9 +78,11 @@ tasks.withType<Test>().configureEach {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
 
     // Java 25 以上を使用していることを確認
-    javaLauncher.set(javaToolchains.launcherFor {
-        languageVersion.set(JavaLanguageVersion.of(25))
-    })
+    javaLauncher.set(
+        javaToolchains.launcherFor {
+            languageVersion.set(JavaLanguageVersion.of(25))
+        },
+    )
 }
 
 // XrossPlugin.kt 内の apply メソッドに追加する例
@@ -91,7 +93,6 @@ project.tasks.withType(Test::class.java).configureEach {
 project.tasks.withType(JavaExec::class.java).configureEach {
 
     jvmArgs("--enable-native-access=ALL-UNNAMED")
-
 }
 
 group = "org.xross"
@@ -101,5 +102,4 @@ version = "2.0.1"
 kotlin {
 
     jvmToolchain(25)
-
 }

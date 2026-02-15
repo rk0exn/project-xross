@@ -24,7 +24,7 @@ configure<com.diffplug.gradle.spotless.SpotlessExtension> {
     }
 }
 
-xross{
+xross {
     rustProjectDir = "../rust"
     packageName = "org.example"
 }
