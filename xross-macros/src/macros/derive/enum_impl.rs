@@ -1,5 +1,6 @@
 use crate::codegen::ffi::{
-    add_clone_method, add_drop_method, generate_common_ffi, generate_enum_aux_ffi, generate_enum_layout,
+    add_clone_method, add_drop_method, generate_common_ffi, generate_enum_aux_ffi,
+    generate_enum_layout,
 };
 use crate::metadata::save_definition;
 use crate::types::resolver::resolve_type_with_attr;

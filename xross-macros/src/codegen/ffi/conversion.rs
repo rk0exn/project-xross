@@ -269,13 +269,17 @@ pub fn gen_ret_wrapping(
             if let ReturnType::Type(_, ty) = sig_output {
                 let type_str = quote!(#ty).to_string();
                 let is_ptr_or_ref = type_str.contains('*') || type_str.contains('&');
-                let is_primitive = ["i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "bool", "isize", "usize", "()"]
-                    .iter().any(|&p| type_str == p || (type_str.contains(p) && type_str.len() <= 5));
+                let is_primitive = [
+                    "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "bool",
+                    "isize", "usize", "()",
+                ]
+                .iter()
+                .any(|&p| type_str == p || (type_str.contains(p) && type_str.len() <= 5));
 
                 if !is_primitive && !is_ptr_or_ref {
                     return (
                         quote! { *mut std::ffi::c_void },
-                        quote! { Box::into_raw(Box::new(#inner_call)) as *mut std::ffi::c_void }
+                        quote! { Box::into_raw(Box::new(#inner_call)) as *mut std::ffi::c_void },
                     );
                 }
                 (quote! { #ty }, quote! { #inner_call })

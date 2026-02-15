@@ -1,5 +1,6 @@
 use crate::codegen::ffi::{
-    add_clone_method, add_drop_method, generate_common_ffi, generate_property_accessors, generate_struct_layout,
+    add_clone_method, add_drop_method, generate_common_ffi, generate_property_accessors,
+    generate_struct_layout,
 };
 use crate::metadata::save_definition;
 use crate::types::resolver::resolve_type_with_attr;
@@ -33,11 +34,7 @@ pub fn impl_struct_derive(
         for field in &f.named {
             let has_attr = field.attrs.iter().any(|a| {
                 a.path().is_ident("xross_field")
-                    || a.path()
-                        .segments
-                        .last()
-                        .map(|s| s.ident == "xross_field")
-                        .unwrap_or(false)
+                    || a.path().segments.last().map(|s| s.ident == "xross_field").unwrap_or(false)
             });
 
             if has_attr {

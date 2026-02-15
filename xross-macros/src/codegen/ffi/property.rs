@@ -31,31 +31,31 @@ pub fn generate_property_accessors(
             quote! { *mut std::ffi::c_void },
             quote! { Box::into_raw(Box::new(_self.#field_ident.clone())) as *mut std::ffi::c_void },
         ),
-        XrossType::Option(inner) => {
-             match &**inner {
-                XrossType::String => (
-                    quote! { *mut std::ffi::c_char },
-                    quote! {
-                        match &_self.#field_ident {
-                            Some(s) => std::ffi::CString::new(s.clone()).unwrap_or_default().into_raw(),
-                            None => std::ptr::null_mut(),
-                        }
-                    },
-                ),
-                _ => (
-                    quote! { *mut std::ffi::c_void },
-                    quote! {
-                        match &_self.#field_ident {
-                            Some(v) => Box::into_raw(Box::new(v.clone())) as *mut std::ffi::c_void,
-                            None => std::ptr::null_mut(),
-                        }
-                    },
-                )
-            }
+        XrossType::Option(inner) => match &**inner {
+            XrossType::String => (
+                quote! { *mut std::ffi::c_char },
+                quote! {
+                    match &_self.#field_ident {
+                        Some(s) => std::ffi::CString::new(s.clone()).unwrap_or_default().into_raw(),
+                        None => std::ptr::null_mut(),
+                    }
+                },
+            ),
+            _ => (
+                quote! { *mut std::ffi::c_void },
+                quote! {
+                    match &_self.#field_ident {
+                        Some(v) => Box::into_raw(Box::new(v.clone())) as *mut std::ffi::c_void,
+                        None => std::ptr::null_mut(),
+                    }
+                },
+            ),
         },
         XrossType::Result { ok, err } => {
-            let ok_ptr_logic = crate::codegen::ffi::gen_single_value_to_ptr(ok, quote! { (*val).clone() });
-            let err_ptr_logic = crate::codegen::ffi::gen_single_value_to_ptr(err, quote! { (*e).clone() });
+            let ok_ptr_logic =
+                crate::codegen::ffi::gen_single_value_to_ptr(ok, quote! { (*val).clone() });
+            let err_ptr_logic =
+                crate::codegen::ffi::gen_single_value_to_ptr(err, quote! { (*e).clone() });
             (
                 quote! { xross_core::XrossResult },
                 quote! {
@@ -69,13 +69,17 @@ pub fn generate_property_accessors(
         _ => {
             let type_str = quote!(#field_ty).to_string();
             let is_ptr_or_ref = type_str.contains('*') || type_str.contains('&');
-            let is_primitive = ["i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "bool", "isize", "usize", "()"]
-                .iter().any(|&p| type_str == p || (type_str.contains(p) && type_str.len() <= 5));
+            let is_primitive = [
+                "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "bool",
+                "isize", "usize", "()",
+            ]
+            .iter()
+            .any(|&p| type_str == p || (type_str.contains(p) && type_str.len() <= 5));
 
             if !is_primitive && !is_ptr_or_ref {
                 (
                     quote! { *mut std::ffi::c_void },
-                    quote! { Box::into_raw(Box::new(_self.#field_ident.clone())) as *mut std::ffi::c_void }
+                    quote! { Box::into_raw(Box::new(_self.#field_ident.clone())) as *mut std::ffi::c_void },
                 )
             } else {
                 (quote! { #field_ty }, quote! { _self.#field_ident })

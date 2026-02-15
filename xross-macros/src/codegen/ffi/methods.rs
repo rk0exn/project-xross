@@ -205,11 +205,7 @@ pub fn add_clone_method(
     });
 }
 
-pub fn add_drop_method(
-    methods: &mut Vec<XrossMethod>,
-    symbol_base: &str,
-    handle_mode: HandleMode,
-) {
+pub fn add_drop_method(methods: &mut Vec<XrossMethod>, symbol_base: &str, handle_mode: HandleMode) {
     methods.push(XrossMethod {
         name: "drop".to_string(),
         symbol: format!("{}_drop", symbol_base),

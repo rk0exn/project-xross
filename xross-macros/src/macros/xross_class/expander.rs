@@ -1,7 +1,7 @@
 use crate::codegen::ffi::{
-    MethodFfiData, add_clone_method, add_drop_method, build_signature, gen_field_layout_spec, generate_common_ffi,
-    generate_enum_aux_ffi, generate_property_accessors, process_method_args, resolve_return_type,
-    write_ffi_function,
+    MethodFfiData, add_clone_method, add_drop_method, build_signature, gen_field_layout_spec,
+    generate_common_ffi, generate_enum_aux_ffi, generate_property_accessors, process_method_args,
+    resolve_return_type, write_ffi_function,
 };
 use crate::macros::xross_class::parser::{VariantFieldInfo, XrossClassInput, XrossClassItem};
 use crate::metadata::save_definition;
@@ -10,7 +10,8 @@ use crate::utils::*;
 use quote::{format_ident, quote};
 use syn::{ReturnType, Type};
 use xross_metadata::{
-    HandleMode, ThreadSafety, XrossDefinition, XrossEnum, XrossField, XrossMethod, XrossStruct, XrossVariant
+    HandleMode, ThreadSafety, XrossDefinition, XrossEnum, XrossField, XrossMethod, XrossStruct,
+    XrossVariant,
 };
 
 pub fn impl_xross_class(input: XrossClassInput) -> proc_macro::TokenStream {
@@ -42,7 +43,9 @@ pub fn impl_xross_class(input: XrossClassInput) -> proc_macro::TokenStream {
             }
             XrossClassItem::IsCopy(v) => is_copy = v,
             XrossClassItem::Field { name, ty } => fields_raw.push((name, ty)),
-            XrossClassItem::Method(sig, type_override, mode) => methods_raw.push((sig, type_override, mode)),
+            XrossClassItem::Method(sig, type_override, mode) => {
+                methods_raw.push((sig, type_override, mode))
+            }
             XrossClassItem::Variants(v) => variants_raw = v,
             XrossClassItem::DropMode(m) => drop_mode = m,
         }

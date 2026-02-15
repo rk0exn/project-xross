@@ -11,3 +11,6 @@ rand = "0.10.0"
 rpmalloc = "0.2.2"
 snmalloc-rs = "0.3.8"
 tcmalloc = "0.3.0"
+
+[features]
+remote-free = []  # これを有効にすると remote_free が復活
