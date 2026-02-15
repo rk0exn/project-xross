@@ -22,7 +22,7 @@ object OpaqueGenerator {
 
         val companionBuilder = TypeSpec.companionObjectBuilder()
         StructureGenerator.buildBase(classBuilder, companionBuilder, meta, basePackage)
-        CompanionGenerator.generateCompanions(companionBuilder, meta)
+        CompanionGenerator.generateCompanions(companionBuilder, meta, basePackage)
         MethodGenerator.generateMethods(classBuilder, companionBuilder, meta, basePackage)
 
         // Add fields for Opaque
@@ -45,7 +45,9 @@ object OpaqueGenerator {
         classBuilder.addType(companionBuilder.build())
         StructureGenerator.addFinalBlocks(classBuilder, meta)
 
+        val runtimePkg = "$basePackage.xross.runtime"
         val fileSpec = FileSpec.builder(targetPackage, className)
+            .addImport(runtimePkg, "AliveFlag", "XrossException", "XrossObject", "XrossNativeObject", "XrossRuntime")
             .addType(classBuilder.build())
             .indent("    ")
             .build()

@@ -1,9 +1,11 @@
 use std::ffi::c_void;
-use std::sync::OnceLock;
 
 pub use xross_macros::{
     XrossClass, xross_class, xross_function, xross_function_dsl, xross_methods,
 };
+
+#[cfg(feature = "xross-alloc")]
+pub use xross_alloc::xross_alloc_init;
 
 /// A standard result structure for FFI calls.
 /// Used to pass success/failure status and a pointer to the result or error message.
@@ -31,7 +33,8 @@ pub struct XrossTask {
 
 unsafe impl Send for XrossTask {}
 unsafe impl Sync for XrossTask {}
-
+#[cfg(feature = "tokio")]
+use std::sync::OnceLock;
 #[cfg(feature = "tokio")]
 static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 
@@ -48,7 +51,7 @@ fn get_runtime() -> &'static tokio::runtime::Runtime {
 #[cfg(feature = "tokio")]
 pub fn xross_spawn_task<F, T>(future: F, mapper: fn(T) -> XrossResult) -> XrossTask
 where
-    F: std::future::Future<Output = T> + Send + 'static,
+    F: Future<Output = T> + Send + 'static,
     T: Send + 'static,
 {
     let rt = get_runtime();

@@ -1,0 +1,13 @@
+[package]
+name = "xross-alloc"
+version = "2.0.1"
+edition = "2024"
+
+[dependencies]
+jemallocator = "0.5.4"
+mimalloc = "0.1.48"
+paste = "1.0.15"
+rand = "0.10.0"
+rpmalloc = "0.2.2"
+snmalloc-rs = "0.3.8"
+tcmalloc = "0.3.0"

@@ -17,7 +17,6 @@ object PropertyGenerator {
             val baseName = field.name.toCamelCase()
             val escapedName = baseName.escapeKotlinKeyword()
             val isPrimitive = field.ty !is XrossType.Object && field.ty !is XrossType.Optional && field.ty !is XrossType.Result
-            val isBoxed = field.ty is XrossType.Object && field.ty.ownership == XrossType.Ownership.Boxed
             val vhName: String = when {
                 isPrimitive -> "VH_$baseName"
                 else -> "null"

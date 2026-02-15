@@ -62,37 +62,60 @@ private fun loadFromResources(tempDir: File) {
     println("Native library loaded from: ${libFile.absolutePath}")
 }
 
-// (以下の execute... 系関数は変更なしのため省略して書き込みます)
+// --- 統合テスト用関数群 ---
+
 fun executePanicAndTrivialTest() {
     val service = MyService()
     service.addTrivial(10, 20)
+    service.addCriticalHeap(100, 200)
+    service.causePanic(false)
     service.close()
 }
+
 fun executeStandaloneFunctionTest() {
     GlobalAdd.globalAdd(10, 20)
+    org.example.standalone.GlobalGreet.globalGreet("Xross")
+    org.example.standalone.GlobalMultiply.globalMultiply(5, 6)
 }
+
 fun executeAsyncTest() = runBlocking {
     org.example.standalone.AsyncAdd.asyncAdd(100, 200)
+    org.example.standalone.AsyncGreet.asyncGreet("Coroutines")
 }
+
 fun executePrimitiveTypeTest() {
     val pt = PrimitiveTest(5.toByte(), 500, 5000L)
+    pt.addU32(500)
     pt.close()
 }
+
 fun executeComplexStructPropertyTest() {
     val cs = ComplexStruct(42, Result.success(100))
+    cs.opt = 100
+    cs.res = Result.success(500)
     cs.close()
 }
+
 fun executeComplexFieldTest() {
     val ext = ExternalStruct(100, "Xross Native")
+    ext.value = 500
+    ext.getValue()
+    ext.greet("Hello")
     ext.close()
 }
+
 fun executePropertyTest() {
-    UnknownStruct(1, "Hello", 1f).close()
+    val unknownStruct = UnknownStruct(1, "Hello", 1f)
+    unknownStruct.s = "Modified"
+    unknownStruct.close()
 }
+
 fun executeEnumTest() {
     val myService = MyService()
+    myService.retEnum().close()
     myService.close()
 }
+
 fun executeMemoryLeakTest() {
     val iterations = 100000 // ベンチマークメインなので減らします
     val service = MyService2(0)
@@ -104,15 +127,23 @@ fun executeMemoryLeakTest() {
     }
     service.close()
 }
+
 fun executeReferenceAndOwnershipTest() {
     val parent = MyService2(100)
+    val borrowed = parent.getSelfRef()
+    // borrowed.close() // DO NOT CLOSE BORROWED REFERENCES IN XROSS
     parent.close()
 }
+
 fun executeConcurrencyTest() {
     val shared = MyService2(0)
+    shared.`val`.update { it + 1 }
     shared.close()
 }
+
 fun executeCollectionAndOptionalTest() {
     val service = MyService()
+    service.getOptionEnum(true)
+    service.getResultStruct(true).getOrNull()?.close()
     service.close()
 }

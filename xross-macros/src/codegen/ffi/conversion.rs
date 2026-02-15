@@ -50,7 +50,9 @@ pub fn gen_receiver_logic(
 
     let c_arg = quote! { #arg_ident: *mut std::ffi::c_void };
     let call_arg = if receiver.reference.is_none() {
-        quote! { *Box::from_raw(#arg_ident as *mut #type_ident) }
+        // Use ptr::read to avoid taking ownership of the pointer itself.
+        // This prevents double free if Kotlin side also thinks it owns the memory.
+        quote! { unsafe { std::ptr::read(#arg_ident as *const #type_ident) } }
     } else if receiver.mutability.is_some() {
         quote! { &mut *(#arg_ident as *mut #type_ident) }
     } else {
@@ -102,7 +104,8 @@ pub fn gen_arg_conversion(
                     quote! { let #arg_id = unsafe { Box::from_raw(#arg_id as *mut #inner) }; }
                 }
                 Ownership::Owned => {
-                    quote! { let #arg_id = unsafe { *Box::from_raw(#arg_id as *mut #arg_ty) }; }
+                    // Use ptr::read instead of Box::from_raw to avoid freeing memory that might be owned by Kotlin (e.g. Pure Enums).
+                    quote! { let #arg_id = unsafe { std::ptr::read(#arg_id as *const #arg_ty) }; }
                 }
             },
             quote! { #arg_id },
@@ -120,7 +123,7 @@ pub fn gen_arg_conversion(
                     },
                     XrossType::Object { .. } => quote! {
                         let #arg_id = if #arg_id.is_null() { None }
-                        else { unsafe { Some(*Box::from_raw(#arg_id as *mut #inner_rust_ty)) } };
+                        else { unsafe { Some(std::ptr::read(#arg_id as *const #inner_rust_ty)) } };
                     },
                     XrossType::F32 => quote! {
                         let #arg_id = if #arg_id.is_null() { None }
@@ -144,7 +147,7 @@ pub fn gen_arg_conversion(
                 XrossType::String => {
                     quote! { std::ffi::CStr::from_ptr(#ptr as *const _).to_string_lossy().into_owned() }
                 }
-                XrossType::Object { .. } => quote! { *Box::from_raw(#ptr as *mut #rust_ty) },
+                XrossType::Object { .. } => quote! { std::ptr::read(#ptr as *const #rust_ty) },
                 XrossType::F32 => quote! { f32::from_bits(#ptr as u32) },
                 XrossType::F64 => quote! { f64::from_bits(#ptr as u64) },
                 _ => quote! { #ptr as usize as #rust_ty },
@@ -263,12 +266,22 @@ pub fn gen_ret_wrapping(
             )
         }
         _ => {
-            let raw_ret = if let ReturnType::Type(_, ty) = sig_output {
-                quote! { #ty }
+            if let ReturnType::Type(_, ty) = sig_output {
+                let type_str = quote!(#ty).to_string();
+                let is_ptr_or_ref = type_str.contains('*') || type_str.contains('&');
+                let is_primitive = ["i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "bool", "isize", "usize", "()"]
+                    .iter().any(|&p| type_str == p || (type_str.contains(p) && type_str.len() <= 5));
+
+                if !is_primitive && !is_ptr_or_ref {
+                    return (
+                        quote! { *mut std::ffi::c_void },
+                        quote! { Box::into_raw(Box::new(#inner_call)) as *mut std::ffi::c_void }
+                    );
+                }
+                (quote! { #ty }, quote! { #inner_call })
             } else {
-                quote! { () }
-            };
-            (raw_ret, quote! { #inner_call })
+                (quote! { () }, quote! { #inner_call })
+            }
         }
     }
 }

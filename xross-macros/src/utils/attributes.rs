@@ -14,36 +14,69 @@ pub fn parse_critical_nested(meta: &syn::meta::ParseNestedMeta) -> syn::Result<b
     Ok(allow_heap_access)
 }
 
+pub fn parse_handle_mode_nested(meta: &syn::meta::ParseNestedMeta) -> syn::Result<HandleMode> {
+    if meta.input.peek(Token![=]) {
+        let val: syn::LitStr = meta.value()?.parse()?;
+        return match val.value().as_str() {
+            "critical" => Ok(HandleMode::Critical { allow_heap_access: false }),
+            "panicable" => Ok(HandleMode::Panicable),
+            _ => Ok(HandleMode::Normal),
+        };
+    }
+    if meta.input.peek(syn::token::Paren) {
+        let mut mode = HandleMode::Normal;
+        meta.parse_nested_meta(|inner| {
+            if inner.path.is_ident("critical") {
+                let allow_heap_access = parse_critical_nested(&inner)?;
+                mode = HandleMode::Critical { allow_heap_access };
+            } else if inner.path.is_ident("panicable") {
+                mode = HandleMode::Panicable;
+            }
+            Ok(())
+        })?;
+        return Ok(mode);
+    }
+    Ok(HandleMode::Normal)
+}
+
 pub fn extract_handle_mode(attrs: &[Attribute]) -> HandleMode {
-    let mut is_critical = false;
-    let mut allow_heap_access = false;
-    let mut is_panicable = false;
+    let mut mode = HandleMode::Normal;
 
     for attr in attrs {
-        if attr.path().is_ident("xross_method") {
+        let path = attr.path();
+        if path.is_ident("xross_method") || path.is_ident("xross_new") || path.is_ident("xross") {
             let _ = attr.parse_nested_meta(|meta| {
                 if meta.path.is_ident("critical") {
-                    is_critical = true;
-                    allow_heap_access = parse_critical_nested(&meta)?;
+                    let allow_heap_access = parse_critical_nested(&meta)?;
+                    mode = HandleMode::Critical { allow_heap_access };
                 } else if meta.path.is_ident("panicable") {
-                    is_panicable = true;
+                    mode = HandleMode::Panicable;
                 }
                 Ok(())
             });
         }
     }
 
-    if is_critical && is_panicable {
-        panic!("'critical' and 'panicable' cannot be used together on the same method.");
-    }
+    mode
+}
 
-    if is_critical {
-        HandleMode::Critical { allow_heap_access }
-    } else if is_panicable {
-        HandleMode::Panicable
-    } else {
-        HandleMode::Normal
+pub fn extract_special_modes(attrs: &[Attribute]) -> (HandleMode, HandleMode) {
+    let mut clone_mode = HandleMode::Normal;
+    let mut drop_mode = HandleMode::Normal;
+
+    for attr in attrs {
+        if attr.path().is_ident("xross") {
+            let _ = attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("clone") {
+                    clone_mode = parse_handle_mode_nested(&meta)?;
+                } else if meta.path.is_ident("drop") {
+                    drop_mode = parse_handle_mode_nested(&meta)?;
+                }
+                Ok(())
+            });
+        }
     }
+    (clone_mode, drop_mode)
 }
 
 pub fn extract_is_copy(attrs: &[Attribute]) -> bool {

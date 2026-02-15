@@ -8,7 +8,99 @@ import kotlin.system.measureTimeMillis
 
 fun main() {
     NativeLoader.load()
-    runHeavyBenchmarks()
+    try {
+        runHeavyBenchmarks()
+        runLifecycleBenchmarks()
+        runIntegrationSuiteBenchmarks()
+    } finally {
+        println("\n--- Final Native Object Analysis (Xross) ---")
+        println("[GC] Collecting garbage and running finalizers (Multiple cycles)...")
+        
+        println("\n[Before GC]")
+        println(UnknownStruct.displayAnalysis())
+
+        repeat(3) {
+            System.gc()
+            Thread.sleep(2000)
+        }
+
+        println("\n[After GC]")
+        println(UnknownStruct.displayAnalysis())
+        
+        println("\n--- Final Simulated Analysis (Pure Kotlin) ---")
+        println(PKCounter.displayAnalysis())
+    }
+}
+
+fun runLifecycleBenchmarks() {
+    val iterations = 100000
+    println("\n[Benchmark] --- Object Lifecycle (Create/Clone/Drop, $iterations iterations) ---")
+
+    val timeXrossLifecycle = measureTimeMillis {
+        val service = org.example.test.test2.MyService2(0)
+        repeat(iterations) { i ->
+            service.createClone().use { clone ->
+                clone.`val`.update { i }
+                clone.execute()
+            }
+        }
+        service.close()
+    }
+    println("[Benchmark] Xross Lifecycle            : ${timeXrossLifecycle}ms")
+
+    val timePKLifecycle = measureTimeMillis {
+        val service = PKMyService2(0)
+        repeat(iterations) { i ->
+            service.createClone().use { clone ->
+                clone.`val`.update { i }
+                clone.execute()
+            }
+        }
+        service.close()
+    }
+    println("[Benchmark] Pure Kotlin Lifecycle      : ${timePKLifecycle}ms")
+}
+
+fun runIntegrationSuiteBenchmarks() {
+    val iterations = 100
+    println("\n[Benchmark] --- Integration Suite (All features, $iterations iterations) ---")
+
+    // Note: These functions are expected to be available in WithXrossApp.kt and PureKotlinApp.kt
+    // We suppress the output during benchmark if possible, but for now we run them as is.
+
+    val timeXrossSuite = measureTimeMillis {
+        repeat(iterations) {
+            executePrimitiveTypeTest()
+            executeReferenceAndOwnershipTest()
+            executeConcurrencyTest()
+            executeEnumTest()
+            executeCollectionAndOptionalTest()
+            executePropertyTest()
+            executeComplexFieldTest()
+            executeComplexStructPropertyTest()
+            executePanicAndTrivialTest()
+            executeStandaloneFunctionTest()
+            // executeAsyncTest() // Exclude async from tight loop benchmark to avoid coroutine overhead variance
+        }
+    }
+    println("[Benchmark] Xross Integration Suite    : ${timeXrossSuite}ms")
+
+    val timePKSuite = measureTimeMillis {
+        repeat(iterations) {
+            executePKPrimitiveTypeTest()
+            executePKReferenceAndOwnershipTest()
+            executePKConcurrencyTest()
+            executePKEnumTest()
+            executePKCollectionAndOptionalTest()
+            executePKPropertyTest()
+            executePKComplexFieldTest()
+            executePKComplexStructPropertyTest()
+            executePKPanicAndTrivialTest()
+            executePKStandaloneFunctionTest()
+            // executePKAsyncTest()
+        }
+    }
+    println("[Benchmark] Pure Kotlin Simulated Suite : ${timePKSuite}ms")
 }
 
 fun runHeavyBenchmarks() {

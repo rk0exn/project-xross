@@ -4,67 +4,177 @@ import com.squareup.kotlinpoet.*
 import org.xross.generator.util.*
 import java.io.File
 import java.lang.foreign.MemorySegment
+import java.lang.foreign.Arena
+import java.lang.invoke.MethodHandle
 
 /**
  * Generates the common runtime components for Xross in Kotlin.
  */
 object RuntimeGenerator {
     private val MEMORY_SEGMENT = MemorySegment::class.asTypeName()
+    private val CLEANABLE = ClassName("java.lang.ref.Cleaner", "Cleanable")
 
-    /**
-     * Generates the XrossRuntime.kt file containing core exceptions and helpers.
-     */
     fun generate(outputDir: File, basePackage: String) {
         val pkg = "$basePackage.xross.runtime"
 
         // --- XrossException ---
         val xrossException = TypeSpec.classBuilder("XrossException")
-            .addKdoc("Exception thrown by Xross during bridged operations.")
             .superclass(Throwable::class)
-            .primaryConstructor(
-                FunSpec.constructorBuilder()
-                    .addParameter("error", Any::class)
-                    .build(),
-            )
+            .primaryConstructor(FunSpec.constructorBuilder().addParameter("error", Any::class).build())
             .addProperty(PropertySpec.builder("error", Any::class).initializer("error").build())
             .build()
 
         // --- AliveFlag ---
         val aliveFlag = TypeSpec.classBuilder("AliveFlag")
-            .addKdoc("A flag used to track the validity of a bridged object and prevent use-after-free.")
             .primaryConstructor(
                 FunSpec.constructorBuilder()
                     .addParameter("initial", Boolean::class)
-                    .addParameter(ParameterSpec.builder("parent", ClassName(pkg, "AliveFlag").copy(nullable = true)).defaultValue("null").build())
+                    .addParameter(
+                        ParameterSpec.builder("parent", ClassName(pkg, "AliveFlag").copy(nullable = true))
+                            .defaultValue("null").build()
+                    )
+                    .addParameter(ParameterSpec.builder("isPersistent", Boolean::class).defaultValue("false").build())
                     .build(),
             )
-            .addProperty(PropertySpec.builder("parent", ClassName(pkg, "AliveFlag").copy(nullable = true), KModifier.PRIVATE).initializer("parent").build())
             .addProperty(
-                PropertySpec.builder("_isValid", ClassName("java.util.concurrent.atomic", "AtomicBoolean"), KModifier.PRIVATE)
-                    .initializer("java.util.concurrent.atomic.AtomicBoolean(initial)").build(),
+                PropertySpec.builder(
+                    "parent",
+                    ClassName(pkg, "AliveFlag").copy(nullable = true),
+                    KModifier.PRIVATE
+                ).initializer("parent").build()
+            )
+            .addProperty(
+                PropertySpec.builder("isPersistent", Boolean::class, KModifier.PRIVATE).initializer("isPersistent")
+                    .build()
+            )
+            .addProperty(
+                PropertySpec.builder(
+                    "_isValid",
+                    ClassName("java.util.concurrent.atomic", "AtomicBoolean"),
+                    KModifier.PRIVATE
+                ).initializer("java.util.concurrent.atomic.AtomicBoolean(initial)").build()
             )
             .addProperty(
                 PropertySpec.builder("isValid", Boolean::class)
-                    .addKdoc("Returns true if the object is still valid and has not been dropped.")
-                    .getter(FunSpec.getterBuilder().addStatement("return _isValid.get() && (parent?.isValid ?: true)").build())
+                    .getter(
+                        FunSpec.getterBuilder()
+                            .addStatement("return (isPersistent || _isValid.get()) && (parent?.isValid ?: true)")
+                            .build()
+                    )
                     .build(),
             )
-            .addFunction(
-                FunSpec.builder("invalidate")
-                    .addKdoc("Invalidates the flag.")
-                    .addStatement("_isValid.set(false)").build(),
-            )
+            .addFunction(FunSpec.builder("invalidate").addStatement("if (!isPersistent) _isValid.set(false)").build())
             .addFunction(
                 FunSpec.builder("tryInvalidate")
-                    .addKdoc("Tries to invalidate the flag. Returns true if it was valid before this call.")
                     .returns(Boolean::class)
-                    .addStatement("return _isValid.compareAndSet(true, false)").build(),
+                    .addCode("if (isPersistent) return false\nreturn _isValid.compareAndSet(true, false)\n")
+                    .build()
             )
             .build()
 
-        // --- FfiHelpers ---
-        val ffiHelpers = TypeSpec.objectBuilder("FfiHelpers")
-            .addKdoc("Internal helpers for FFI operations.")
+        // --- XrossObject Interface ---
+        val xrossObject = TypeSpec.interfaceBuilder("XrossObject")
+            .addSuperinterface(AutoCloseable::class)
+            .addProperty(PropertySpec.builder("segment", MEMORY_SEGMENT).build())
+            .addProperty(PropertySpec.builder("aliveFlag", ClassName(pkg, "AliveFlag")).build())
+            .addFunction(FunSpec.builder("relinquish").build())
+            .build()
+
+        // --- XrossNativeObject Base Class ---
+        val xrossNativeObject = TypeSpec.classBuilder("XrossNativeObject")
+            .addModifiers(KModifier.ABSTRACT)
+            .addSuperinterface(ClassName(pkg, "XrossObject"))
+            .primaryConstructor(
+                FunSpec.constructorBuilder()
+                    .addParameter("segment", MEMORY_SEGMENT)
+                    .addParameter("arena", Arena::class)
+                    .addParameter("aliveFlag", ClassName(pkg, "AliveFlag"))
+                    .build()
+            )
+            .addProperty(
+                PropertySpec.builder("segment", MEMORY_SEGMENT, KModifier.OVERRIDE).initializer("segment").build()
+            )
+            .addProperty(PropertySpec.builder("arena", Arena::class, KModifier.INTERNAL).initializer("arena").build())
+            .addProperty(
+                PropertySpec.builder("aliveFlag", ClassName(pkg, "AliveFlag"), KModifier.OVERRIDE)
+                    .initializer("aliveFlag").build()
+            )
+            .addProperty(
+                PropertySpec.builder("cleanable", CLEANABLE, KModifier.PRIVATE)
+                    .initializer("%T.registerCleaner(this, arena, aliveFlag)", ClassName(pkg, "XrossRuntime")).build()
+            )
+            .addFunction(
+                FunSpec.builder("close")
+                    .addModifiers(KModifier.OVERRIDE, KModifier.FINAL)
+                    .addStatement("cleanable.clean()")
+                    .build()
+            )
+            .addFunction(
+                FunSpec.builder("relinquish")
+                    .addModifiers(KModifier.OVERRIDE, KModifier.FINAL)
+                    .addStatement("aliveFlag.invalidate()")
+                    .build()
+            )
+            .build()
+        // --- XrossRuntime ---
+        val xrossRuntime = TypeSpec.objectBuilder("XrossRuntime")
+            .addProperty(
+                PropertySpec.builder("CLEANER", ClassName("java.lang.ref", "Cleaner"), KModifier.PRIVATE)
+                    .initializer("java.lang.ref.Cleaner.create()")
+                    .build()
+            )
+            .addFunction(
+                FunSpec.builder("ofSmart")
+                    .returns(Arena::class)
+                    .addKdoc("Returns an Arena that can be safely closed by a Cleaner thread.")
+                    .addCode("return %T.ofShared()", Arena::class)
+                    .build()
+            )
+            .addFunction(
+                FunSpec.builder("registerCleaner")
+                    .addParameter("target", Any::class)
+                    .addParameter("arena", Arena::class)
+                    .addParameter("flag", ClassName(pkg, "AliveFlag"))
+                    .returns(CLEANABLE)
+                    .addCode(
+                        """
+                        return CLEANER.register(target) {
+                            if (flag.tryInvalidate()) {
+                                try { arena.close() } catch (e: Throwable) {}
+                            }
+                        }
+                        """.trimIndent()
+                    )
+                    .build()
+            )
+            .addFunction(
+                FunSpec.builder("invokeDrop")
+                    .addParameter("handle", MethodHandle::class)
+                    .addParameter("segment", MEMORY_SEGMENT)
+                    .addCode(
+                        """
+                        try {
+                            if (handle.type().returnType() == %T::class.java) {
+                                java.lang.foreign.Arena.ofConfined().use { arena ->
+                                    val resRaw = handle.invoke(arena as java.lang.foreign.SegmentAllocator, segment) as %T
+                                    val isOk = resRaw.get(java.lang.foreign.ValueLayout.JAVA_BYTE, 0L) != (0).toByte()
+                                    if (!isOk) {
+                                        val ptr = resRaw.get(java.lang.foreign.ValueLayout.ADDRESS, 8L)
+                                        val msg = if (ptr == %T.NULL) "Unknown" else ptr.reinterpret(Long.MAX_VALUE).getString(0)
+                                        System.err.println("[Xross] Panic during drop: " + msg)
+                                    }
+                                }
+                            } else {
+                                handle.invoke(segment)
+                            }
+                        } catch (e: Throwable) {
+                            e.printStackTrace()
+                        }
+                        """.trimIndent(),
+                        MEMORY_SEGMENT, MEMORY_SEGMENT, MEMORY_SEGMENT,
+                    )
+                    .build()
+            )
             .addFunction(
                 FunSpec.builder("resolveFieldSegment")
                     .addParameter("parent", MEMORY_SEGMENT)
@@ -84,12 +194,7 @@ object RuntimeGenerator {
                             if (ptr == %T.NULL) %T.NULL else ptr.reinterpret(size)
                         }
                         """.trimIndent(),
-                        MEMORY_SEGMENT,
-                        MEMORY_SEGMENT,
-                        MEMORY_SEGMENT,
-                        MEMORY_SEGMENT,
-                        MEMORY_SEGMENT,
-                        MEMORY_SEGMENT,
+                        MEMORY_SEGMENT, MEMORY_SEGMENT, MEMORY_SEGMENT, MEMORY_SEGMENT, MEMORY_SEGMENT, MEMORY_SEGMENT,
                     )
                     .build(),
             )
@@ -97,34 +202,36 @@ object RuntimeGenerator {
 
         // --- XrossAsync ---
         val xrossAsync = TypeSpec.objectBuilder("XrossAsync")
-            .addKdoc("Helpers for asynchronous operations bridging Rust Futures to Kotlin Suspend functions.")
             .addFunction(
                 FunSpec.builder("awaitFuture")
                     .addModifiers(KModifier.SUSPEND)
                     .addTypeVariable(TypeVariableName("T"))
                     .addParameter("taskPtr", MEMORY_SEGMENT)
-                    .addParameter("pollFn", ClassName("java.lang.invoke", "MethodHandle"))
-                    .addParameter("dropFn", ClassName("java.lang.invoke", "MethodHandle"))
-                    .addParameter("mapper", LambdaTypeName.get(null, MEMORY_SEGMENT, returnType = TypeVariableName("T")))
+                    .addParameter("pollFn", MethodHandle::class)
+                    .addParameter("dropFn", MethodHandle::class)
+                    .addParameter(
+                        "mapper",
+                        LambdaTypeName.get(null, MEMORY_SEGMENT, returnType = TypeVariableName("T"))
+                    )
                     .returns(TypeVariableName("T"))
                     .addCode(
                         """
                     try {
-                        while (true) {
-                            java.lang.foreign.Arena.ofConfined().use { arena ->
-                                val resultRaw = pollFn.invokeExact(arena, taskPtr) as MemorySegment
-                                val isOk = resultRaw.get(ValueLayout.JAVA_BYTE, 0L) != (0).toByte()
-                                val ptr = resultRaw.get(ValueLayout.ADDRESS, 8L)
+                        java.lang.foreign.Arena.ofConfined().use { arena ->
+                            while (true) {
+                                val resultRaw = pollFn.invokeExact(arena as java.lang.foreign.SegmentAllocator, taskPtr) as MemorySegment
+                                val isOk = resultRaw.get(java.lang.foreign.ValueLayout.JAVA_BYTE, 0L) != (0).toByte()
+                                val ptr = resultRaw.get(java.lang.foreign.ValueLayout.ADDRESS, 8L)
 
                                 if (ptr != MemorySegment.NULL) {
                                     if (!isOk) throw XrossException(ptr.reinterpret(Long.MAX_VALUE).getString(0))
                                     return mapper(ptr)
                                 }
+                                kotlinx.coroutines.delay(1)
                             }
-                            kotlinx.coroutines.delay(1)
                         }
                     } finally {
-                        dropFn.invokeExact(taskPtr)
+                        dropFn.invoke(taskPtr)
                     }
                         """.trimIndent(),
                     )
@@ -134,20 +241,19 @@ object RuntimeGenerator {
 
         // --- XrossAsyncLock ---
         val xrossAsyncLock = TypeSpec.classBuilder("XrossAsyncLock")
-            .addKdoc("A hybrid Read/Write lock supporting both coroutine suspension and thread blocking to enforce Rust ownership rules.")
-            .addProperty(PropertySpec.builder("rw", ClassName("java.util.concurrent.locks", "ReentrantReadWriteLock")).initializer("java.util.concurrent.locks.ReentrantReadWriteLock(true)").addModifiers(KModifier.PRIVATE).build())
+            .addProperty(
+                PropertySpec.builder("rw", ClassName("java.util.concurrent.locks", "ReentrantReadWriteLock"))
+                    .initializer("java.util.concurrent.locks.ReentrantReadWriteLock(true)")
+                    .addModifiers(KModifier.PRIVATE).build()
+            )
             .addFunction(
-                FunSpec.builder("lockRead")
-                    .addModifiers(KModifier.SUSPEND)
-                    .addCode("while (!rw.readLock().tryLock()) { kotlinx.coroutines.delay(1) }")
-                    .build(),
+                FunSpec.builder("lockRead").addModifiers(KModifier.SUSPEND)
+                    .addCode("while (!rw.readLock().tryLock()) { kotlinx.coroutines.delay(1) }").build()
             )
             .addFunction(FunSpec.builder("unlockRead").addCode("rw.readLock().unlock()").build())
             .addFunction(
-                FunSpec.builder("lockWrite")
-                    .addModifiers(KModifier.SUSPEND)
-                    .addCode("while (!rw.writeLock().tryLock()) { kotlinx.coroutines.delay(1) }")
-                    .build(),
+                FunSpec.builder("lockWrite").addModifiers(KModifier.SUSPEND)
+                    .addCode("while (!rw.writeLock().tryLock()) { kotlinx.coroutines.delay(1) }").build()
             )
             .addFunction(FunSpec.builder("unlockWrite").addCode("rw.writeLock().unlock()").build())
             .addFunction(FunSpec.builder("lockReadBlocking").addCode("rw.readLock().lock()").build())
@@ -159,11 +265,12 @@ object RuntimeGenerator {
         val file = FileSpec.builder(pkg, "XrossRuntime")
             .addImport("java.util.concurrent.atomic", "AtomicBoolean")
             .addImport("java.util.concurrent.locks", "ReentrantReadWriteLock")
-            .addImport("java.lang.foreign", "ValueLayout")
-            .addImport("kotlinx.coroutines.sync", "withLock")
+            .addImport("java.lang.foreign", "ValueLayout", "SegmentAllocator")
             .addType(xrossException)
             .addType(aliveFlag)
-            .addType(ffiHelpers)
+            .addType(xrossObject)
+            .addType(xrossNativeObject)
+            .addType(xrossRuntime)
             .addType(xrossAsync)
             .addType(xrossAsyncLock)
             .build()

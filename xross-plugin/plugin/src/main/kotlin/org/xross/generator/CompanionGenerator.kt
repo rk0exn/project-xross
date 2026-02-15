@@ -15,8 +15,8 @@ object CompanionGenerator {
     private val MEMORY_SEGMENT = MemorySegment::class.asTypeName()
     private val MEMORY_LAYOUT = MemoryLayout::class.asTypeName()
 
-    fun generateCompanions(companionBuilder: TypeSpec.Builder, meta: XrossDefinition) {
-        defineProperties(companionBuilder, meta)
+    fun generateCompanions(companionBuilder: TypeSpec.Builder, meta: XrossDefinition, basePackage: String) {
+        defineProperties(companionBuilder, meta, basePackage)
 
         val init = CodeBlock.builder()
             .addStatement("val lookup = %T.loaderLookup()", SymbolLookup::class.asTypeName())
@@ -58,28 +58,31 @@ object CompanionGenerator {
         }
 
         if (GeneratorUtils.isPureEnum(meta)) {
-            init.add("\n// --- Enum Segment Initialization ---\n")
-            init.beginControlFlow("entries.forEach { v ->")
-            init.beginControlFlow("v.segment = when(v)")
+            init.add("\n// --- Enum Variant Instances ---\n")
+            val baseClassName = GeneratorUtils.getClassName(meta.signature, basePackage)
+            init.add("entries = listOf(\n")
             (meta as XrossDefinition.Enum).variants.forEach { v ->
-                init.addStatement("%N -> new${v.name}Handle.invokeExact() as %T", v.name, MEMORY_SEGMENT)
+                init.add("    %T(),\n", baseClassName.nestedClass(v.name))
             }
-            init.endControlFlow()
-            init.endControlFlow()
+            init.add(")\n")
         }
 
         companionBuilder.addInitializerBlock(init.build())
     }
 
-    private fun defineProperties(builder: TypeSpec.Builder, meta: XrossDefinition) {
+    private fun defineProperties(builder: TypeSpec.Builder, meta: XrossDefinition, basePackage: String) {
         val handles = mutableListOf<String>()
 
         builder.addProperty(
+            PropertySpec.builder("arena", Arena::class.asTypeName(), KModifier.INTERNAL)
+                .initializer("%T.ofSmart()", ClassName("$basePackage.xross.runtime", "XrossRuntime"))
+                .build()
+        )
 
+        builder.addProperty(
             PropertySpec.builder("linker", Linker::class.asTypeName(), KModifier.INTERNAL)
                 .initializer("%T.nativeLinker()", Linker::class.asTypeName())
                 .build(),
-
         )
 
         if (meta !is XrossDefinition.Function) {

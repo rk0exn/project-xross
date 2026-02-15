@@ -25,19 +25,24 @@ object HandleResolver {
         if (meta !is XrossDefinition.Function) {
             listOf("drop", "layout").forEach { suffix ->
                 val symbol = "${meta.symbolPrefix}_$suffix"
+                val methodMeta = meta.methods.find { it.name == suffix }
+                val handleMode = methodMeta?.handleMode ?: HandleMode.Normal
+                val isPanicable = handleMode is HandleMode.Panicable
                 val desc = when (suffix) {
-                    "drop" -> CodeBlock.of("%T.ofVoid(%M)", FUNCTION_DESCRIPTOR, ADDRESS)
+                    "drop" -> if (isPanicable) {
+                        CodeBlock.of("%T.of(%L, %M)", FUNCTION_DESCRIPTOR, FFMConstants.XROSS_RESULT_LAYOUT_CODE, ADDRESS)
+                    } else {
+                        CodeBlock.of("%T.ofVoid(%M)", FUNCTION_DESCRIPTOR, ADDRESS)
+                    }
                     "layout" -> CodeBlock.of("%T.of(%M)", FUNCTION_DESCRIPTOR, ADDRESS)
                     else -> CodeBlock.of("%T.of(%M, %M)", FUNCTION_DESCRIPTOR, ADDRESS, ADDRESS)
                 }
-                init.addStatement("this.${suffix}Handle = linker.downcallHandle(lookup.find(%S).get(), %L)", symbol, desc)
+                val options = when (handleMode) {
+                    is HandleMode.Critical -> CodeBlock.of(", %T.critical(%L)", java.lang.foreign.Linker.Option::class.asTypeName(), handleMode.allowHeapAccess)
+                    else -> CodeBlock.of("")
+                }
+                init.addStatement("this.${suffix}Handle = linker.downcallHandle(lookup.find(%S).get(), %L%L)", symbol, desc, options)
             }
-        }
-
-        if (meta.methods.any { it.name == "clone" }) {
-            val symbol = "${meta.symbolPrefix}_clone"
-            val desc = CodeBlock.of("%T.of(%M, %M)", FUNCTION_DESCRIPTOR, ADDRESS, ADDRESS)
-            init.addStatement("this.cloneHandle = linker.downcallHandle(lookup.find(%S).get(), %L)", symbol, desc)
         }
 
         when (meta) {
@@ -53,10 +58,15 @@ object HandleResolver {
     private fun resolveStructHandles(init: CodeBlock.Builder, meta: XrossDefinition.Struct) {
         val constructor = meta.methods.find { it.isConstructor && it.name == "new" }
         val argLayouts = constructor?.args?.map { it.ty.layoutCode } ?: emptyList()
-        val desc = if (argLayouts.isEmpty()) {
-            CodeBlock.of("%T.of(%M)", FUNCTION_DESCRIPTOR, ADDRESS)
+        val retLayout = if (constructor?.handleMode is HandleMode.Panicable) {
+            FFMConstants.XROSS_RESULT_LAYOUT_CODE
         } else {
-            CodeBlock.of("%T.of(%M, %L)", FUNCTION_DESCRIPTOR, ADDRESS, argLayouts.joinToCode(", "))
+            CodeBlock.of("%M", ADDRESS)
+        }
+        val desc = if (argLayouts.isEmpty()) {
+            CodeBlock.of("%T.of(%L)", FUNCTION_DESCRIPTOR, retLayout)
+        } else {
+            CodeBlock.of("%T.of(%L, %L)", FUNCTION_DESCRIPTOR, retLayout, argLayouts.joinToCode(", "))
         }
 
         init.addStatement("this.newHandle = linker.downcallHandle(lookup.find(%S).get(), %L)", "${meta.symbolPrefix}_new", desc)
@@ -156,44 +166,40 @@ object HandleResolver {
     ) {
         val retLabel = "ADDRESS"
         val argLayout = "ADDRESS"
-        val isVoidSetter = true
         val getSymbol = "${prefix}_property_${rawName}_${suffix}_get"
         val setSymbol = "${prefix}_property_${rawName}_${suffix}_set"
         init.addStatement(
             "this.${camelName}${suffix.replaceFirstChar { it.uppercase() }}GetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.of(%M, %M))",
             getSymbol,
             FUNCTION_DESCRIPTOR,
-            MemberName(VAL_LAYOUT, retLayout),
+            MemberName(VAL_LAYOUT, retLabel),
             ADDRESS,
         )
-        val setterDesc = if (isVoidSetter) {
-            CodeBlock.of("ofVoid(%M, %M)", ADDRESS, MemberName(VAL_LAYOUT, argLayout))
-        } else {
-            CodeBlock.of("of(%M, %M, %M)", MemberName(VAL_LAYOUT, retLayout), ADDRESS, MemberName(VAL_LAYOUT, argLayout))
-        }
         init.addStatement(
-            "this.${camelName}${suffix.replaceFirstChar { it.uppercase() }}SetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.%L)",
+            "this.${camelName}${suffix.replaceFirstChar { it.uppercase() }}SetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.ofVoid(%M, %M))",
             setSymbol,
             FUNCTION_DESCRIPTOR,
-            setterDesc,
+            ADDRESS,
+            MemberName(VAL_LAYOUT, argLayout),
         )
     }
 
     private fun resolveMethodHandles(init: CodeBlock.Builder, meta: XrossDefinition) {
-        meta.methods.filter { !it.isConstructor }.forEach { method ->
+        meta.methods.filter { !it.isConstructor && it.name != "drop" && it.name != "layout" }.forEach { method ->
             val args = mutableListOf<CodeBlock>()
             if (method.methodType != XrossMethodType.Static) args.add(CodeBlock.of("%M", ADDRESS))
             method.args.forEach {
                 args.add(it.ty.layoutCode)
             }
 
-            val desc = if (method.ret is XrossType.Void && !method.isAsync) {
+            val isPanicable = method.handleMode is HandleMode.Panicable
+            val desc = if (method.ret is XrossType.Void && !method.isAsync && !isPanicable) {
                 CodeBlock.of("%T.ofVoid(%L)", FUNCTION_DESCRIPTOR, args.joinToCode(", "))
             } else {
                 val argsPart = if (args.isEmpty()) CodeBlock.of("") else CodeBlock.of(", %L", args.joinToCode(", "))
                 val retLayout = when {
                     method.isAsync -> FFMConstants.XROSS_TASK_LAYOUT_CODE
-                    method.handleMode is HandleMode.Panicable -> FFMConstants.XROSS_RESULT_LAYOUT_CODE
+                    isPanicable -> FFMConstants.XROSS_RESULT_LAYOUT_CODE
                     else -> method.ret.layoutCode
                 }
                 CodeBlock.of("%T.of(%L%L)", FUNCTION_DESCRIPTOR, retLayout, argsPart)

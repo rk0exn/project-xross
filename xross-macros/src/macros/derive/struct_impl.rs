@@ -1,5 +1,5 @@
 use crate::codegen::ffi::{
-    add_clone_method, generate_common_ffi, generate_property_accessors, generate_struct_layout,
+    add_clone_method, add_drop_method, generate_common_ffi, generate_property_accessors, generate_struct_layout,
 };
 use crate::metadata::save_definition;
 use crate::types::resolver::resolve_type_with_attr;
@@ -19,17 +19,28 @@ pub fn impl_struct_derive(
 
     let layout_logic = generate_struct_layout(s);
     let is_clonable = extract_is_clonable(&s.attrs);
+    let (clone_mode, drop_mode) = extract_special_modes(&s.attrs);
 
     let mut fields = Vec::new();
     let mut methods = Vec::new();
 
     if is_clonable {
-        add_clone_method(&mut methods, &symbol_base, &package, &name_str);
+        add_clone_method(&mut methods, &symbol_base, &package, &name_str, clone_mode);
     }
+    add_drop_method(&mut methods, &symbol_base, drop_mode);
 
     if let syn::Fields::Named(f) = &s.fields {
         for field in &f.named {
-            if field.attrs.iter().any(|a| a.path().is_ident("xross_field")) {
+            let has_attr = field.attrs.iter().any(|a| {
+                a.path().is_ident("xross_field")
+                    || a.path()
+                        .segments
+                        .last()
+                        .map(|s| s.ident == "xross_field")
+                        .unwrap_or(false)
+            });
+
+            if has_attr {
                 let field_ident = field.ident.as_ref().unwrap();
                 let field_name = field_ident.to_string();
                 let xross_ty =
@@ -68,6 +79,14 @@ pub fn impl_struct_derive(
     }));
 
     let mut toks = Vec::new();
-    generate_common_ffi(name, &symbol_base, layout_logic, &mut toks, is_clonable);
+    generate_common_ffi(
+        name,
+        &symbol_base,
+        layout_logic,
+        &mut toks,
+        is_clonable,
+        clone_mode,
+        drop_mode,
+    );
     quote::quote!(#(#toks)*)
 }

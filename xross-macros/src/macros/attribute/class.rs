@@ -73,8 +73,6 @@ pub fn impl_xross_class_attribute(_attr: TokenStream, mut input_impl: ItemImpl) 
                 )
             };
 
-            let handle_mode = if is_new { xross_metadata::HandleMode::Normal } else { handle_mode };
-
             methods_meta.push(XrossMethod {
                 name: rust_fn_name.to_string(),
                 symbol: ffi_data.symbol_name.clone(),

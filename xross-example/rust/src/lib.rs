@@ -75,6 +75,7 @@ impl Clone for UnknownStruct {
 impl Drop for UnknownStruct {
     fn drop(&mut self) {
         UNKNOWN_STRUCT_COUNT.fetch_sub(1, Ordering::SeqCst);
+        // eprintln!("DEBUG: UnknownStruct dropped");
     }
 }
 
@@ -150,6 +151,7 @@ impl Clone for MyService {
 impl Drop for MyService {
     fn drop(&mut self) {
         SERVICE_COUNT.fetch_sub(1, Ordering::SeqCst);
+        // eprintln!("DEBUG: MyService dropped");
     }
 }
 
@@ -269,6 +271,7 @@ pub mod test {
     impl Drop for MyService2 {
         fn drop(&mut self) {
             SERVICE2_COUNT.fetch_sub(1, Ordering::SeqCst);
+            // eprintln!("DEBUG: MyService2 dropped");
         }
     }
 

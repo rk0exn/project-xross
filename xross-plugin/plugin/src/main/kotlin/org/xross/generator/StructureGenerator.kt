@@ -16,154 +16,54 @@ object StructureGenerator {
      */
     fun buildBase(classBuilder: TypeSpec.Builder, companionBuilder: TypeSpec.Builder, meta: XrossDefinition, basePackage: String) {
         val aliveFlagType = ClassName("$basePackage.xross.runtime", "AliveFlag")
+        val xrossNativeObject = ClassName("$basePackage.xross.runtime", "XrossNativeObject")
         val selfType = GeneratorUtils.getClassName(meta.signature, basePackage)
 
-        // --- Class Level (Static) Locks ---
-        companionBuilder.addProperty(
-            PropertySpec.builder("sl", ClassName("java.util.concurrent.locks", "StampedLock"))
-                .addModifiers(KModifier.INTERNAL)
-                .initializer("%T()", ClassName("java.util.concurrent.locks", "StampedLock"))
-                .build(),
-        )
-        companionBuilder.addProperty(
-            PropertySpec.builder("fl", ClassName("java.util.concurrent.locks", "ReentrantLock"))
-                .addModifiers(KModifier.INTERNAL)
-                .initializer("%T(true)", ClassName("java.util.concurrent.locks", "ReentrantLock"))
-                .build(),
-        )
-        companionBuilder.addProperty(
-            PropertySpec.builder("al", ClassName("$basePackage.xross.runtime", "XrossAsyncLock"))
-                .addModifiers(KModifier.INTERNAL)
-                .initializer("%T()", ClassName("$basePackage.xross.runtime", "XrossAsyncLock"))
-                .build(),
-        )
-        companionBuilder.addProperty(
-            PropertySpec.builder("autoArena", ClassName("java.lang.foreign", "Arena"), KModifier.INTERNAL)
-                .initializer("%T.ofAuto()", ClassName("java.lang.foreign", "Arena"))
-                .build(),
-        )
-
+        // --- Class Level (Static) ---
+        companionBuilder.addProperty(PropertySpec.builder("sl", ClassName("java.util.concurrent.locks", "StampedLock")).addModifiers(KModifier.INTERNAL).initializer("%T()", ClassName("java.util.concurrent.locks", "StampedLock")).build())
+        companionBuilder.addProperty(PropertySpec.builder("fl", ClassName("java.util.concurrent.locks", "ReentrantLock")).addModifiers(KModifier.INTERNAL).initializer("%T(true)", ClassName("java.util.concurrent.locks", "ReentrantLock")).build())
+        companionBuilder.addProperty(PropertySpec.builder("al", ClassName("$basePackage.xross.runtime", "XrossAsyncLock")).addModifiers(KModifier.INTERNAL).initializer("%T()", ClassName("$basePackage.xross.runtime", "XrossAsyncLock")).build())
+        
         if (meta is XrossDefinition.Function) return
 
         val isEnum = meta is XrossDefinition.Enum
-        val isPure = GeneratorUtils.isPureEnum(meta)
+        
+        // 全てのクラス（Struct, Enum, Opaque）が XrossNativeObject を継承する
+        classBuilder.superclass(xrossNativeObject)
 
-        if (isPure) {
-            classBuilder.addProperty(
-                PropertySpec.builder("segment", MEMORY_SEGMENT, KModifier.INTERNAL)
-                    .mutable(true)
-                    .initializer("%T.NULL", MEMORY_SEGMENT)
-                    .build()
-            )
-            classBuilder.addProperty(
-                PropertySpec.builder("aliveFlag", aliveFlagType, KModifier.INTERNAL)
-                    .initializer("%T(true)", aliveFlagType).build(),
-            )
-            classBuilder.addProperty(PropertySpec.builder("sl", ClassName("java.util.concurrent.locks", "StampedLock")).addModifiers(KModifier.INTERNAL).initializer("%T()", ClassName("java.util.concurrent.locks", "StampedLock")).build())
-            classBuilder.addProperty(PropertySpec.builder("fl", ClassName("java.util.concurrent.locks", "ReentrantLock")).addModifiers(KModifier.INTERNAL).initializer("%T(true)", ClassName("java.util.concurrent.locks", "ReentrantLock")).build())
-            classBuilder.addProperty(PropertySpec.builder("al", ClassName("$basePackage.xross.runtime", "XrossAsyncLock")).addModifiers(KModifier.INTERNAL).initializer("%T()", ClassName("$basePackage.xross.runtime", "XrossAsyncLock")).build())
-            classBuilder.addProperty(PropertySpec.builder("autoArena", ClassName("java.lang.foreign", "Arena"), KModifier.INTERNAL).initializer("%T.ofAuto()", ClassName("java.lang.foreign", "Arena")).build())
-            classBuilder.addProperty(PropertySpec.builder("confinedArena", ClassName("java.lang.foreign", "Arena").copy(nullable = true), KModifier.INTERNAL).initializer("null").build())
-        } else {
-            val constructorBuilder = FunSpec.constructorBuilder()
-                .addModifiers(if (isEnum) KModifier.PROTECTED else KModifier.INTERNAL)
-                .addParameter("raw", MEMORY_SEGMENT)
-                .addParameter(ParameterSpec.builder("autoArena", ClassName("java.lang.foreign", "Arena")).build())
-                .addParameter(ParameterSpec.builder("confinedArena", ClassName("java.lang.foreign", "Arena").copy(nullable = true)).defaultValue("null").build())
-                .addParameter(ParameterSpec.builder("sharedFlag", aliveFlagType.copy(nullable = true)).defaultValue("null").build())
-            classBuilder.primaryConstructor(constructorBuilder.build())
+        val constructorBuilder = FunSpec.constructorBuilder()
+            .addModifiers(if (isEnum) KModifier.PROTECTED else KModifier.INTERNAL)
+            .addParameter("raw", MEMORY_SEGMENT)
+            .addParameter("arena", ClassName("java.lang.foreign", "Arena"))
+            .addParameter("sharedFlag", aliveFlagType)
+        
+        classBuilder.primaryConstructor(constructorBuilder.build())
+        classBuilder.addSuperclassConstructorParameter("raw")
+        classBuilder.addSuperclassConstructorParameter("arena")
+        classBuilder.addSuperclassConstructorParameter("sharedFlag")
 
-            classBuilder.addProperty(PropertySpec.builder("autoArena", ClassName("java.lang.foreign", "Arena"), KModifier.INTERNAL).initializer("autoArena").build())
-            classBuilder.addProperty(PropertySpec.builder("confinedArena", ClassName("java.lang.foreign", "Arena").copy(nullable = true), KModifier.INTERNAL).initializer("confinedArena").build())
-            classBuilder.addProperty(PropertySpec.builder("aliveFlag", aliveFlagType, KModifier.INTERNAL).initializer(CodeBlock.of("sharedFlag ?: %T(true)", aliveFlagType)).build())
-
-            val segmentProp = PropertySpec.builder("segment", MEMORY_SEGMENT, KModifier.INTERNAL)
-                .mutable(true)
-                .initializer("raw")
-            if (isEnum) segmentProp.addModifiers(KModifier.OPEN)
-            classBuilder.addProperty(segmentProp.build())
-
-            classBuilder.addProperty(PropertySpec.builder("sl", ClassName("java.util.concurrent.locks", "StampedLock")).addModifiers(KModifier.INTERNAL).initializer("%T()", ClassName("java.util.concurrent.locks", "StampedLock")).build())
-            classBuilder.addProperty(PropertySpec.builder("fl", ClassName("java.util.concurrent.locks", "ReentrantLock")).addModifiers(KModifier.INTERNAL).initializer("%T(true)", ClassName("java.util.concurrent.locks", "ReentrantLock")).build())
-            classBuilder.addProperty(PropertySpec.builder("al", ClassName("$basePackage.xross.runtime", "XrossAsyncLock")).addModifiers(KModifier.INTERNAL).initializer("%T()", ClassName("$basePackage.xross.runtime", "XrossAsyncLock")).build())
-        }
+        classBuilder.addProperty(PropertySpec.builder("sl", ClassName("java.util.concurrent.locks", "StampedLock")).addModifiers(KModifier.INTERNAL).initializer("%T()", ClassName("java.util.concurrent.locks", "StampedLock")).build())
+        classBuilder.addProperty(PropertySpec.builder("fl", ClassName("java.util.concurrent.locks", "ReentrantLock")).addModifiers(KModifier.INTERNAL).initializer("%T(true)", ClassName("java.util.concurrent.locks", "ReentrantLock")).build())
+        classBuilder.addProperty(PropertySpec.builder("al", ClassName("$basePackage.xross.runtime", "XrossAsyncLock")).addModifiers(KModifier.INTERNAL).initializer("%T()", ClassName("$basePackage.xross.runtime", "XrossAsyncLock")).build())
 
         if (!isEnum) {
             val fromPointerBuilder = GeneratorUtils.buildFromPointerBase("fromPointer", selfType, basePackage)
-                .addCode("return %T(ptr, autoArena, confinedArena = confinedArena, sharedFlag = sharedFlag)\n", selfType)
+                .addCode("return %T(ptr, arena, sharedFlag = sharedFlag)\n", selfType)
             companionBuilder.addFunction(fromPointerBuilder.build())
         }
     }
 
     /**
-     * Adds finalization logic, such as `close` and `relinquish` methods.
+     * Finalization logic is now mostly handled by XrossNativeObject.
      */
     fun addFinalBlocks(classBuilder: TypeSpec.Builder, meta: XrossDefinition) {
-        val isPure = GeneratorUtils.isPureEnum(meta)
-
-        // RelinquishInternal
-        val relinquishInternalBody = CodeBlock.builder()
-            .addStatement("segment = %T.NULL", MEMORY_SEGMENT)
-            .addStatement("aliveFlag.invalidate()")
-            .build()
-        classBuilder.addFunction(
-            FunSpec.builder("relinquishInternal")
-                .addModifiers(KModifier.INTERNAL)
-                .addCode(relinquishInternalBody)
-                .build(),
-        )
-
-        // Close
-        val closeBody = CodeBlock.builder()
-        if (isPure) {
-            closeBody.add("// Pure enum constants are not manually closable\n")
-        } else {
-            closeBody.addStatement("val s = segment")
-                .beginControlFlow("if (s != %T.NULL)", MEMORY_SEGMENT)
-                .addStatement("val stamp = sl.writeLock()")
-                .beginControlFlow("try")
-                .beginControlFlow("if (segment != %T.NULL)", MEMORY_SEGMENT)
-                .addStatement("val currentS = segment")
-                .beginControlFlow("if (aliveFlag.tryInvalidate())")
-                .addStatement("relinquishInternal()")
-                .beginControlFlow("if (confinedArena != null)")
-                .addStatement("dropHandle.invokeExact(currentS)")
-                .endControlFlow()
-                .endControlFlow()
-                .endControlFlow()
-                .nextControlFlow("finally")
-                .addStatement("sl.unlockWrite(stamp)")
-                .endControlFlow()
-                .endControlFlow()
+        if (meta !is XrossDefinition.Enum) {
+            classBuilder.addFunction(
+                FunSpec.builder("relinquishInternal")
+                    .addModifiers(KModifier.INTERNAL)
+                    .addStatement("// Handled by base class or overridden if needed")
+                    .build(),
+            )
         }
-
-        classBuilder.addFunction(
-            FunSpec.builder("close")
-                .addModifiers(KModifier.PUBLIC, KModifier.OVERRIDE, KModifier.FINAL)
-                .addCode(closeBody.build())
-                .build()
-        )
-
-        // Relinquish
-        val relinquishBody = CodeBlock.builder()
-        if (isPure) {
-            relinquishBody.add("// No-op for pure enums\n")
-        } else {
-            relinquishBody.beginControlFlow("if (segment != %T.NULL)", MEMORY_SEGMENT)
-                .addStatement("val stamp = sl.writeLock()")
-                .beginControlFlow("try")
-                .addStatement("relinquishInternal()")
-                .nextControlFlow("finally")
-                .addStatement("sl.unlockWrite(stamp)")
-                .endControlFlow()
-                .endControlFlow()
-        }
-
-        classBuilder.addFunction(
-            FunSpec.builder("relinquish")
-                .addModifiers(KModifier.PUBLIC)
-                .addCode(relinquishBody.build())
-                .build()
-        )
     }
 }

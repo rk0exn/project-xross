@@ -6,6 +6,7 @@ members = [
     "xross-core",
     "xross-macros",
     "xross-metadata",
+    "xross-alloc",
     "xross-example/rust"
 ]
 

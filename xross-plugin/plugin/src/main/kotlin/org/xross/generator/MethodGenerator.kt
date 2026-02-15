@@ -8,6 +8,7 @@ import org.xross.helper.StringHelper.toCamelCase
 import org.xross.structures.*
 import java.lang.foreign.Arena
 import java.lang.foreign.MemorySegment
+import java.lang.foreign.SegmentAllocator
 
 /**
  * Generates Kotlin methods that wrap native Rust functions using Java FFM.
@@ -42,6 +43,7 @@ object MethodGenerator {
                 return@forEach
             }
 
+            if (method.name == "drop" || method.name == "layout") return@forEach
             if (isEnum && method.name == "clone") return@forEach
 
             val returnType = GeneratorUtils.resolveReturnType(method.ret, basePackage)
@@ -105,12 +107,19 @@ object MethodGenerator {
             val handleName = "${method.name.toCamelCase()}Handle"
             val isPanicable = method.handleMode is HandleMode.Panicable
             val call = if (method.isAsync || method.ret is XrossType.Result || isPanicable) {
+                // Return value is a struct layout, so FFM requires a SegmentAllocator as the first argument.
                 CodeBlock.of(
-                    "$handleName.invokeExact(this.autoArena, %L)",
+                    "$handleName.invokeExact(this.arena as %T, %L)",
+                    SegmentAllocator::class.asTypeName(),
                     callArgs.joinToCode(", "),
                 )
             } else {
-                CodeBlock.of("$handleName.invokeExact(%L)", callArgs.joinToCode(", "))
+                if (method.ret is XrossType.Void) {
+                    // Use invoke for Void to avoid Descriptor mismatch in Kotlin
+                    CodeBlock.of("$handleName.invoke(%L)", callArgs.joinToCode(", "))
+                } else {
+                    CodeBlock.of("$handleName.invokeExact(%L)", callArgs.joinToCode(", "))
+                }
             }
             body.add(InvocationGenerator.applyMethodCall(method, call, returnType, selfType, basePackage, meta = meta))
 

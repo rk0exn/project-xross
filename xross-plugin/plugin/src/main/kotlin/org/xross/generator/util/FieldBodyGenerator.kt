@@ -3,6 +3,7 @@ package org.xross.generator.util
 import com.squareup.kotlinpoet.*
 import org.xross.structures.*
 import java.lang.foreign.MemorySegment
+import java.lang.foreign.SegmentAllocator
 import java.lang.ref.WeakReference
 
 object FieldBodyGenerator {
@@ -22,7 +23,7 @@ object FieldBodyGenerator {
         body.addStatement("if (this.segment == %T.NULL || !this.aliveFlag.isValid) throw %T(%S)", MEMORY_SEGMENT, NullPointerException::class, "Access error")
 
         val flagType = ClassName("$basePackage.xross.runtime", "AliveFlag")
-        val ffiHelpers = ClassName("$basePackage.xross.runtime", "FfiHelpers")
+        val xrossRuntime = ClassName("$basePackage.xross.runtime", "XrossRuntime")
 
         body.apply {
             when (val ty = field.ty) {
@@ -47,18 +48,13 @@ object FieldBodyGenerator {
                     } else {
                         addStatement(
                             "val resSeg = %T.resolveFieldSegment(this.segment, ${if (isOwned || vhName == "null") "null" else vhName}, $offsetName, %L, %L)",
-                            ffiHelpers,
+                            xrossRuntime,
                             sizeExpr,
                             isOwned,
                         )
                     }
 
-                    if (isBoxed) {
-                        // Boxed always implies fromPointer handles it
-                        addStatement("res = %L(resSeg, this.autoArena, confinedArena = null, sharedFlag = %T(true, this.aliveFlag))", fromPointerExpr, flagType)
-                    } else {
-                        addStatement("res = %L(resSeg, this.autoArena, sharedFlag = %T(true, this.aliveFlag))", fromPointerExpr, flagType)
-                    }
+                    addStatement("res = %L(resSeg, this.arena, sharedFlag = %T(true, this.aliveFlag))", fromPointerExpr, flagType)
 
                     if (backingFieldName != null) {
                         addStatement("this.$backingFieldName = %T(res)", WeakReference::class)
@@ -91,7 +87,8 @@ object FieldBodyGenerator {
                     val handleName = handleNameProvider(ty)
                     if (handleName.isNotEmpty()) {
                         addStatement(
-                            "val resRaw = $handleName.invokeExact(this.autoArena, this.segment) as %T",
+                            "val resRaw = $handleName.invokeExact(this.arena as %T, this.segment) as %T",
+                            SegmentAllocator::class.asTypeName(),
                             MEMORY_SEGMENT,
                         )
                         addStatement("val isOk = resRaw.get(%M, 0L) != (0).toByte()", FFMConstants.JAVA_BYTE)
@@ -135,8 +132,6 @@ object FieldBodyGenerator {
                     if (handleName.isNotEmpty() && !isEnumVariant(vhName)) {
                         addRustStringResolution("$handleName.invokeExact(this.segment)", "res", isAssignment = true)
                     } else {
-                        // Enum variants currently use VarHandle for strings?
-                        // Wait, EnumVariantGenerator uses vhName.get for RustString.
                         val callExpr = "$vhName.get(this.segment, $offsetName)"
                         addRustStringResolution(callExpr, "res", isAssignment = true, shouldFree = false)
                     }
@@ -191,21 +186,19 @@ object FieldBodyGenerator {
                     body.beginControlFlow("%T.ofConfined().use { arena ->", java.lang.foreign.Arena::class)
                     when (ty) {
                         is XrossType.RustString -> {
-                            body.addStatement("$handleName.invokeExact(this.segment, arena.allocateFrom(v))")
+                            body.addStatement("$handleName.invoke(this.segment, arena.allocateFrom(v))")
                         }
                         is XrossType.Optional -> {
                             body.addStatement("val allocated = if (v == null) %T.NULL else %L", MEMORY_SEGMENT, GeneratorUtils.generateAllocMsg(ty.inner, "v"))
-                            body.addStatement("$handleName.invokeExact(this.segment, allocated)")
+                            body.addStatement("$handleName.invoke(this.segment, allocated)")
                         }
                         is XrossType.Result -> {
                             body.addResultAllocation(ty, "v", "xrossRes")
-                            body.addStatement("$handleName.invokeExact(this.segment, xrossRes)")
+                            body.addStatement("$handleName.invoke(this.segment, xrossRes)")
                         }
                     }
                     body.endControlFlow()
                 } else {
-                    // fallback if handle not available?
-                    // For RustString in EnumVariant, it might not have a setter handle yet.
                     if (ty is XrossType.RustString) {
                         body.addStatement("// TODO: Setter for RustString in Enum variant via VarHandle if possible")
                     }

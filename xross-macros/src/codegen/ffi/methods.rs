@@ -186,12 +186,13 @@ pub fn add_clone_method(
     symbol_base: &str,
     package: &str,
     name: &str,
+    handle_mode: HandleMode,
 ) {
     methods.push(XrossMethod {
         name: "clone".to_string(),
         symbol: format!("{}_clone", symbol_base),
         method_type: XrossMethodType::ConstInstance,
-        handle_mode: HandleMode::Normal,
+        handle_mode,
         is_constructor: false,
         is_async: false,
         args: vec![],
@@ -201,6 +202,25 @@ pub fn add_clone_method(
         },
         safety: ThreadSafety::Lock,
         docs: vec!["Creates a clone of the native object.".to_string()],
+    });
+}
+
+pub fn add_drop_method(
+    methods: &mut Vec<XrossMethod>,
+    symbol_base: &str,
+    handle_mode: HandleMode,
+) {
+    methods.push(XrossMethod {
+        name: "drop".to_string(),
+        symbol: format!("{}_drop", symbol_base),
+        method_type: XrossMethodType::MutInstance,
+        handle_mode,
+        is_constructor: false,
+        is_async: false,
+        args: vec![],
+        ret: XrossType::Void,
+        safety: ThreadSafety::Lock,
+        docs: vec!["Drops the native object.".to_string()],
     });
 }
 

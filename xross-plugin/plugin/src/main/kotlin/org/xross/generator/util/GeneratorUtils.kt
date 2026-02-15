@@ -211,8 +211,7 @@ object GeneratorUtils {
      */
     fun getFactoryTripleType(basePackage: String): TypeName {
         val aliveFlagType = ClassName("$basePackage.xross.runtime", "AliveFlag")
-        val arenaPair = Pair::class.asClassName().parameterizedBy(ARENA, ARENA.copy(nullable = true))
-        return Triple::class.asClassName().parameterizedBy(MEMORY_SEGMENT, arenaPair, aliveFlagType)
+        return Triple::class.asClassName().parameterizedBy(MEMORY_SEGMENT, ARENA, aliveFlagType)
     }
 
     /**
@@ -237,17 +236,8 @@ object GeneratorUtils {
         aliveFlagType: TypeName,
         firstParamName: String = "ptr",
     ): FunSpec.Builder = this.addParameter(firstParamName, MEMORY_SEGMENT)
-        .addParameter("autoArena", ARENA)
-        .addParameter(
-            ParameterSpec.builder("confinedArena", ARENA.copy(nullable = true))
-                .defaultValue("null")
-                .build(),
-        )
-        .addParameter(
-            ParameterSpec.builder("sharedFlag", aliveFlagType.copy(nullable = true))
-                .defaultValue("null")
-                .build(),
-        )
+        .addParameter("arena", ARENA)
+        .addParameter("sharedFlag", aliveFlagType)
 
     /**
      * Builds the base for a 'fromPointer' method.
@@ -303,8 +293,7 @@ object GeneratorUtils {
                 .build(),
         )
         builder.addSuperclassConstructorParameter("raw")
-        builder.addSuperclassConstructorParameter("autoArena")
-        builder.addSuperclassConstructorParameter("confinedArena")
+        builder.addSuperclassConstructorParameter("arena")
         builder.addSuperclassConstructorParameter("sharedFlag")
     }
 
@@ -318,8 +307,7 @@ object GeneratorUtils {
                 .addParameter("p", tripleType)
                 .callThisConstructor(
                     CodeBlock.of("p.first"),
-                    CodeBlock.of("p.second.first"),
-                    CodeBlock.of("p.second.second"),
+                    CodeBlock.of("p.second"),
                     CodeBlock.of("p.third"),
                 )
                 .build(),

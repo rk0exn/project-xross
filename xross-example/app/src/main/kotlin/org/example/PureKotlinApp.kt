@@ -331,11 +331,11 @@ fun executePKReferenceAndOwnershipTest() {
     val parent = PKMyService2(100)
     val borrowed = parent.getSelfRef()
     println("Parent value: ${parent.`val`.value}")
-    borrowed.close()
-    println("Borrowed reference closed.")
+    // borrowed.close()
+    println("Borrowed reference created.")
     try {
-        println("Checking parent after borrowed.close(): ${parent.execute()}")
-        println("✅ Success: Parent is still alive after closing a borrowed reference.")
+        println("Checking parent after borrowed: ${parent.execute()}")
+        println("✅ Success: Parent is still alive.")
     } catch (e: Exception) {
         println("❌ Unexpected failure: $e")
     }

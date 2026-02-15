@@ -1,5 +1,5 @@
 use crate::codegen::ffi::{
-    add_clone_method, generate_common_ffi, generate_enum_aux_ffi, generate_enum_layout,
+    add_clone_method, add_drop_method, generate_common_ffi, generate_enum_aux_ffi, generate_enum_layout,
 };
 use crate::metadata::save_definition;
 use crate::types::resolver::resolve_type_with_attr;
@@ -20,14 +20,16 @@ pub fn impl_enum_derive(
 
     let layout_logic = generate_enum_layout(e);
     let is_clonable = extract_is_clonable(&e.attrs);
+    let (clone_mode, drop_mode) = extract_special_modes(&e.attrs);
 
     let mut variants = Vec::new();
     let mut methods = Vec::new();
     let mut variant_name_arms = Vec::new();
 
     if is_clonable {
-        add_clone_method(&mut methods, &symbol_base, &package, &name_str);
+        add_clone_method(&mut methods, &symbol_base, &package, &name_str, clone_mode);
     }
+    add_drop_method(&mut methods, &symbol_base, drop_mode);
 
     for v in &e.variants {
         let v_ident = &v.ident;
@@ -102,7 +104,15 @@ pub fn impl_enum_derive(
     }));
 
     let mut toks = Vec::new();
-    generate_common_ffi(name, &symbol_base, layout_logic, &mut toks, is_clonable);
+    generate_common_ffi(
+        name,
+        &symbol_base,
+        layout_logic,
+        &mut toks,
+        is_clonable,
+        clone_mode,
+        drop_mode,
+    );
 
     generate_enum_aux_ffi(name, &symbol_base, variant_name_arms, &mut toks);
     quote!(#(#toks)*)

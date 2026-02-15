@@ -1,5 +1,5 @@
 use crate::codegen::ffi::{
-    MethodFfiData, add_clone_method, build_signature, gen_field_layout_spec, generate_common_ffi,
+    MethodFfiData, add_clone_method, add_drop_method, build_signature, gen_field_layout_spec, generate_common_ffi,
     generate_enum_aux_ffi, generate_property_accessors, process_method_args, resolve_return_type,
     write_ffi_function,
 };
@@ -10,7 +10,7 @@ use crate::utils::*;
 use quote::{format_ident, quote};
 use syn::{ReturnType, Type};
 use xross_metadata::{
-    ThreadSafety, XrossDefinition, XrossEnum, XrossField, XrossMethod, XrossStruct, XrossVariant,
+    HandleMode, ThreadSafety, XrossDefinition, XrossEnum, XrossField, XrossMethod, XrossStruct, XrossVariant
 };
 
 pub fn impl_xross_class(input: XrossClassInput) -> proc_macro::TokenStream {
@@ -18,6 +18,8 @@ pub fn impl_xross_class(input: XrossClassInput) -> proc_macro::TokenStream {
     let mut name = String::new();
     let mut is_enum = false;
     let mut is_clonable = true;
+    let mut clone_mode = HandleMode::Normal;
+    let mut drop_mode = HandleMode::Normal;
     let mut is_copy = false;
     let mut fields_raw = Vec::new();
     let mut methods_raw = Vec::new();
@@ -34,11 +36,15 @@ pub fn impl_xross_class(input: XrossClassInput) -> proc_macro::TokenStream {
                 name = e;
                 is_enum = true;
             }
-            XrossClassItem::IsClonable(v) => is_clonable = v,
+            XrossClassItem::IsClonable(v, m) => {
+                is_clonable = v;
+                clone_mode = m;
+            }
             XrossClassItem::IsCopy(v) => is_copy = v,
             XrossClassItem::Field { name, ty } => fields_raw.push((name, ty)),
-            XrossClassItem::Method(sig, type_override) => methods_raw.push((sig, type_override)),
+            XrossClassItem::Method(sig, type_override, mode) => methods_raw.push((sig, type_override, mode)),
             XrossClassItem::Variants(v) => variants_raw = v,
+            XrossClassItem::DropMode(m) => drop_mode = m,
         }
     }
 
@@ -54,10 +60,11 @@ pub fn impl_xross_class(input: XrossClassInput) -> proc_macro::TokenStream {
     let mut methods_meta = Vec::new();
 
     if is_clonable {
-        add_clone_method(&mut methods_meta, &symbol_base, &package, &name);
+        add_clone_method(&mut methods_meta, &symbol_base, &package, &name, clone_mode);
     }
+    add_drop_method(&mut methods_meta, &symbol_base, drop_mode);
 
-    for (sig, type_override) in methods_raw {
+    for (sig, type_override, handle_mode) in methods_raw {
         let rust_fn_name = &sig.ident;
         let is_async = sig.asyncness.is_some();
         let mut ffi_data = MethodFfiData::new(&symbol_base, rust_fn_name);
@@ -76,7 +83,7 @@ pub fn impl_xross_class(input: XrossClassInput) -> proc_macro::TokenStream {
             name: rust_fn_name.to_string(),
             symbol: ffi_data.symbol_name.clone(),
             method_type: ffi_data.method_type,
-            handle_mode: xross_metadata::HandleMode::Normal,
+            handle_mode,
             safety: ThreadSafety::Lock,
             is_constructor,
             is_async,
@@ -98,7 +105,7 @@ pub fn impl_xross_class(input: XrossClassInput) -> proc_macro::TokenStream {
             &ret_ty,
             &sig.output,
             inner_call,
-            xross_metadata::HandleMode::Normal,
+            handle_mode,
             &mut extra_functions,
         );
     }
@@ -245,6 +252,14 @@ pub fn impl_xross_class(input: XrossClassInput) -> proc_macro::TokenStream {
         }));
         layout_logic = quote! { let mut parts = vec![format!("{}", std::mem::size_of::<#type_ident>() as u64)]; #(parts.push(#field_specs);)* parts.join(";") };
     }
-    generate_common_ffi(&type_ident, &symbol_base, layout_logic, &mut extra_functions, is_clonable);
+    generate_common_ffi(
+        &type_ident,
+        &symbol_base,
+        layout_logic,
+        &mut extra_functions,
+        is_clonable,
+        clone_mode,
+        drop_mode,
+    );
     quote! { #(#extra_functions)* }.into()
 }
