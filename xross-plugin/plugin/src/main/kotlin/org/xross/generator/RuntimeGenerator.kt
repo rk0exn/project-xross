@@ -151,6 +151,27 @@ object RuntimeGenerator {
                     .initializer("runCatching { String::class.java.getDeclaredField(\"coder\").apply { isAccessible = true } }.getOrNull()")
                     .build(),
             )
+            .addInitializerBlock(
+                CodeBlock.builder()
+                    .add("// --- Xross Runtime Initialization ---\n")
+                    .beginControlFlow("try")
+                    .addStatement("val runtime = Runtime.getRuntime()")
+                    .addStatement("val initialHeap = runtime.totalMemory()")
+                    .addStatement("val dedicatedSize = initialHeap / 2")
+                    .addStatement("val arena = %T.global()", Arena::class.asTypeName())
+                    .addStatement("val heap = arena.allocate(dedicatedSize, 4096)")
+                    .addStatement("val linker = %T.nativeLinker()", java.lang.foreign.Linker::class.asTypeName())
+                    .addStatement("val lookup = %T.loaderLookup()", java.lang.foreign.SymbolLookup::class.asTypeName())
+                    .addStatement("val initSym = lookup.find(\"xross_runtime_init\")")
+                    .beginControlFlow("if (initSym.isPresent)")
+                    .addStatement("val initHandle = linker.downcallHandle(initSym.get(), %T.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG))", java.lang.foreign.FunctionDescriptor::class.asTypeName())
+                    .addStatement("initHandle.invokeExact(heap as %T, dedicatedSize)", MEMORY_SEGMENT)
+                    .endControlFlow()
+                    .nextControlFlow("catch (e: %T)", Throwable::class.asTypeName())
+                    .addStatement("System.err.println(\"[Xross] Failed to initialize runtime: \" + e.message)")
+                    .endControlFlow()
+                    .build(),
+            )
             .addFunction(
                 FunSpec.builder("ofSmart")
                     .returns(Arena::class)
@@ -224,7 +245,19 @@ object RuntimeGenerator {
                     .addCode(
                         """
                         try {
-                            if (handle.type().returnType() == %T::class.java) {
+                            if (handle.type().returnType() == java.lang.Void.TYPE && handle.type().parameterCount() == 2) {
+                                java.lang.foreign.Arena.ofConfined().use { arena ->
+                                    val outPanic = arena.allocate(16) // XrossResult size
+                                    handle.invoke(outPanic, segment)
+                                    val isOk = outPanic.get(java.lang.foreign.ValueLayout.JAVA_BYTE, 0L) != (0).toByte()
+                                    if (!isOk) {
+                                        val ptr = outPanic.get(java.lang.foreign.ValueLayout.ADDRESS, 8L)
+                                        val msg = if (ptr == %T.NULL) "Unknown" else %T(ptr.reinterpret(24)).toString()
+                                        System.err.println("[Xross] Panic during drop: " + msg)
+                                    }
+                                }
+                            } else if (handle.type().returnType() == %T::class.java) {
+                                // Fallback for old layout-based direct return if any
                                 java.lang.foreign.Arena.ofConfined().use { arena ->
                                     val resRaw = handle.invoke(arena as java.lang.foreign.SegmentAllocator, segment) as %T
                                     val isOk = resRaw.get(java.lang.foreign.ValueLayout.JAVA_BYTE, 0L) != (0).toByte()
@@ -241,6 +274,8 @@ object RuntimeGenerator {
                             e.printStackTrace()
                         }
                         """.trimIndent(),
+                        MEMORY_SEGMENT,
+                        ClassName(pkg, "XrossString"),
                         MEMORY_SEGMENT,
                         MEMORY_SEGMENT,
                         MEMORY_SEGMENT,
@@ -387,7 +422,7 @@ object RuntimeGenerator {
         val file = FileSpec.builder(pkg, "XrossRuntime")
             .addImport("java.util.concurrent.atomic", "AtomicBoolean")
             .addImport("java.util.concurrent.locks", "ReentrantReadWriteLock")
-            .addImport("java.lang.foreign", "ValueLayout", "SegmentAllocator")
+            .addImport("java.lang.foreign", "ValueLayout", "SegmentAllocator", "Arena", "Linker", "SymbolLookup", "FunctionDescriptor")
             .addType(xrossException)
             .addType(aliveFlag)
             .addType(xrossObject)

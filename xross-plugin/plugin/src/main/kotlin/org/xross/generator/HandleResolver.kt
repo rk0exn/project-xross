@@ -32,7 +32,7 @@ object HandleResolver {
                 val isPanicable = handleMode is HandleMode.Panicable
                 val desc = when (suffix) {
                     "drop" -> if (isPanicable) {
-                        CodeBlock.of("%T.of(%L, %M)", FUNCTION_DESCRIPTOR, FFMConstants.XROSS_RESULT_LAYOUT_CODE, ADDRESS)
+                        CodeBlock.of("%T.ofVoid(%M, %M)", FUNCTION_DESCRIPTOR, ADDRESS, ADDRESS)
                     } else {
                         CodeBlock.of("%T.ofVoid(%M)", FUNCTION_DESCRIPTOR, ADDRESS)
                     }
@@ -74,15 +74,19 @@ object HandleResolver {
     private fun resolveStructHandles(init: CodeBlock.Builder, meta: XrossDefinition.Struct) {
         meta.methods.filter { it.isConstructor }.forEach { method ->
             val argLayouts = getArgLayouts(method.args)
-            val retLayout = if (method.handleMode is HandleMode.Panicable) {
-                FFMConstants.XROSS_RESULT_LAYOUT_CODE
+            val isPanicable = method.handleMode is HandleMode.Panicable
+
+            val desc = if (isPanicable) {
+                val allArgs = mutableListOf(CodeBlock.of("%M", ADDRESS))
+                allArgs.addAll(argLayouts)
+                CodeBlock.of("%T.ofVoid(%L)", FUNCTION_DESCRIPTOR, allArgs.joinToCode(", "))
             } else {
-                CodeBlock.of("%M", ADDRESS)
-            }
-            val desc = if (argLayouts.isEmpty()) {
-                CodeBlock.of("%T.of(%L)", FUNCTION_DESCRIPTOR, retLayout)
-            } else {
-                CodeBlock.of("%T.of(%L, %L)", FUNCTION_DESCRIPTOR, retLayout, argLayouts.joinToCode(", "))
+                val retLayout = CodeBlock.of("%M", ADDRESS)
+                if (argLayouts.isEmpty()) {
+                    CodeBlock.of("%T.of(%L)", FUNCTION_DESCRIPTOR, retLayout)
+                } else {
+                    CodeBlock.of("%T.of(%L, %L)", FUNCTION_DESCRIPTOR, retLayout, argLayouts.joinToCode(", "))
+                }
             }
 
             val handleName = if (method.isDefault) {
@@ -220,12 +224,15 @@ object HandleResolver {
             val isPanicable = method.handleMode is HandleMode.Panicable
             val desc = if (method.ret is XrossType.Void && !method.isAsync && !isPanicable) {
                 CodeBlock.of("%T.ofVoid(%L)", FUNCTION_DESCRIPTOR, args.joinToCode(", "))
+            } else if (isPanicable) {
+                val allArgs = mutableListOf(CodeBlock.of("%M", ADDRESS))
+                allArgs.addAll(args)
+                CodeBlock.of("%T.ofVoid(%L)", FUNCTION_DESCRIPTOR, allArgs.joinToCode(", "))
             } else {
                 val argsPart = if (args.isEmpty()) CodeBlock.of("") else CodeBlock.of(", %L", args.joinToCode(", "))
                 val retLayout = when {
                     method.isAsync -> FFMConstants.XROSS_TASK_LAYOUT_CODE
                     method.ret is XrossType.RustString -> FFMConstants.XROSS_STRING_LAYOUT_CODE
-                    isPanicable -> FFMConstants.XROSS_RESULT_LAYOUT_CODE
                     else -> method.ret.layoutCode
                 }
                 CodeBlock.of("%T.of(%L%L)", FUNCTION_DESCRIPTOR, retLayout, argsPart)

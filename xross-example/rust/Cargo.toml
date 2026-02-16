@@ -10,5 +10,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 rand = "0.10.0"
-xross-core = { path = "../../xross-core", version = "3.0.0", features = ["tokio"] }
-tokio = { version = "1.0", features = ["full"] }
+xross-core = { path = "../../xross-core", version = "3.0.0", features = ["tokio", "xross-alloc"] }
+tokio = { version = "1.49", features = ["full"] }

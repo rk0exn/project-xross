@@ -101,17 +101,23 @@ object MethodGenerator {
                 argPrep.addArgumentPreparation(arg.ty, name, callArgs, checkObjectValidity = true, basePackage = basePackage, handleMode = method.handleMode)
             }
 
-            body.add(argPrep.build())
-
             val handleName = "${method.name.toCamelCase()}Handle"
             val isPanicable = method.handleMode is HandleMode.Panicable
             val call = if (method.isAsync || method.ret is XrossType.Result || method.ret is XrossType.RustString || isPanicable) {
-                // Return value is a struct layout, so FFM requires a SegmentAllocator as the first argument.
-                CodeBlock.of(
-                    "$handleName.invokeExact(this.arena as %T, %L)",
-                    SegmentAllocator::class.asTypeName(),
-                    callArgs.joinToCode(", "),
-                )
+                if (isPanicable) {
+                    val alloc = if (needsArena) "arena" else "this.arena"
+                    argPrep.addStatement("val outPanic = ($alloc as %T).allocate(%L)", java.lang.foreign.SegmentAllocator::class.asTypeName(), FFMConstants.XROSS_RESULT_LAYOUT_CODE)
+                    val pArgs = mutableListOf(CodeBlock.of("outPanic"))
+                    pArgs.addAll(callArgs)
+                    argPrep.addStatement("$handleName.invokeExact(%L)", pArgs.joinToCode(", "))
+                    CodeBlock.of("outPanic")
+                } else {
+                    CodeBlock.of(
+                        "$handleName.invokeExact(this.arena as %T, %L)",
+                        java.lang.foreign.SegmentAllocator::class.asTypeName(),
+                        callArgs.joinToCode(", "),
+                    )
+                }
             } else {
                 if (method.ret is XrossType.Void) {
                     // Use invoke for Void to avoid Descriptor mismatch in Kotlin
@@ -120,6 +126,8 @@ object MethodGenerator {
                     CodeBlock.of("$handleName.invokeExact(%L)", callArgs.joinToCode(", "))
                 }
             }
+
+            body.add(argPrep.build())
             body.add(InvocationGenerator.applyMethodCall(method, call, returnType, selfType, basePackage, meta = meta))
 
             if (needsArena) body.endControlFlow()

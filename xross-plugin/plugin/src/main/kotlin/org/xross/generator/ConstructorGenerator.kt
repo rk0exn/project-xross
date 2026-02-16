@@ -64,7 +64,15 @@ object ConstructorGenerator {
 
         val isPanicable = method.handleMode is HandleMode.Panicable
         val handleCall = if (method.isAsync || method.ret is XrossType.Result || isPanicable) {
-            CodeBlock.of("$handleName.invokeExact(newOwnerArena as %T, %L)", java.lang.foreign.SegmentAllocator::class.asTypeName(), callArgs.joinToCode(", "))
+            if (isPanicable) {
+                body.addStatement("val outPanic = (newOwnerArena as %T).allocate(%L)", java.lang.foreign.SegmentAllocator::class.asTypeName(), org.xross.generator.util.FFMConstants.XROSS_RESULT_LAYOUT_CODE)
+                val pArgs = mutableListOf(CodeBlock.of("outPanic"))
+                pArgs.addAll(callArgs)
+                body.addStatement("$handleName.invokeExact(%L)", pArgs.joinToCode(", "))
+                CodeBlock.of("outPanic")
+            } else {
+                CodeBlock.of("$handleName.invokeExact(newOwnerArena as %T, %L)", java.lang.foreign.SegmentAllocator::class.asTypeName(), callArgs.joinToCode(", "))
+            }
         } else {
             CodeBlock.of("$handleName.invokeExact(%L)", callArgs.joinToCode(", "))
         }

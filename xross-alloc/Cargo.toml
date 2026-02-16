@@ -11,6 +11,8 @@ rpmalloc = { version = "0.2.2" }
 snmalloc-rs = { version = "0.3.8" }
 tcmalloc = { version = "0.3.0" }
 rand = "0.10.0"
+rlsf = { version = "0.2", optional = true }
+spin = "0.10"
 
 [features]
 default = ["multi-thread"]
@@ -20,3 +22,4 @@ mimalloc = []
 rpmalloc = []
 snmalloc = []
 tcmalloc = []
+jvmalloc = ["dep:rlsf"]

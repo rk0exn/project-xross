@@ -122,9 +122,10 @@ pub fn write_ffi_function(
 
         toks.push(quote! {
             #[unsafe(no_mangle)]
-            pub unsafe extern "C" fn #export_ident(#(#c_args),*) -> xross_core::XrossResult {
+            pub unsafe extern "C" fn #export_ident(out: *mut xross_core::XrossResult, #(#c_args),*) {
                 #(#conv_logic)*
-                #panic_handling
+                let res = { #panic_handling };
+                std::ptr::write(out, res);
             }
         });
     } else {

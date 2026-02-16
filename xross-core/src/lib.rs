@@ -7,6 +7,10 @@ pub use xross_macros::{
 #[cfg(feature = "xross-alloc")]
 pub use xross_alloc::xross_alloc_init;
 
+#[cfg(feature = "xross-alloc")]
+#[global_allocator]
+static ALLOC: xross_alloc::XrossAlloc = xross_alloc::XrossAlloc::new();
+
 #[repr(C)]
 pub struct XrossResult {
     pub is_ok: bool,
