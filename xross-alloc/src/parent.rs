@@ -1,9 +1,9 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 
 /// バックエンドとなるアロケータを抽象化する構造体
-pub struct NativeAlloc;
+pub struct ParentAlloc;
 
-unsafe impl GlobalAlloc for NativeAlloc {
+unsafe impl GlobalAlloc for ParentAlloc {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         #[cfg(feature = "jemalloc")]
         return unsafe { jemallocator::Jemalloc.alloc(layout) };

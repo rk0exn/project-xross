@@ -86,12 +86,48 @@ impl Default for UnknownStruct {
     }
 }
 
+#[derive(XrossClass)]
+#[xross_package("fast")]
+pub struct FastStruct {
+    #[xross_field(safety = Direct, unsafe)]
+    pub data: i32,
+    #[xross_field(safety = Direct, unsafe)]
+    pub name: String,
+}
+
+#[xross_methods]
+impl FastStruct {
+    #[xross_new]
+    pub fn new(data: i32, name: String) -> Self {
+        Self { data, name }
+    }
+
+    #[xross_method(critical(heap_access))]
+    pub fn count_chars(&self, s: String) -> i32 {
+        // In zero-copy mode, 's' was reconstructed from XrossStringView
+        // which pointed directly to JVM heap.
+        s.chars().count() as i32
+    }
+}
+
 #[xross_methods]
 impl UnknownStruct {
+    #[xross_default]
+    #[allow(clippy::should_implement_trait)]
+    pub fn default() -> Self {
+        <Self as Default>::default()
+    }
+
     #[xross_new]
     pub fn new(i: i32, s: String, f: f32) -> Self {
         UNKNOWN_STRUCT_COUNT.fetch_add(1, Ordering::SeqCst);
         Self { i, s, f }
+    }
+
+    #[xross_new]
+    pub fn with_int(i: i32) -> Self {
+        UNKNOWN_STRUCT_COUNT.fetch_add(1, Ordering::SeqCst);
+        Self { i, s: "From Int".to_string(), f: 0.0 }
     }
 
     #[xross_method]
@@ -222,8 +258,8 @@ impl MyService {
     }
 
     #[xross_method(panicable)]
-    pub fn cause_panic(&self, should_panic: bool) -> String {
-        if should_panic {
+    pub fn cause_panic(&self, should_panic: u8) -> String {
+        if should_panic != 0 {
             panic!("Intentional panic from Rust!");
         }
         "No panic today".to_string()
@@ -365,6 +401,7 @@ xross_class! {
     class struct ExternalStruct;
     is_clonable true;
     field value: i32;
+    field name: String;
     method ExternalStruct.new(value: i32, name: String) -> ExternalStruct;
     method &self.get_value() -> i32;
     method &mut self.set_value(v: i32);

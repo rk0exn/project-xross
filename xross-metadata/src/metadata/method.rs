@@ -19,6 +19,8 @@ pub struct XrossMethod {
     pub handle_mode: HandleMode,
     /// Whether this method is a constructor.
     pub is_constructor: bool,
+    /// Whether this method is the default constructor.
+    pub is_default: bool,
     /// Whether this method is asynchronous.
     pub is_async: bool,
     /// Arguments of the method.

@@ -20,15 +20,15 @@ fun CodeBlock.Builder.addResourceConstruction(
         // 1オブジェクトにつき Arena 1つのみ。
         addStatement("val retOwnerArena = %T.ofSmart()", xrossRuntime)
         addStatement("val flag = %T(initial = true, isPersistent = false)", flagType)
-        
+
         addStatement("val dh = %L", dropExpr)
         addStatement(
             "val res = %L.reinterpret(%L, retOwnerArena) { s -> %T.invokeDrop(dh, s) }",
             resRaw,
             sizeExpr,
-            xrossRuntime
+            xrossRuntime,
         )
-        
+
         // オブジェクト作成 (XrossNativeObject の init で Cleaner に登録される)
         addStatement("val resObj = %L(res, retOwnerArena, flag)", fromPointerExpr)
         addStatement("resObj")
@@ -50,22 +50,28 @@ fun CodeBlock.Builder.addFactoryBody(
     structSizeExpr: CodeBlock,
     dropHandleExpr: CodeBlock,
     isPersistent: Boolean = false,
-    handleMode: org.xross.structures.HandleMode = org.xross.structures.HandleMode.Normal
+    handleMode: org.xross.structures.HandleMode = org.xross.structures.HandleMode.Normal,
+    externalArena: CodeBlock? = null,
 ): CodeBlock.Builder {
     val runtimePkg = "$basePackage.xross.runtime"
     val aliveFlagType = ClassName(runtimePkg, "AliveFlag")
     val xrossRuntime = ClassName(runtimePkg, "XrossRuntime")
     val memorySegment = ClassName("java.lang.foreign", "MemorySegment")
 
-    addStatement("val newOwnerArena = %T.ofSmart()", xrossRuntime)
-    addStatement("val flag = %T(initial = true, isPersistent = %L)", aliveFlagType, isPersistent)
+    if (externalArena != null) {
+        addStatement("val newOwnerArena = %L ?: %T.ofSmart()", externalArena, xrossRuntime)
+        addStatement("val flag = %T(initial = true, isPersistent = %L || %L != null)", aliveFlagType, isPersistent, externalArena)
+    } else {
+        addStatement("val newOwnerArena = %T.ofSmart()", xrossRuntime)
+        addStatement("val flag = %T(initial = true, isPersistent = %L)", aliveFlagType, isPersistent)
+    }
 
     if (handleMode is org.xross.structures.HandleMode.Panicable) {
         addStatement("val resRawObj = %L as %T", handleCall, memorySegment)
         addStatement("val isOk = resRawObj.get(java.lang.foreign.ValueLayout.JAVA_BYTE, 0L) != (0).toByte()")
         addStatement("val resRaw = resRawObj.get(java.lang.foreign.ValueLayout.ADDRESS, 8L)")
         beginControlFlow("if (!isOk)")
-        addRustStringResolution("resRaw", "errVal")
+        addRustStringResolution("resRaw", "errVal", basePackage = basePackage)
         addStatement("throw %T(errVal)", ClassName(runtimePkg, "XrossException"))
         endControlFlow()
     } else {
@@ -78,14 +84,14 @@ fun CodeBlock.Builder.addFactoryBody(
         RuntimeException::class.asTypeName(),
         "Fail",
     )
-    
+
     addStatement("val dh = %L", dropHandleExpr)
     addStatement(
         "val res = resRaw.reinterpret(%L, newOwnerArena) { s -> %T.invokeDrop(dh, s) }",
         structSizeExpr,
-        xrossRuntime
+        xrossRuntime,
     )
-    
+
     return this
 }
 
@@ -105,8 +111,14 @@ fun CodeBlock.Builder.addResultAllocation(
     return this
 }
 
-fun CodeBlock.Builder.addRustStringResolution(call: Any, resultVar: String = "str", isAssignment: Boolean = false, shouldFree: Boolean = true): CodeBlock.Builder {
-    val resRawName = if (call is String && call.endsWith("Raw")) call else "${resultVar}RawInternal"
+fun CodeBlock.Builder.addRustStringResolution(
+    call: Any,
+    resultVar: String = "str",
+    isAssignment: Boolean = false,
+    shouldFree: Boolean = true,
+    basePackage: String = "org.example",
+): CodeBlock.Builder {
+    val resRawName = if (call is String && call.endsWith("RawInternal")) call else "${resultVar}RawInternal"
     if (!(call is String && call == resRawName)) {
         if (call == "it") {
             addStatement("val $resRawName = %L", call)
@@ -114,16 +126,21 @@ fun CodeBlock.Builder.addRustStringResolution(call: Any, resultVar: String = "st
             addStatement("val $resRawName = %L as %T", call, MEMORY_SEGMENT)
         }
     }
-    val declaration = if (isAssignment) "" else "val "
+
+    // Check if it's a pointer to XrossString or XrossString itself
+    addStatement("val xsSeg = if ($resRawName.byteSize() < 24) $resRawName.reinterpret(24) else $resRawName")
+
+    // Convert to XrossString helper
+    val decl = if (isAssignment) "" else "val "
     addStatement(
-        "%L%L = if ($resRawName == %T.NULL) \"\" else $resRawName.reinterpret(%T.MAX_VALUE).getString(0)",
-        declaration,
+        "%L%L = if ($resRawName == %T.NULL) \"\" else %T(xsSeg).toString()",
+        decl,
         resultVar,
         MEMORY_SEGMENT,
-        Long::class.asTypeName(),
+        ClassName("$basePackage.xross.runtime", "XrossString"),
     )
     if (shouldFree) {
-        addStatement("if ($resRawName != %T.NULL) xrossFreeStringHandle.invoke($resRawName)", MEMORY_SEGMENT)
+        addStatement("if ($resRawName != %T.NULL) xrossFreeStringHandle.invoke(xsSeg)", MEMORY_SEGMENT)
     }
     return this
 }
@@ -147,7 +164,7 @@ fun CodeBlock.Builder.addResultVariantResolution(
             addResourceConstruction(type, ptrName, sizeExpr, fromPointerExpr, dropExpr, flagType)
         }
         is XrossType.RustString -> {
-            addRustStringResolution(ptrName)
+            addRustStringResolution(ptrName, basePackage = basePackage)
             addStatement("str")
         }
         is XrossType.F32 -> {
@@ -189,11 +206,46 @@ fun CodeBlock.Builder.addArgumentPreparation(
     name: String,
     callArgs: MutableList<CodeBlock>,
     checkObjectValidity: Boolean = false,
+    basePackage: String = "org.example",
+    handleMode: org.xross.structures.HandleMode = org.xross.structures.HandleMode.Normal,
 ) {
+    val runtimePkg = "$basePackage.xross.runtime"
+    val xrossRuntime = ClassName(runtimePkg, "XrossRuntime")
+
     when (type) {
         is XrossType.RustString -> {
-            addStatement("val ${name}Memory = arena.allocateFrom($name)")
-            callArgs.add(CodeBlock.of("${name}Memory"))
+            val isHeapCritical = handleMode is org.xross.structures.HandleMode.Critical && handleMode.allowHeapAccess
+
+            if (isHeapCritical) {
+                // True Zero-Copy: Pass heap segment directly
+                addStatement("val ${name}Value = %T.getStringValue($name)", xrossRuntime)
+                addStatement("val ${name}Coder = %T.getStringCoder($name)", xrossRuntime)
+                addStatement("var ${name}FinalSeg: %T = %T.NULL", MEMORY_SEGMENT, MEMORY_SEGMENT)
+                addStatement("var ${name}FinalLen: Long = 0L")
+                addStatement("var ${name}FinalEnc: Byte = 0")
+
+                beginControlFlow("if (${name}Value != null)")
+                addStatement("${name}FinalSeg = %T.ofArray(${name}Value)", MEMORY_SEGMENT)
+                addStatement("${name}FinalLen = $name.length.toLong()")
+                addStatement("${name}FinalEnc = ${name}Coder")
+                nextControlFlow("else")
+                // Fallback if reflection fails
+                addStatement("val ${name}Buf = arena.allocateFrom($name)")
+                addStatement("${name}FinalSeg = ${name}Buf")
+                addStatement("${name}FinalLen = ${name}Buf.byteSize()")
+                addStatement("${name}FinalEnc = 0")
+                endControlFlow()
+
+                callArgs.add(CodeBlock.of("${name}FinalSeg"))
+                callArgs.add(CodeBlock.of("${name}FinalLen"))
+                callArgs.add(CodeBlock.of("${name}FinalEnc"))
+            } else {
+                // Optimized Copy
+                addStatement("val ${name}Buffer = arena.allocateFrom($name)")
+                callArgs.add(CodeBlock.of("${name}Buffer"))
+                callArgs.add(CodeBlock.of("$name.length.toLong()"))
+                callArgs.add(CodeBlock.of("%T.getStringCoder($name)", xrossRuntime))
+            }
         }
 
         is XrossType.Object -> {

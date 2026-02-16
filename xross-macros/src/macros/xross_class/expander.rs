@@ -89,6 +89,7 @@ pub fn impl_xross_class(input: XrossClassInput) -> proc_macro::TokenStream {
             handle_mode,
             safety: ThreadSafety::Lock,
             is_constructor,
+            is_default: false,
             is_async,
             args: ffi_data.args_meta.clone(),
             ret: ret_ty.clone(),

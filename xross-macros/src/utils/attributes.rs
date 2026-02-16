@@ -44,7 +44,11 @@ pub fn extract_handle_mode(attrs: &[Attribute]) -> HandleMode {
 
     for attr in attrs {
         let path = attr.path();
-        if path.is_ident("xross_method") || path.is_ident("xross_new") || path.is_ident("xross") {
+        if path.is_ident("xross_method")
+            || path.is_ident("xross_new")
+            || path.is_ident("xross_default")
+            || path.is_ident("xross")
+        {
             let _ = attr.parse_nested_meta(|meta| {
                 if meta.path.is_ident("critical") {
                     let allow_heap_access = parse_critical_nested(&meta)?;
@@ -165,26 +169,41 @@ pub fn extract_docs(attrs: &[Attribute]) -> Vec<String> {
 }
 
 pub fn extract_safety_attr(attrs: &[Attribute], default: ThreadSafety) -> ThreadSafety {
+    let mut safety = default;
+    let mut is_unsafe_acknowledged = false;
+
     for attr in attrs {
-        if attr.path().is_ident("xross_field") || attr.path().is_ident("xross_method") {
-            let mut safety = default;
+        if attr.path().is_ident("xross_field")
+            || attr.path().is_ident("xross_method")
+            || attr.path().is_ident("xross")
+        {
             let _ = attr.parse_nested_meta(|meta| {
                 if meta.path.is_ident("safety") {
                     let value = meta.value()?.parse::<syn::Ident>()?;
                     safety = match value.to_string().as_str() {
                         "Unsafe" => ThreadSafety::Unsafe,
+                        "Direct" => ThreadSafety::Direct,
                         "Atomic" => ThreadSafety::Atomic,
                         "Immutable" => ThreadSafety::Immutable,
                         "Lock" => ThreadSafety::Lock,
                         _ => default,
                     };
+                } else if meta.path.is_ident("unsafe") {
+                    is_unsafe_acknowledged = true;
                 }
                 Ok(())
             });
-            return safety;
         }
     }
-    default
+
+    if (safety == ThreadSafety::Unsafe || safety == ThreadSafety::Direct) && !is_unsafe_acknowledged
+    {
+        panic!(
+            "Using safety level 'Unsafe' or 'Direct' requires an explicit 'unsafe' attribute. e.g. #[xross_method(safety = Direct, unsafe)]"
+        );
+    }
+
+    safety
 }
 
 pub fn extract_inner_type(ty: &syn::Type) -> &syn::Type {

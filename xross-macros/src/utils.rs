@@ -38,6 +38,7 @@ pub fn register_xross_function(
         handle_mode,
         safety,
         is_constructor: false,
+        is_default: false,
         is_async: ffi_data.is_async,
         args: ffi_data.args_meta.clone(),
         ret: ret_ty.clone(),

@@ -35,7 +35,8 @@ pub fn generate_common_ffi(
                         let msg = if let Some(s) = panic_err.downcast_ref::<&str>() { s.to_string() }
                         else if let Some(s) = panic_err.downcast_ref::<String>() { s.clone() }
                         else { "Unknown panic during drop".to_string() };
-                        xross_core::XrossResult { is_ok: false, ptr: std::ffi::CString::new(msg).unwrap_or_default().into_raw() as *mut std::ffi::c_void }
+                        let xs = xross_core::XrossString::from(msg);
+                        xross_core::XrossResult { is_ok: false, ptr: Box::into_raw(Box::new(xs)) as *mut std::ffi::c_void }
                     }
                 }
             }
@@ -67,7 +68,8 @@ pub fn generate_common_ffi(
                             let msg = if let Some(s) = panic_err.downcast_ref::<&str>() { s.to_string() }
                             else if let Some(s) = panic_err.downcast_ref::<String>() { s.clone() }
                             else { "Unknown panic during clone".to_string() };
-                            xross_core::XrossResult { is_ok: false, ptr: std::ffi::CString::new(msg).unwrap_or_default().into_raw() as *mut std::ffi::c_void }
+                            let xs = xross_core::XrossString::from(msg);
+                            xross_core::XrossResult { is_ok: false, ptr: Box::into_raw(Box::new(xs)) as *mut std::ffi::c_void }
                         }
                     }
                 }
@@ -88,9 +90,9 @@ pub fn generate_common_ffi(
 
     toks.push(quote! {
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn #layout_id() -> *mut std::ffi::c_char {
+        pub unsafe extern "C" fn #layout_id() -> xross_core::XrossString {
             let s = <#name as #trait_name>::xross_layout();
-            std::ffi::CString::new(s).unwrap().into_raw()
+            xross_core::XrossString::from(s)
         }
     });
 }
@@ -112,11 +114,11 @@ pub fn generate_enum_aux_ffi(
         }
 
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn #variant_name_fn_id(ptr: *const #type_ident) -> *mut std::ffi::c_char {
-            if ptr.is_null() { return std::ptr::null_mut(); }
+        pub unsafe extern "C" fn #variant_name_fn_id(ptr: *const #type_ident) -> xross_core::XrossString {
+            if ptr.is_null() { return xross_core::XrossString::from(String::new()); }
             let val = &*ptr;
             let name = match val { #(#variant_name_arms),* };
-            std::ffi::CString::new(name).unwrap().into_raw()
+            xross_core::XrossString::from(name.to_string())
         }
     });
 }

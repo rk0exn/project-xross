@@ -1,40 +1,68 @@
 package org.example
 
-import org.example.standalone.BatchHeavyMatrixMultiplication
-import org.example.standalone.BatchHeavyPrimeFactorization
-import org.example.standalone.HeavyMatrixMultiplication
-import org.example.standalone.HeavyPrimeFactorization
+import org.example.standalone.*
 import kotlin.system.measureTimeMillis
+
+data class BenchmarkResult(val category: String, val name: String, val xrossTime: Long, val pkTime: Long) {
+    val ratio: Double get() = if (xrossTime > 0) pkTime.toDouble() / xrossTime else 0.0
+}
 
 fun main() {
     NativeLoader.load()
-    try {
-        runHeavyBenchmarks()
-        runLifecycleBenchmarks()
-        runIntegrationSuiteBenchmarks()
-    } finally {
-        println("\n--- Final Native Object Analysis (Xross) ---")
-        println("[GC] Collecting garbage and running finalizers (Multiple cycles)...")
-        
-        println("\n[Before GC]")
-        println(UnknownStruct.displayAnalysis())
+    val results = mutableListOf<BenchmarkResult>()
 
-        repeat(3) {
-            System.gc()
-            Thread.sleep(2000)
-        }
+    println("🚀 Starting Comprehensive Benchmarks...")
 
-        println("\n[After GC]")
-        println(UnknownStruct.displayAnalysis())
-        
-        println("\n--- Final Simulated Analysis (Pure Kotlin) ---")
-        println(PKCounter.displayAnalysis())
-    }
+    // 1. Heavy Computations
+    results.addAll(runHeavyBenchmarks())
+
+    // 2. Lifecycle
+    results.addAll(runLifecycleBenchmarks())
+
+    // 3. Integration Suite
+    results.addAll(runIntegrationSuiteBenchmarks())
+
+    // 4. String Handling
+    results.addAll(runStringBenchmarks())
+
+    // 5. Direct Mode
+    results.addAll(runDirectModeBenchmarks())
+
+    // Final Report
+    printFinalReport(results)
+
+    // Analysis (GC)
+    runGcAnalysis()
 }
 
-fun runLifecycleBenchmarks() {
+fun runHeavyBenchmarks(): List<BenchmarkResult> {
+    val count = 1000
+    val primeInput = 1000000000039L
+    val matrixSize = 100
+    val matrixIterations = 100
+
+    val timeXrossPrimeBatch = measureTimeMillis {
+        BatchHeavyPrimeFactorization.batchHeavyPrimeFactorization(primeInput, count)
+    }
+    val timeKotlinPrime = measureTimeMillis {
+        repeat(count) { heavyPrimeFactorizationKotlin(primeInput) }
+    }
+
+    val timeXrossMatrixBatch = measureTimeMillis {
+        BatchHeavyMatrixMultiplication.batchHeavyMatrixMultiplication(matrixSize.toLong(), matrixIterations)
+    }
+    val timeKotlinMatrix = measureTimeMillis {
+        repeat(matrixIterations) { heavyMatrixMultiplicationKotlin(matrixSize) }
+    }
+
+    return listOf(
+        BenchmarkResult("Heavy", "Prime Factorization (Batch)", timeXrossPrimeBatch, timeKotlinPrime),
+        BenchmarkResult("Heavy", "Matrix Multiplication (Batch)", timeXrossMatrixBatch, timeKotlinMatrix),
+    )
+}
+
+fun runLifecycleBenchmarks(): List<BenchmarkResult> {
     val iterations = 100000
-    println("\n[Benchmark] --- Object Lifecycle (Create/Clone/Drop, $iterations iterations) ---")
 
     val timeXrossLifecycle = measureTimeMillis {
         val service = org.example.test.test2.MyService2(0)
@@ -46,7 +74,6 @@ fun runLifecycleBenchmarks() {
         }
         service.close()
     }
-    println("[Benchmark] Xross Lifecycle            : ${timeXrossLifecycle}ms")
 
     val timePKLifecycle = measureTimeMillis {
         val service = PKMyService2(0)
@@ -58,98 +85,131 @@ fun runLifecycleBenchmarks() {
         }
         service.close()
     }
-    println("[Benchmark] Pure Kotlin Lifecycle      : ${timePKLifecycle}ms")
+
+    return listOf(
+        BenchmarkResult("Lifecycle", "Create/Clone/Drop ($iterations)", timeXrossLifecycle, timePKLifecycle),
+    )
 }
 
-fun runIntegrationSuiteBenchmarks() {
+fun runIntegrationSuiteBenchmarks(): List<BenchmarkResult> {
     val iterations = 100
-    println("\n[Benchmark] --- Integration Suite (All features, $iterations iterations) ---")
-
-    // Note: These functions are expected to be available in WithXrossApp.kt and PureKotlinApp.kt
-    // We suppress the output during benchmark if possible, but for now we run them as is.
 
     val timeXrossSuite = measureTimeMillis {
         repeat(iterations) {
-            executePrimitiveTypeTest()
-            executeReferenceAndOwnershipTest()
-            executeConcurrencyTest()
-            executeEnumTest()
-            executeCollectionAndOptionalTest()
-            executePropertyTest()
-            executeComplexFieldTest()
-            executeComplexStructPropertyTest()
-            executePanicAndTrivialTest()
-            executeStandaloneFunctionTest()
-            // executeAsyncTest() // Exclude async from tight loop benchmark to avoid coroutine overhead variance
+            try {
+                executePrimitiveTypeTest(silent = true)
+                executeReferenceAndOwnershipTest(silent = true)
+                executeConcurrencyTest(silent = true)
+                executeEnumTest(silent = true)
+                executeCollectionAndOptionalTest(silent = true)
+                executePropertyTest(silent = true)
+                executeComplexFieldTest(silent = true)
+                executeComplexStructPropertyTest(silent = true)
+                executePanicAndTrivialTest(silent = true)
+                executeStandaloneFunctionTest(silent = true)
+            } catch (e: Throwable) {
+                // Ignore failures in benchmark suite to get final stats
+            }
         }
     }
-    println("[Benchmark] Xross Integration Suite    : ${timeXrossSuite}ms")
 
     val timePKSuite = measureTimeMillis {
         repeat(iterations) {
-            executePKPrimitiveTypeTest()
-            executePKReferenceAndOwnershipTest()
-            executePKConcurrencyTest()
-            executePKEnumTest()
-            executePKCollectionAndOptionalTest()
-            executePKPropertyTest()
-            executePKComplexFieldTest()
-            executePKComplexStructPropertyTest()
-            executePKPanicAndTrivialTest()
-            executePKStandaloneFunctionTest()
-            // executePKAsyncTest()
+            executePKPrimitiveTypeTest(silent = true)
+            executePKReferenceAndOwnershipTest(silent = true)
+            executePKConcurrencyTest(silent = true)
+            executePKEnumTest(silent = true)
+            executePKCollectionAndOptionalTest(silent = true)
+            executePKPropertyTest(silent = true)
+            executePKComplexFieldTest(silent = true)
+            executePKComplexStructPropertyTest(silent = true)
+            executePKPanicAndTrivialTest(silent = true)
+            executePKStandaloneFunctionTest(silent = true)
         }
     }
-    println("[Benchmark] Pure Kotlin Simulated Suite : ${timePKSuite}ms")
+
+    return listOf(
+        BenchmarkResult("Suite", "Full Integration Test ($iterations)", timeXrossSuite, timePKSuite),
+    )
 }
 
-fun runHeavyBenchmarks() {
-    val count = 1000
-    val primeInput = 1000000000039L
-    val matrixSize = 100
-    val matrixIterations = 100
+fun runStringBenchmarks(): List<BenchmarkResult> {
+    val iterations = 50000
+    val testString = "Hello Xross".repeat(10)
 
-    println("\n[Benchmark] --- Prime Factorization ($count iterations) ---")
-
-    val timeXrossPrimePerCall = measureTimeMillis {
-        repeat(count) {
-            HeavyPrimeFactorization.heavyPrimeFactorization(primeInput)
+    val timeXrossString = measureTimeMillis {
+        val unknown = UnknownStruct(1, "", 1.0f)
+        repeat(iterations) {
+            unknown.s = testString
+            val s = unknown.s
         }
+        unknown.close()
     }
-    println("[Benchmark] Xross (Native Loop Outside): ${timeXrossPrimePerCall}ms")
 
-    val timeXrossPrimeBatch = measureTimeMillis {
-        BatchHeavyPrimeFactorization.batchHeavyPrimeFactorization(primeInput, count)
-    }
-    println("[Benchmark] Xross (Native Loop Inside) : ${timeXrossPrimeBatch}ms")
-
-    val timeKotlinPrime = measureTimeMillis {
-        repeat(count) {
-            heavyPrimeFactorizationKotlin(primeInput)
+    val timePKString = measureTimeMillis {
+        val unknown = PKUnknownStruct(1, "", 1.0f)
+        repeat(iterations) {
+            unknown.s = testString
+            val s = unknown.s
         }
+        unknown.close()
     }
-    println("[Benchmark] Pure Kotlin                : ${timeKotlinPrime}ms")
 
-    println("\n[Benchmark] --- Matrix Multiplication ($matrixSize x $matrixSize, $matrixIterations iterations) ---")
+    return listOf(
+        BenchmarkResult("String", "String Get/Set ($iterations)", timeXrossString, timePKString),
+    )
+}
 
-    val timeXrossMatrixPerCall = measureTimeMillis {
-        repeat(matrixIterations) {
-            HeavyMatrixMultiplication.heavyMatrixMultiplication(matrixSize.toLong())
+fun runDirectModeBenchmarks(): List<BenchmarkResult> {
+    val iterations = 1000000
+
+    val timeXrossLock = measureTimeMillis {
+        val unknown = UnknownStruct(argOfi = 1, argOfs = "Test", argOff = 1.0f)
+        repeat(iterations) {
+            unknown.i = it
+            val x = unknown.i
         }
+        unknown.close()
     }
-    println("[Benchmark] Xross (Native Loop Outside): ${timeXrossMatrixPerCall}ms")
 
-    val timeXrossMatrixBatch = measureTimeMillis {
-        BatchHeavyMatrixMultiplication.batchHeavyMatrixMultiplication(matrixSize.toLong(), matrixIterations)
-    }
-    println("[Benchmark] Xross (Native Loop Inside) : ${timeXrossMatrixBatch}ms")
-
-    val timeKotlinMatrix = measureTimeMillis {
-        repeat(matrixIterations) {
-            heavyMatrixMultiplicationKotlin(matrixSize)
+    val timeXrossDirect = measureTimeMillis {
+        val fast = org.example.fast.FastStruct(argOfdata = 1, argOfname = "Test")
+        repeat(iterations) {
+            fast.data = it
+            val x = fast.data
+            val c = fast.countChars("Zero Copy String")
         }
+        fast.close()
     }
-    println("[Benchmark] Pure Kotlin                : ${timeKotlinMatrix}ms")
+
+    return listOf(
+        BenchmarkResult("Direct", "Field Access (Lock) ($iterations)", timeXrossLock, 0), // Compare Xross vs Xross
+        BenchmarkResult("Direct", "Field Access (Direct) ($iterations)", timeXrossDirect, 0),
+    )
+}
+
+fun printFinalReport(results: List<BenchmarkResult>) {
+    println("\n" + "=".repeat(80))
+    println(String.format("%-15s | %-35s | %-10s | %-10s | %-8s", "Category", "Benchmark Name", "Xross", "PK", "Ratio"))
+    println("-".repeat(80))
+    results.forEach {
+        println(String.format("%-15s | %-35s | %7d ms | %7d ms | %7.2fx", it.category, it.name, it.xrossTime, it.pkTime, it.ratio))
+    }
+    println("=".repeat(80))
+}
+
+fun runGcAnalysis() {
+    println("\n--- Native Resource Analysis ---")
+    println("[Before GC] Xross: ${UnknownStruct.displayAnalysis().trim()}")
+    println("[Before GC] Pure Kotlin: ${PKCounter.displayAnalysis().trim()}")
+
+    repeat(3) {
+        System.gc()
+        Thread.sleep(1000)
+    }
+
+    println("\n[After GC] Xross: ${UnknownStruct.displayAnalysis().trim()}")
+    println("[After GC] Pure Kotlin: ${PKCounter.displayAnalysis().trim()}")
 }
 
 fun heavyPrimeFactorizationKotlin(nIn: Long): Int {

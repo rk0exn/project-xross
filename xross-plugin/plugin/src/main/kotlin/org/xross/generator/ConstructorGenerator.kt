@@ -19,10 +19,25 @@ object ConstructorGenerator {
         companionBuilder: TypeSpec.Builder,
         method: XrossMethod,
         basePackage: String,
+        selfType: ClassName,
     ) {
         val tripleType = GeneratorUtils.getFactoryTripleType(basePackage)
+        val handleName = if (method.isDefault) {
+            "defaultHandle"
+        } else if (method.name == "new") {
+            "newHandle"
+        } else {
+            "${method.name.toCamelCase()}Handle"
+        }
+        val internalName = if (method.isDefault) {
+            "xrossDefaultInternal"
+        } else if (method.name == "new") {
+            "xrossNewInternal"
+        } else {
+            "xrossNew${method.name.toCamelCase().replaceFirstChar { it.uppercase() }}Internal"
+        }
 
-        val factoryBuilder = FunSpec.builder("xrossNewInternal").addModifiers(KModifier.PRIVATE)
+        val factoryBuilder = FunSpec.builder(internalName).addModifiers(KModifier.PRIVATE)
             .addParameters(
                 method.args.map {
                     ParameterSpec.builder(
@@ -31,6 +46,7 @@ object ConstructorGenerator {
                     ).build()
                 },
             )
+            .addParameter(ParameterSpec.builder("externalArena", Arena::class.asTypeName().copy(nullable = true)).defaultValue("null").build())
             .returns(tripleType)
 
         val body = CodeBlock.builder()
@@ -43,14 +59,14 @@ object ConstructorGenerator {
 
         method.args.forEach { arg ->
             val name = "argOf" + arg.name.toCamelCase()
-            body.addArgumentPreparation(arg.ty, name, callArgs)
+            body.addArgumentPreparation(arg.ty, name, callArgs, basePackage = basePackage, handleMode = method.handleMode)
         }
 
         val isPanicable = method.handleMode is HandleMode.Panicable
         val handleCall = if (method.isAsync || method.ret is XrossType.Result || isPanicable) {
-            CodeBlock.of("newHandle.invokeExact(newOwnerArena as %T, %L)", java.lang.foreign.SegmentAllocator::class.asTypeName(), callArgs.joinToCode(", "))
+            CodeBlock.of("$handleName.invokeExact(newOwnerArena as %T, %L)", java.lang.foreign.SegmentAllocator::class.asTypeName(), callArgs.joinToCode(", "))
         } else {
-            CodeBlock.of("newHandle.invokeExact(%L)", callArgs.joinToCode(", "))
+            CodeBlock.of("$handleName.invokeExact(%L)", callArgs.joinToCode(", "))
         }
 
         body.addFactoryBody(
@@ -58,9 +74,10 @@ object ConstructorGenerator {
             handleCall,
             CodeBlock.of("STRUCT_SIZE"),
             CodeBlock.of("dropHandle"),
-            handleMode = method.handleMode
+            handleMode = method.handleMode,
+            externalArena = CodeBlock.of("externalArena"),
         )
-        
+
         // Triple(MemorySegment, Arena, AliveFlag)
         body.addStatement(
             "return %T(res, newOwnerArena, flag)",
@@ -74,10 +91,27 @@ object ConstructorGenerator {
         factoryBuilder.addCode(body.build())
         companionBuilder.addFunction(factoryBuilder.build())
 
-        GeneratorUtils.addInternalConstructor(classBuilder, tripleType)
+        val constructorParams = method.args.map {
+            ParameterSpec.builder(
+                "argOf" + it.name.toCamelCase(),
+                GeneratorUtils.resolveReturnType(it.ty, basePackage),
+            ).build()
+        }.toMutableList()
+        constructorParams.add(ParameterSpec.builder("arena", Arena::class.asTypeName().copy(nullable = true)).defaultValue("null").build())
+
+        val callArgsString = method.args.joinToString(", ") { "argOf" + it.name.toCamelCase() }
+        val finalCallArgs = if (callArgsString.isEmpty()) "externalArena = arena" else "$callArgsString, externalArena = arena"
 
         classBuilder.addFunction(
-            FunSpec.constructorBuilder().addParameters(
+            FunSpec.constructorBuilder().addParameters(constructorParams)
+                .callThisConstructor(CodeBlock.of("$internalName($finalCallArgs)"))
+                .build(),
+        )
+
+        // Add 'use' function to companion
+        val useFunName = if (method.isDefault || method.name == "new") "use" else "use${method.name.toCamelCase().replaceFirstChar { it.uppercase() }}"
+        val useFunBuilder = FunSpec.builder(useFunName)
+            .addParameters(
                 method.args.map {
                     ParameterSpec.builder(
                         "argOf" + it.name.toCamelCase(),
@@ -85,8 +119,14 @@ object ConstructorGenerator {
                     ).build()
                 },
             )
-                .callThisConstructor(CodeBlock.of("xrossNewInternal(${method.args.joinToString(", ") { "argOf" + it.name.toCamelCase() }})"))
-                .build(),
-        )
+            .addTypeVariable(TypeVariableName("R"))
+            .addParameter("block", LambdaTypeName.get(receiver = selfType, returnType = TypeVariableName("R")))
+            .returns(TypeVariableName("R"))
+            .addCode(
+                CodeBlock.builder()
+                    .add("return %T(%L).use { it.block() }\n", selfType, method.args.joinToString(", ") { "argOf" + it.name.toCamelCase() })
+                    .build(),
+            )
+        companionBuilder.addFunction(useFunBuilder.build())
     }
 }

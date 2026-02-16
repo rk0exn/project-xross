@@ -1,12 +1,12 @@
 [package]
 name = "xross-core"
-version = "2.0.1"
+version = "3.0.0"
 edition = "2024"
 
 [dependencies]
-xross-macros = { path = "../xross-macros", version = "2.0.1" }
+xross-macros = { path = "../xross-macros", version = "3.0.0" }
 # xross-alloc を追加。デフォルトでは無効化(optional = true)
-xross-alloc = { path = "../xross-alloc", version = "2.0.1", optional = true }
+xross-alloc = { path = "../xross-alloc", version = "3.0.0", optional = true }
 tokio = { version = "1.0", features = ["full"], optional = true }
 futures = { version = "0.3", optional = true }
 

@@ -83,6 +83,9 @@ pub fn write_ffi_function(
                 | XrossType::Bool => {
                     quote! { val as usize as *mut std::ffi::c_void }
                 }
+                XrossType::String => {
+                    quote! { Box::into_raw(Box::new(val)) as *mut std::ffi::c_void }
+                }
                 _ => quote! { val as *mut std::ffi::c_void },
             };
             quote! {
@@ -108,9 +111,10 @@ pub fn write_ffi_function(
                         "Unknown panic".to_string()
                     };
 
+                    let xs = xross_core::XrossString::from(msg);
                     xross_core::XrossResult {
                         is_ok: false,
-                        ptr: std::ffi::CString::new(msg).unwrap_or_default().into_raw() as *mut std::ffi::c_void,
+                        ptr: Box::into_raw(Box::new(xs)) as *mut std::ffi::c_void,
                     }
                 }
             }
@@ -194,6 +198,7 @@ pub fn add_clone_method(
         method_type: XrossMethodType::ConstInstance,
         handle_mode,
         is_constructor: false,
+        is_default: false,
         is_async: false,
         args: vec![],
         ret: XrossType::Object {
@@ -212,6 +217,7 @@ pub fn add_drop_method(methods: &mut Vec<XrossMethod>, symbol_base: &str, handle
         method_type: XrossMethodType::MutInstance,
         handle_mode,
         is_constructor: false,
+        is_default: false,
         is_async: false,
         args: vec![],
         ret: XrossType::Void,

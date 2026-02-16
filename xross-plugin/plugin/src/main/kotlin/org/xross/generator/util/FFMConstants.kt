@@ -41,4 +41,27 @@ object FFMConstants {
         ADDRESS,
         "dropFn",
     )
+
+    val XROSS_STRING_LAYOUT_CODE = com.squareup.kotlinpoet.CodeBlock.of(
+        "%T.structLayout(%M.withName(%S), %M.withName(%S), %M.withName(%S))",
+        MEMORY_LAYOUT,
+        ADDRESS,
+        "ptr",
+        JAVA_LONG,
+        "len",
+        JAVA_LONG,
+        "cap",
+    )
+
+    val XROSS_STRING_VIEW_LAYOUT_CODE = com.squareup.kotlinpoet.CodeBlock.of(
+        "%T.structLayout(%M.withName(%S), %M.withName(%S), %M.withName(%S), %T.paddingLayout(7))",
+        MEMORY_LAYOUT,
+        ADDRESS,
+        "ptr",
+        JAVA_LONG,
+        "len",
+        JAVA_BYTE,
+        "encoding",
+        MEMORY_LAYOUT,
+    )
 }

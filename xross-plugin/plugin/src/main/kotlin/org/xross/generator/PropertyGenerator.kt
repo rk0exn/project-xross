@@ -32,9 +32,9 @@ object PropertyGenerator {
 
                 val propBuilder = PropertySpec.builder(escapedName, kType)
                     .mutable(isMutable)
-                    .getter(GeneratorUtils.buildFullGetter(kType, buildGetterBody(field, vhName, kType, backingFieldName, selfType, basePackage)))
+                    .getter(GeneratorUtils.buildFullGetter(kType, buildGetterBody(field, vhName, kType, backingFieldName, selfType, basePackage), safety = field.safety))
 
-                if (isMutable) propBuilder.setter(GeneratorUtils.buildFullSetter(field.safety, kType, buildSetterBody(field, vhName, kType, backingFieldName, selfType)))
+                if (isMutable) propBuilder.setter(GeneratorUtils.buildFullSetter(field.safety, kType, buildSetterBody(field, vhName, kType, backingFieldName, selfType, basePackage)))
                 classBuilder.addProperty(propBuilder.build())
             }
         }
@@ -60,7 +60,7 @@ object PropertyGenerator {
         }
     }
 
-    private fun buildSetterBody(field: XrossField, vhName: String, kType: TypeName, backingFieldName: String?, selfType: ClassName): CodeBlock {
+    private fun buildSetterBody(field: XrossField, vhName: String, kType: TypeName, backingFieldName: String?, selfType: ClassName, basePackage: String): CodeBlock {
         val baseName = field.name.toCamelCase()
         val offsetName = "OFFSET_$baseName"
 
@@ -71,6 +71,7 @@ object PropertyGenerator {
             kType,
             selfType,
             backingFieldName,
+            basePackage,
         ) { ty ->
             when (ty) {
                 is XrossType.Optional -> "${baseName}OptSetHandle"

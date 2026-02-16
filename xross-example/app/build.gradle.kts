@@ -59,11 +59,19 @@ java {
 application {
     // Define the main class for the application.
     mainClass = "org.example.BenchmarkKt"
+    applicationDefaultJvmArgs = listOf(
+        "--add-opens", "java.base/java.lang=ALL-UNNAMED"
+    )
 }
 
 tasks.named<Test>("test") {
     // Use JUnit Platform for unit tests.
     useJUnitPlatform()
+    testLogging {
+        events("passed", "skipped", "failed")
+        showStandardStreams = true
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }
 
 sourceSets {

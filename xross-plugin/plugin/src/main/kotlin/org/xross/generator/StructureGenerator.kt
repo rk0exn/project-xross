@@ -23,11 +23,11 @@ object StructureGenerator {
         companionBuilder.addProperty(PropertySpec.builder("sl", ClassName("java.util.concurrent.locks", "StampedLock")).addModifiers(KModifier.INTERNAL).initializer("%T()", ClassName("java.util.concurrent.locks", "StampedLock")).build())
         companionBuilder.addProperty(PropertySpec.builder("fl", ClassName("java.util.concurrent.locks", "ReentrantLock")).addModifiers(KModifier.INTERNAL).initializer("%T(true)", ClassName("java.util.concurrent.locks", "ReentrantLock")).build())
         companionBuilder.addProperty(PropertySpec.builder("al", ClassName("$basePackage.xross.runtime", "XrossAsyncLock")).addModifiers(KModifier.INTERNAL).initializer("%T()", ClassName("$basePackage.xross.runtime", "XrossAsyncLock")).build())
-        
+
         if (meta is XrossDefinition.Function) return
 
         val isEnum = meta is XrossDefinition.Enum
-        
+
         // 全てのクラス（Struct, Enum, Opaque）が XrossNativeObject を継承する
         classBuilder.superclass(xrossNativeObject)
 
@@ -36,7 +36,7 @@ object StructureGenerator {
             .addParameter("raw", MEMORY_SEGMENT)
             .addParameter("arena", ClassName("java.lang.foreign", "Arena"))
             .addParameter("sharedFlag", aliveFlagType)
-        
+
         classBuilder.primaryConstructor(constructorBuilder.build())
         classBuilder.addSuperclassConstructorParameter("raw")
         classBuilder.addSuperclassConstructorParameter("arena")

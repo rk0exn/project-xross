@@ -70,24 +70,19 @@ pub fn gen_arg_conversion(
 ) -> (TokenStream, TokenStream, TokenStream) {
     match x_ty {
         XrossType::String => {
-            let raw_id = format_ident!("{}_raw", arg_id);
+            let ptr_id = format_ident!("{}_ptr", arg_id);
+            let len_id = format_ident!("{}_len", arg_id);
+            let enc_id = format_ident!("{}_enc", arg_id);
             (
-                quote! { #raw_id: *const std::ffi::c_char },
+                quote! { #ptr_id: *const u8, #len_id: usize, #enc_id: u8 },
                 quote! {
-                    let #arg_id = unsafe {
-                        if #raw_id.is_null() { "" }
-                        else { std::ffi::CStr::from_ptr(#raw_id).to_str().unwrap_or("") }
-                    };
+                    let #arg_id = xross_core::XrossStringView {
+                        ptr: #ptr_id,
+                        len: #len_id,
+                        encoding: #enc_id,
+                    }.to_string_lossy();
                 },
-                if let Type::Path(p) = arg_ty {
-                    if p.path.is_ident("String") {
-                        quote!(#arg_id.to_string())
-                    } else {
-                        quote!(#arg_id)
-                    }
-                } else {
-                    quote!(#arg_id)
-                },
+                quote!(#arg_id),
             )
         }
         XrossType::Object { ownership, .. } => (
@@ -176,7 +171,8 @@ pub fn gen_arg_conversion(
 pub fn gen_single_value_to_ptr(ty: &XrossType, val_ident: TokenStream) -> TokenStream {
     match ty {
         XrossType::String => {
-            quote! { std::ffi::CString::new(#val_ident).unwrap_or_default().into_raw() as *mut std::ffi::c_void }
+            // val_ident is already XrossString, box it to put in XrossResult.ptr
+            quote! { Box::into_raw(Box::new(#val_ident)) as *mut std::ffi::c_void }
         }
         XrossType::Object { .. } => {
             quote! { Box::into_raw(Box::new(#val_ident)) as *mut std::ffi::c_void }
@@ -197,8 +193,8 @@ pub fn gen_ret_wrapping(
     match ret_ty {
         XrossType::Void => (quote! { () }, quote! { #inner_call; }),
         XrossType::String => (
-            quote! { *mut std::ffi::c_char },
-            quote! { std::ffi::CString::new(#inner_call).unwrap_or_default().into_raw() },
+            quote! { xross_core::XrossString },
+            quote! { xross_core::XrossString::from(#inner_call) },
         ),
         XrossType::Object { ownership, .. } => match ownership {
             Ownership::Ref | Ownership::MutRef => (

@@ -1,4 +1,4 @@
-# Xross Architecture Specification (v2.0.1)
+# Xross Architecture Specification (v3.0.0)
 
 Xross は、Rust と JVM 間の究極の相互運用性を目指したフレームワークです。Java 25 で導入された **Foreign Function & Memory (FFM) API** を基盤とし、Rust の所有権セマンティクスを Java/Kotlin へ安全に持ち込むための高度な抽象化を提供します。
 
@@ -13,7 +13,7 @@ JNI のような中間レイヤーや複雑な変換コードを最小化し、M
 Rust の最大の特徴である所有権（Ownership）と借用（Borrowing）の概念を、Kotlin の型システムとライフサイクル管理（AutoCloseable）にマッピングします。
 
 ### 1.3 Thread Safety by Design
-ネイティブメモリへのアクセスに対し、Rust 側の型情報に基づいた適切な同期メカニズム（Lock, Atomic, Immutable）を自動的に付与します。
+ネイティブメモリへのアクセスに対し、Rust 側の型情報に基づいた適切な同期メカニズムを自動的に付与します。v3.0.0 では、オーバーヘッドをゼロにする `Direct` モードが導入されました。
 
 ---
 
@@ -40,20 +40,13 @@ Rust の基本型は FFM API の `ValueLayout` を通じて直接マッピング
 | `bool` | `Boolean` | `JAVA_BYTE` (0/1) |
 | `f32` | `Float` | `JAVA_FLOAT` |
 | `f64` | `Double` | `JAVA_DOUBLE` |
-| `String` | `String` | `ADDRESS` (UTF-8) |
+| `String` | `String` | `XrossString` (Struct) |
 
-### 3.2 複合型
+### 3.2 文字列 (High-Performance String Bridge)
+v3.0.0 では、String の受け渡しが大幅に最適化されました。
 
-#### 構造体 (Struct)
-`#[derive(XrossClass)]` を付与された Rust 構造体は、Kotlin のクラスとして生成されます。
-- **インラインフィールド**: 構造体内に直接配置されるデータ。
-- **ポインタフィールド**: 他のオブジェクトへの参照。
-
-#### 列挙型 (Enum / ADT)
-Rust の列挙型は、Kotlin の `sealed class`（データを持つ場合）または `enum class`（純粋な列挙型の場合）に変換されます。
-
-#### 不透明型 (Opaque Types)
-内部構造を JVM 側に露出させず、ポインタとしてのみ管理する型です。
+- **Rust -> JVM**: `String` は `XrossString` 構造体（ptr, len, cap）として値返しされます。Kotlin 側では `MemorySegment.reinterpret(len)` を使用して直接メモリを読み取るため、UTF-8 デコード以外の余分なコピーは発生しません。
+- **JVM -> Rust**: JVM 内部の `byte[]`（Latin1 または UTF-16）を直接参照する `XrossStringView` を使用します。`critical(heap_access)` モードが有効な場合、ヒープ上の配列を直接ネイティブに渡す「真のゼロコピー」が実現されます。
 
 ---
 
@@ -65,60 +58,39 @@ Xross は `java.lang.foreign.Arena` を活用してメモリのライフサイ�
 
 - **Owned (`T`)**: 
     - Rust 側から「所有権付き」で返されたオブジェクト。
-    - Kotlin 側で `Arena.ofConfined()` が生成され、`close()` 時に Rust 側の `drop` 関数が呼ばれます。
-- **Ref (`&T`)**:
-    - 他のオブジェクトから借用された不変参照。
-    - 親オブジェクトの `AliveFlag` を共有し、親が解放された後のアクセスは `NullPointerException` をスローします。
-- **MutRef (`&mut T`)**:
-    - 可変参照。Kotlin 側で書き込み操作が許可されます。
-- **Async (`async fn`)**:
-    - Rust の `Future` は、Kotlin 側の `XrossTask` 構造体にマッピングされ、最終的に `suspend` 関数としてラップされます。
-    - 内部的なポーリングループにより、Coroutines の非ブロッキングな待機を実現します。
-
-### 4.2 文字列の扱い
-Rust の `String` はヒープ確保されるため、呼び出しごとに `Arena` を通じてコピーまたは確保が行われます。戻り値としての `String` は、Xross が提供する専用の Free 関数によって解放されます。
+    - ライフサイクル管理用に `XrossRuntime.ofSmart()` による共有 Arena が割り当てられ、GC 時に Cleaner によって自動解放されるか、`close()` によって明示的に解放されます。
+- **External Arena Support**: v3.0.0 では、コンストラクタに外部 `Arena` を渡すことで、Cleaner への自動登録をスキップし、ユーザーが完全にライフサイクルを制御できるようになりました。
+- **DSL (Companion use)**: `MyStruct.use { ... }` 形式のコンストラクタをサポート。ブロック終了時に確実に `drop` が実行されます。
 
 ---
 
 ## 5. スレッド安全性 (Thread Safety)
 
-メタデータとして定義された `ThreadSafety` レベルに基づき、生成されるコードの挙動が変わります。
+v3.0.0 では、最高速を実現するための `Direct` レベルが追加されました。
 
-1. **Unsafe**: 同期なし。最高速ですが、スレッド間での共有はユーザーの責任となります。
-2. **Lock**: `java.util.concurrent.locks.StampedLock` を使用。
-    - `&T` (Ref) によるアクセスは楽観的読み取りまたは共有ロック。
-    - `&mut T` (MutRef) または Owned によるアクセスは排他ロック。
-3. **Atomic**: `java.lang.invoke.VarHandle` を使用した CAS 操作。
-4. **Immutable**: 初期化後は不変であることを保証。同期コストなしでスレッド間共有が可能。
+1. **Direct**: **[New]** 同期チェックを一切行わず、生メモリへの直接アクセスを生成します。最も高速ですが、マルチスレッド環境での安全性はユーザーが保証する必要があります。
+2. **Unsafe**: 同期なし。生成される Kotlin 側のプロパティアクセサにおいてロックチェックをスキップします。
+3. **Lock**: `java.util.concurrent.locks.StampedLock` を使用した安全な並行アクセス。
+4. **Atomic**: `java.lang.invoke.VarHandle` を使用した CAS 操作。
+5. **Immutable**: 不変であることを保証。同期コストなしでスレッド間共有が可能。
+
+**注意**: `Unsafe` または `Direct` モードを使用する場合、Rust 側で `unsafe` アトリビュートを明示的に付与することが必須となりました。
+例: `#[xross_field(safety = Direct, unsafe)]`
 
 ---
 
 ## 6. ビルドプロセス
 
-1. **Rust Analysis**: `xross-macros` がコードを解析し、`xross-metadata` 形式の JSON を出力。
+1. **Rust Analysis**: `xross-macros` がコードを解析。環境変数 `XROSS_METADATA_DIR` で指定された場所に JSON メタデータを出力。
 2. **Gradle Task**: `xross-plugin` が JSON を読み込み、KotlinPoet を使用してバインディングクラスを生成。
-3. **Linking**: 実行時に `System.loadLibrary`（または Panama の `SymbolLookup`）を使用して Rust 側のシンボルを解決。
+3. **Linking**: 実行時に Panama の `SymbolLookup` を使用して、ネイティブシンボルを直接解決します。
 
 ---
 
-## 7. 今後の展望
+## 7. パフォーマンス最適化の原則
 
-- **Callback**: JVM 側の関数を Rust 側から呼び出すための Upcall サポート。
-- **Collection**: `Vec<T>` と `List<T>` のシームレスな共有。
-- **Memory View**: `&[u8]` などのスライスを `MemorySegment` として効率的に共有。
-- **Static Analysis**: Rust 側の型定義と Kotlin 側のバインディングの整合性を検証するビルド時チェックの強化。
+### 7.1 Heap Access Optimizations
+`critical(heap_access)` 属性を使用することで、JVM ヒープ上のデータをコピーせずにネイティブ側へ直接公開できます。これは大量のデータ転送や文字列処理において劇的な効果を発揮します。
 
----
-
-## 8. パフォーマンス最適化の原則 (Performance Principles)
-
-Xross を使用して最高のパフォーマンスを引き出すための、実証に基づいた 3 つの原則です。
-
-### 8.1 アロケーションを最小化せよ
-Native 側で頻繁に小規模なメモリ確保・解放を行うと、JVM の高度に最適化されたメモリ管理（TLAB: Thread Local Allocation Buffer）に劣る場合があります。Native 側でバッファを再利用する設計にすることで、真の性能が発揮されます。
-
-### 8.2 キャッシュを意識せよ
-構造体の配列を扱う場合などは、ポインタの配列（`Vec<Vec<T>>`）ではなくデータを平坦化（Flattening）した 1 次元配列を使用してください。CPU が先読みしやすい連続したメモリアクセスを行うことで、Native の計算能力を最大限に引き出せます。
-
-### 8.3 1 回の処理を重くせよ
-FFI 境界（JNI/FFM）の往復にはマイクロ秒単位の不可避なオーバーヘッドが存在します。Rust 側での実行時間が十分長くなるように処理をまとめることで、この境界コストは相対的に無視できるレベル（誤差の範囲）になります。
+### 7.2 Flattening Argument passing
+v3.0.0 以降、`String` 引数は内部的に `(pointer, length, encoding)` のフラットな引数として渡されます。これにより FFM リンカーがレジスタを最大限に活用でき、スタック操作のオーバーヘッドが軽減されます。

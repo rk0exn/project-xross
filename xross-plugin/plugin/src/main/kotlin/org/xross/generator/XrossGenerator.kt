@@ -59,16 +59,25 @@ object XrossGenerator {
 
         val companionBuilder = TypeSpec.companionObjectBuilder()
         StructureGenerator.buildBase(classBuilder, companionBuilder, meta, basePackage)
-        
+
         // 呼び出し順序を変更: Variant/Field 生成を先に行う
         when {
             meta is XrossDefinition.Struct -> PropertyGenerator.generateFields(classBuilder, meta, basePackage)
-            isEnum -> EnumVariantGenerator.generateVariants(classBuilder, companionBuilder,
-                meta, targetPackage, basePackage)
+            isEnum -> EnumVariantGenerator.generateVariants(
+                classBuilder,
+                companionBuilder,
+                meta,
+                targetPackage,
+                basePackage,
+            )
         }
 
         CompanionGenerator.generateCompanions(companionBuilder, meta, basePackage)
         MethodGenerator.generateMethods(classBuilder, companionBuilder, meta, basePackage)
+
+        if (meta is XrossDefinition.Struct || meta is XrossDefinition.Opaque) {
+            GeneratorUtils.addInternalConstructor(classBuilder, GeneratorUtils.getFactoryTripleType(basePackage))
+        }
 
         classBuilder.addType(companionBuilder.build())
         StructureGenerator.addFinalBlocks(classBuilder, meta)
@@ -76,7 +85,7 @@ object XrossGenerator {
         val runtimePkg = "$basePackage.xross.runtime"
         val fileSpecBuilder = FileSpec.builder(targetPackage, className)
             .addImport(runtimePkg, "AliveFlag", "XrossException", "XrossObject", "XrossNativeObject", "XrossRuntime")
-        
+
         val fileSpec = fileSpecBuilder
             .addType(classBuilder.build())
             .indent("    ")

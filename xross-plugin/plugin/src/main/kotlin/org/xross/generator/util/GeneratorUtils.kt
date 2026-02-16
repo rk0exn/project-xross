@@ -105,7 +105,15 @@ object GeneratorUtils {
      * Builds a getter with optimistic read locking using [java.util.concurrent.locks.StampedLock].
      * Optionally wraps with XrossAsyncLock read lock.
      */
-    fun buildFullGetter(kType: TypeName, readCode: CodeBlock, useAsyncLock: Boolean = true): FunSpec {
+    fun buildFullGetter(kType: TypeName, readCode: CodeBlock, useAsyncLock: Boolean = true, safety: org.xross.structures.XrossThreadSafety = org.xross.structures.XrossThreadSafety.Lock): FunSpec {
+        if (safety == org.xross.structures.XrossThreadSafety.Direct) {
+            return FunSpec.getterBuilder()
+                .addStatement("var res: %T", kType)
+                .addCode(readCode)
+                .addStatement("return res")
+                .build()
+        }
+
         val optimisticReadCode = CodeBlock.builder()
             .addStatement("var stamp = this.sl.tryOptimisticRead()")
             .addStatement("var res: %T", kType)
@@ -142,6 +150,13 @@ object GeneratorUtils {
      * Optionally wraps with XrossAsyncLock write lock.
      */
     fun buildFullSetter(safety: XrossThreadSafety, kType: TypeName, writeCode: CodeBlock, useAsyncLock: Boolean = true): FunSpec {
+        if (safety == org.xross.structures.XrossThreadSafety.Direct) {
+            return FunSpec.setterBuilder()
+                .addParameter("v", kType)
+                .addCode(writeCode)
+                .build()
+        }
+
         val alLock = if (useAsyncLock) {
             """
             this.al.lockWriteBlocking()

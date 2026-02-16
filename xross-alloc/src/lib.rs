@@ -4,8 +4,8 @@ use std::ptr::null_mut;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-mod native;
-use native::NativeAlloc;
+mod parent;
+use parent::ParentAlloc;
 
 // サイズクラスの定義 (16B ~ 1024B)
 const SIZE_CLASSES: [usize; 7] = [16, 32, 64, 128, 256, 512, 1024];
@@ -78,7 +78,7 @@ impl XrossAlloc {
         unsafe {
             let total_alloc_size = CHUNK_SIZE * SIZE_CLASSES.len();
             let layout = Layout::from_size_align(total_alloc_size, 4096).unwrap();
-            let base_ptr = NativeAlloc.alloc(layout);
+            let base_ptr = ParentAlloc.alloc(layout);
 
             // AtomicPtrの配列を初期化
             let central_freelists: [AtomicPtr<FreeNode>; SIZE_CLASSES.len()] =
@@ -181,60 +181,62 @@ unsafe impl GlobalAlloc for XrossAlloc {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let size = layout.size();
         if let Some(idx) = Self::get_size_class(size)
-            && layout.align() <= 8 {
-                // 一般的なアライメント
-                let g = self.get_global();
-                return LOCAL_CACHES.with(|caches_cell| {
-                    let caches = unsafe { &mut *caches_cell.get() };
-                    let cache = &mut caches[idx];
+            && layout.align() <= 8
+        {
+            // 一般的なアライメント
+            let g = self.get_global();
+            return LOCAL_CACHES.with(|caches_cell| {
+                let caches = unsafe { &mut *caches_cell.get() };
+                let cache = &mut caches[idx];
 
-                    if cache.head.is_null() {
-                        unsafe { self.refill_from_global(cache, idx, g) };
-                    }
+                if cache.head.is_null() {
+                    unsafe { self.refill_from_global(cache, idx, g) };
+                }
 
-                    if !cache.head.is_null() {
-                        let node = cache.head;
-                        unsafe {
-                            cache.head = (*node).next;
-                        }
-                        cache.count -= 1;
-                        return node as *mut u8;
+                if !cache.head.is_null() {
+                    let node = cache.head;
+                    unsafe {
+                        cache.head = (*node).next;
                     }
-                    unsafe { NativeAlloc.alloc(layout) }
-                });
-            }
-        unsafe { NativeAlloc.alloc(layout) }
+                    cache.count -= 1;
+                    return node as *mut u8;
+                }
+                unsafe { ParentAlloc.alloc(layout) }
+            });
+        }
+        unsafe { ParentAlloc.alloc(layout) }
     }
 
     #[inline]
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         let size = layout.size();
         if let Some(idx) = Self::get_size_class(size)
-            && layout.align() <= 8 {
-                let g = self.get_global();
+            && layout.align() <= 8
+        {
+            let g = self.get_global();
 
-                let total_managed = CHUNK_SIZE * SIZE_CLASSES.len();
-                let offset = unsafe { ptr.offset_from(g.base_ptr) };
+            let total_managed = CHUNK_SIZE * SIZE_CLASSES.len();
+            let offset = unsafe { ptr.offset_from(g.base_ptr) };
 
-                if offset >= 0 && (offset as usize) < total_managed {
-                    LOCAL_CACHES.with(|caches_cell| {
-                        let caches = unsafe { &mut *caches_cell.get() };
-                        let cache = &mut caches[idx];
+            if offset >= 0 && (offset as usize) < total_managed {
+                LOCAL_CACHES.with(|caches_cell| {
+                    let caches = unsafe { &mut *caches_cell.get() };
+                    let cache = &mut caches[idx];
 
-                        let node = ptr as *mut FreeNode;
-                        unsafe {
-                            (*node).next = cache.head;
-                        }
-                        cache.head = node;
-                        cache.count += 1;
+                    let node = ptr as *mut FreeNode;
+                    unsafe {
+                        (*node).next = cache.head;
+                    }
+                    cache.head = node;
+                    cache.count += 1;
 
-                        if cache.count >= FLUSH_THRESHOLD {
-                            unsafe { self.flush_to_global(cache, idx, g) };
-                        }
-                    });
-                    return;
-                }
+                    if cache.count >= FLUSH_THRESHOLD {
+                        unsafe { self.flush_to_global(cache, idx, g) };
+                    }
+                });
+                return;
             }
-        unsafe { NativeAlloc.dealloc(ptr, layout) }
+        }
+        unsafe { ParentAlloc.dealloc(ptr, layout) }
     }
 }

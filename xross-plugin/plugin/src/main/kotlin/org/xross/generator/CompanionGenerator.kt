@@ -29,9 +29,10 @@ object CompanionGenerator {
             init.addStatement("var layoutStr = %S", "")
 
             init.beginControlFlow("try")
-                .addStatement("layoutRaw = layoutHandle.invokeExact() as %T", MEMORY_SEGMENT)
+                .addStatement("layoutRaw = layoutHandle.invokeExact(this.arena as %T) as %T", java.lang.foreign.SegmentAllocator::class.asTypeName(), MEMORY_SEGMENT)
                 .beginControlFlow("if (layoutRaw != %T.NULL)", MEMORY_SEGMENT)
-                .addStatement("layoutStr = layoutRaw.reinterpret(%T.MAX_VALUE).getString(0)", Long::class.asTypeName())
+                .addStatement("val xs = %T(layoutRaw)", ClassName("$basePackage.xross.runtime", "XrossString"))
+                .addStatement("layoutStr = xs.toString()")
                 .endControlFlow()
                 .nextControlFlow("catch (e: %T)", Throwable::class.asTypeName())
                 .addStatement("throw %T(e)", RuntimeException::class.asTypeName())
@@ -76,7 +77,7 @@ object CompanionGenerator {
         builder.addProperty(
             PropertySpec.builder("arena", Arena::class.asTypeName(), KModifier.INTERNAL)
                 .initializer("%T.ofSmart()", ClassName("$basePackage.xross.runtime", "XrossRuntime"))
-                .build()
+                .build(),
         )
 
         builder.addProperty(
@@ -96,7 +97,16 @@ object CompanionGenerator {
 
         when (meta) {
             is XrossDefinition.Struct -> {
-                handles.add("newHandle")
+                meta.methods.filter { it.isConstructor }.forEach { method ->
+                    val handleName = if (method.isDefault) {
+                        "defaultHandle"
+                    } else if (method.name == "new") {
+                        "newHandle"
+                    } else {
+                        "${method.name.toCamelCase()}Handle"
+                    }
+                    handles.add(handleName)
+                }
                 meta.fields.forEach { field ->
                     val baseCamel = field.name.toCamelCase()
                     addPropertyHandles(handles, field, baseCamel)

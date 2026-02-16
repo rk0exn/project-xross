@@ -32,12 +32,13 @@ object MethodGenerator {
 
         meta.methods.forEach { method ->
             if (method.isConstructor) {
-                if (meta is XrossDefinition.Struct) {
+                if (meta is XrossDefinition.Struct || meta is XrossDefinition.Opaque) {
                     ConstructorGenerator.generatePublicConstructor(
                         classBuilder,
                         companionBuilder,
                         method,
                         basePackage,
+                        selfType,
                     )
                 }
                 return@forEach
@@ -99,14 +100,14 @@ object MethodGenerator {
 
             method.args.forEach { arg ->
                 val name = arg.name.toCamelCase().escapeKotlinKeyword()
-                argPrep.addArgumentPreparation(arg.ty, name, callArgs, checkObjectValidity = true)
+                argPrep.addArgumentPreparation(arg.ty, name, callArgs, checkObjectValidity = true, basePackage = basePackage, handleMode = method.handleMode)
             }
 
             body.add(argPrep.build())
 
             val handleName = "${method.name.toCamelCase()}Handle"
             val isPanicable = method.handleMode is HandleMode.Panicable
-            val call = if (method.isAsync || method.ret is XrossType.Result || isPanicable) {
+            val call = if (method.isAsync || method.ret is XrossType.Result || method.ret is XrossType.RustString || isPanicable) {
                 // Return value is a struct layout, so FFM requires a SegmentAllocator as the first argument.
                 CodeBlock.of(
                     "$handleName.invokeExact(this.arena as %T, %L)",

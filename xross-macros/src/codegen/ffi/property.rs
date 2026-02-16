@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use xross_metadata::XrossType;
+use xross_metadata::{Ownership, XrossType};
 
 pub fn generate_property_accessors(
     struct_name: &syn::Ident,
@@ -22,40 +22,64 @@ pub fn generate_property_accessors(
     let getter_ident = format_ident!("{}", getter_name);
     let setter_ident = format_ident!("{}", setter_name);
 
-    let (ret_type, body) = match xross_ty {
-        XrossType::String => (
-            quote! { *mut std::ffi::c_char },
-            quote! { std::ffi::CString::new(_self.#field_ident.clone()).unwrap_or_default().into_raw() },
-        ),
-        XrossType::Object { .. } => (
-            quote! { *mut std::ffi::c_void },
-            quote! { Box::into_raw(Box::new(_self.#field_ident.clone())) as *mut std::ffi::c_void },
-        ),
-        XrossType::Option(inner) => match &**inner {
-            XrossType::String => (
-                quote! { *mut std::ffi::c_char },
+    let mut setter_args = vec![quote! { ptr: *mut std::ffi::c_void }];
+
+    let (ret_type, get_body, set_body) = match xross_ty {
+        XrossType::String => {
+            setter_args.push(quote! { _val_ptr: *const u8 });
+            setter_args.push(quote! { _val_len: usize });
+            setter_args.push(quote! { _val_enc: u8 });
+            (
+                quote! { xross_core::XrossString },
+                quote! { xross_core::XrossString::from(_self.#field_ident.clone()) },
                 quote! {
-                    match &_self.#field_ident {
-                        Some(s) => std::ffi::CString::new(s.clone()).unwrap_or_default().into_raw(),
-                        None => std::ptr::null_mut(),
-                    }
+                    _self.#field_ident = xross_core::XrossStringView {
+                        ptr: _val_ptr,
+                        len: _val_len,
+                        encoding: _val_enc,
+                    }.to_string_lossy();
                 },
-            ),
-            _ => (
+            )
+        }
+        XrossType::Object { ownership, .. } => {
+            setter_args.push(quote! { _val: *mut std::ffi::c_void });
+            (
+                quote! { *mut std::ffi::c_void },
+                quote! { Box::into_raw(Box::new(_self.#field_ident.clone())) as *mut std::ffi::c_void },
+                if *ownership == Ownership::Owned {
+                    quote! { _self.#field_ident = unsafe { std::ptr::read(_val as *const _) }; }
+                } else {
+                    quote! { /* Ref setter not supported */ }
+                },
+            )
+        }
+        XrossType::Option(inner) => {
+            setter_args.push(quote! { _val: *mut std::ffi::c_void });
+            let ok_ptr_logic =
+                crate::codegen::ffi::gen_single_value_to_ptr(inner, quote! { v.clone() });
+            (
                 quote! { *mut std::ffi::c_void },
                 quote! {
                     match &_self.#field_ident {
-                        Some(v) => Box::into_raw(Box::new(v.clone())) as *mut std::ffi::c_void,
+                        Some(v) => #ok_ptr_logic,
                         None => std::ptr::null_mut(),
                     }
                 },
-            ),
-        },
+                quote! {
+                    if _val.is_null() {
+                        _self.#field_ident = None;
+                    } else {
+                        // Only support Some(val) for Object/Boxed types for now
+                    }
+                },
+            )
+        }
         XrossType::Result { ok, err } => {
+            setter_args.push(quote! { _val: xross_core::XrossResult });
             let ok_ptr_logic =
-                crate::codegen::ffi::gen_single_value_to_ptr(ok, quote! { (*val).clone() });
+                crate::codegen::ffi::gen_single_value_to_ptr(ok, quote! { val.clone() });
             let err_ptr_logic =
-                crate::codegen::ffi::gen_single_value_to_ptr(err, quote! { (*e).clone() });
+                crate::codegen::ffi::gen_single_value_to_ptr(err, quote! { e.clone() });
             (
                 quote! { xross_core::XrossResult },
                 quote! {
@@ -64,6 +88,7 @@ pub fn generate_property_accessors(
                         Err(e) => xross_core::XrossResult { is_ok: false, ptr: #err_ptr_logic },
                     }
                 },
+                quote! { /* Result setter is complex, simplified for now */ },
             )
         }
         _ => {
@@ -76,13 +101,24 @@ pub fn generate_property_accessors(
             .iter()
             .any(|&p| type_str == p || (type_str.contains(p) && type_str.len() <= 5));
 
+            setter_args.push(if !is_primitive && !is_ptr_or_ref {
+                quote! { _val: *mut std::ffi::c_void }
+            } else {
+                quote! { _val: #field_ty }
+            });
+
             if !is_primitive && !is_ptr_or_ref {
                 (
                     quote! { *mut std::ffi::c_void },
                     quote! { Box::into_raw(Box::new(_self.#field_ident.clone())) as *mut std::ffi::c_void },
+                    quote! { _self.#field_ident = unsafe { std::ptr::read(_val as *const _) }; },
                 )
             } else {
-                (quote! { #field_ty }, quote! { _self.#field_ident })
+                (
+                    quote! { #field_ty },
+                    quote! { _self.#field_ident },
+                    quote! { _self.#field_ident = _val; },
+                )
             }
         }
     };
@@ -91,14 +127,15 @@ pub fn generate_property_accessors(
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn #getter_ident(ptr: *mut std::ffi::c_void) -> #ret_type {
             let _self = &*(ptr as *mut #struct_name);
-            #body
+            #get_body
         }
     });
 
     extra_functions.push(quote! {
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn #setter_ident(ptr: *mut std::ffi::c_void, _val: #ret_type) {
-            // Setter is intentionally simplified or no-op for complex types to prevent accidental corruption
+        pub unsafe extern "C" fn #setter_ident(#(#setter_args),*) {
+            let _self = &mut *(ptr as *mut #struct_name);
+            #set_body
         }
     });
 }

@@ -7,7 +7,9 @@ import com.squareup.kotlinpoet.joinToCode
 import org.xross.generator.util.FFMConstants
 import org.xross.generator.util.FFMConstants.ADDRESS
 import org.xross.generator.util.FFMConstants.FUNCTION_DESCRIPTOR
+import org.xross.generator.util.FFMConstants.JAVA_BYTE
 import org.xross.generator.util.FFMConstants.JAVA_INT
+import org.xross.generator.util.FFMConstants.JAVA_LONG
 import org.xross.generator.util.FFMConstants.VAL_LAYOUT
 import org.xross.helper.StringHelper.toCamelCase
 import org.xross.structures.*
@@ -16,10 +18,10 @@ object HandleResolver {
     fun resolveAllHandles(init: CodeBlock.Builder, meta: XrossDefinition) {
         // Basic handles
         init.addStatement(
-            "this.xrossFreeStringHandle = linker.downcallHandle(lookup.find(%S).get(), %T.ofVoid(%M))",
+            "this.xrossFreeStringHandle = linker.downcallHandle(lookup.find(%S).get(), %T.ofVoid(%L))",
             "xross_free_string",
             FUNCTION_DESCRIPTOR,
-            ADDRESS,
+            FFMConstants.XROSS_STRING_LAYOUT_CODE,
         )
 
         if (meta !is XrossDefinition.Function) {
@@ -34,7 +36,7 @@ object HandleResolver {
                     } else {
                         CodeBlock.of("%T.ofVoid(%M)", FUNCTION_DESCRIPTOR, ADDRESS)
                     }
-                    "layout" -> CodeBlock.of("%T.of(%M)", FUNCTION_DESCRIPTOR, ADDRESS)
+                    "layout" -> CodeBlock.of("%T.of(%L)", FUNCTION_DESCRIPTOR, FFMConstants.XROSS_STRING_LAYOUT_CODE)
                     else -> CodeBlock.of("%T.of(%M, %M)", FUNCTION_DESCRIPTOR, ADDRESS, ADDRESS)
                 }
                 val options = when (handleMode) {
@@ -56,20 +58,37 @@ object HandleResolver {
     }
 
     private fun resolveStructHandles(init: CodeBlock.Builder, meta: XrossDefinition.Struct) {
-        val constructor = meta.methods.find { it.isConstructor && it.name == "new" }
-        val argLayouts = constructor?.args?.map { it.ty.layoutCode } ?: emptyList()
-        val retLayout = if (constructor?.handleMode is HandleMode.Panicable) {
-            FFMConstants.XROSS_RESULT_LAYOUT_CODE
-        } else {
-            CodeBlock.of("%M", ADDRESS)
-        }
-        val desc = if (argLayouts.isEmpty()) {
-            CodeBlock.of("%T.of(%L)", FUNCTION_DESCRIPTOR, retLayout)
-        } else {
-            CodeBlock.of("%T.of(%L, %L)", FUNCTION_DESCRIPTOR, retLayout, argLayouts.joinToCode(", "))
-        }
+        meta.methods.filter { it.isConstructor }.forEach { method ->
+            val argLayouts = mutableListOf<CodeBlock>()
+            method.args.forEach {
+                if (it.ty is XrossType.RustString) {
+                    argLayouts.add(CodeBlock.of("%M", ADDRESS))
+                    argLayouts.add(CodeBlock.of("%M", JAVA_LONG))
+                    argLayouts.add(CodeBlock.of("%M", JAVA_BYTE))
+                } else {
+                    argLayouts.add(it.ty.layoutCode)
+                }
+            }
+            val retLayout = if (method.handleMode is HandleMode.Panicable) {
+                FFMConstants.XROSS_RESULT_LAYOUT_CODE
+            } else {
+                CodeBlock.of("%M", ADDRESS)
+            }
+            val desc = if (argLayouts.isEmpty()) {
+                CodeBlock.of("%T.of(%L)", FUNCTION_DESCRIPTOR, retLayout)
+            } else {
+                CodeBlock.of("%T.of(%L, %L)", FUNCTION_DESCRIPTOR, retLayout, argLayouts.joinToCode(", "))
+            }
 
-        init.addStatement("this.newHandle = linker.downcallHandle(lookup.find(%S).get(), %L)", "${meta.symbolPrefix}_new", desc)
+            val handleName = if (method.isDefault) {
+                "defaultHandle"
+            } else if (method.name == "new") {
+                "newHandle"
+            } else {
+                "${method.name.toCamelCase()}Handle"
+            }
+            init.addStatement("this.%L = linker.downcallHandle(lookup.find(%S).get(), %L)", handleName, method.symbol, desc)
+        }
         resolvePropertyHandles(init, meta.symbolPrefix, meta.fields)
     }
 
@@ -82,15 +101,24 @@ object HandleResolver {
             ADDRESS,
         )
         init.addStatement(
-            "this.getVariantNameHandle = linker.downcallHandle(lookup.find(%S).get(), %T.of(%M, %M))",
+            "this.getVariantNameHandle = linker.downcallHandle(lookup.find(%S).get(), %T.of(%L, %M))",
             "${meta.symbolPrefix}_get_variant_name",
             FUNCTION_DESCRIPTOR,
-            ADDRESS,
+            FFMConstants.XROSS_STRING_LAYOUT_CODE,
             ADDRESS,
         )
 
         meta.variants.forEach { v ->
-            val argLayouts = v.fields.map { it.ty.layoutCode }
+            val argLayouts = mutableListOf<CodeBlock>()
+            v.fields.forEach {
+                if (it.ty is XrossType.RustString) {
+                    argLayouts.add(CodeBlock.of("%M", ADDRESS))
+                    argLayouts.add(CodeBlock.of("%M", JAVA_LONG))
+                    argLayouts.add(CodeBlock.of("%M", JAVA_BYTE))
+                } else {
+                    argLayouts.add(it.ty.layoutCode)
+                }
+            }
             val desc = if (argLayouts.isEmpty()) {
                 CodeBlock.of("%T.of(%M)", FUNCTION_DESCRIPTOR, ADDRESS)
             } else {
@@ -164,23 +192,26 @@ object HandleResolver {
         suffix: String,
         retLayout: String,
     ) {
-        val retLabel = "ADDRESS"
-        val argLayout = "ADDRESS"
+        val isStr = suffix == "str"
         val getSymbol = "${prefix}_property_${rawName}_${suffix}_get"
         val setSymbol = "${prefix}_property_${rawName}_${suffix}_set"
+
+        val getRetLayout = if (isStr) FFMConstants.XROSS_STRING_LAYOUT_CODE else MemberName(VAL_LAYOUT, retLayout)
+        val setArgLayout = if (isStr) FFMConstants.XROSS_STRING_VIEW_LAYOUT_CODE else MemberName(VAL_LAYOUT, "ADDRESS")
+
         init.addStatement(
-            "this.${camelName}${suffix.replaceFirstChar { it.uppercase() }}GetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.of(%M, %M))",
+            "this.${camelName}${suffix.replaceFirstChar { it.uppercase() }}GetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.of(%L, %M))",
             getSymbol,
             FUNCTION_DESCRIPTOR,
-            MemberName(VAL_LAYOUT, retLabel),
+            getRetLayout,
             ADDRESS,
         )
         init.addStatement(
-            "this.${camelName}${suffix.replaceFirstChar { it.uppercase() }}SetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.ofVoid(%M, %M))",
+            "this.${camelName}${suffix.replaceFirstChar { it.uppercase() }}SetHandle = linker.downcallHandle(lookup.find(%S).get(), %T.ofVoid(%M, %L))",
             setSymbol,
             FUNCTION_DESCRIPTOR,
             ADDRESS,
-            MemberName(VAL_LAYOUT, argLayout),
+            if (isStr) CodeBlock.of("%M, %M, %M", ADDRESS, JAVA_LONG, JAVA_BYTE) else setArgLayout,
         )
     }
 
@@ -189,7 +220,13 @@ object HandleResolver {
             val args = mutableListOf<CodeBlock>()
             if (method.methodType != XrossMethodType.Static) args.add(CodeBlock.of("%M", ADDRESS))
             method.args.forEach {
-                args.add(it.ty.layoutCode)
+                if (it.ty is XrossType.RustString) {
+                    args.add(CodeBlock.of("%M", ADDRESS))
+                    args.add(CodeBlock.of("%M", JAVA_LONG))
+                    args.add(CodeBlock.of("%M", JAVA_BYTE))
+                } else {
+                    args.add(it.ty.layoutCode)
+                }
             }
 
             val isPanicable = method.handleMode is HandleMode.Panicable
@@ -199,6 +236,7 @@ object HandleResolver {
                 val argsPart = if (args.isEmpty()) CodeBlock.of("") else CodeBlock.of(", %L", args.joinToCode(", "))
                 val retLayout = when {
                     method.isAsync -> FFMConstants.XROSS_TASK_LAYOUT_CODE
+                    method.ret is XrossType.RustString -> FFMConstants.XROSS_STRING_LAYOUT_CODE
                     isPanicable -> FFMConstants.XROSS_RESULT_LAYOUT_CODE
                     else -> method.ret.layoutCode
                 }

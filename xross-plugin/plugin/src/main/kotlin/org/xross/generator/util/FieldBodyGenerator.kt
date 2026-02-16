@@ -130,10 +130,10 @@ object FieldBodyGenerator {
                 is XrossType.RustString -> {
                     val handleName = handleNameProvider(ty)
                     if (handleName.isNotEmpty() && !isEnumVariant(vhName)) {
-                        addRustStringResolution("$handleName.invokeExact(this.segment)", "res", isAssignment = true)
+                        addRustStringResolution("$handleName.invokeExact(this.arena as ${SegmentAllocator::class.java.canonicalName}, this.segment)", "res", isAssignment = true, basePackage = basePackage)
                     } else {
                         val callExpr = "$vhName.get(this.segment, $offsetName)"
-                        addRustStringResolution(callExpr, "res", isAssignment = true, shouldFree = false)
+                        addRustStringResolution(callExpr, "res", isAssignment = true, shouldFree = false, basePackage = basePackage)
                     }
                 }
 
@@ -159,6 +159,7 @@ object FieldBodyGenerator {
         kType: TypeName,
         selfType: ClassName,
         backingFieldName: String?,
+        basePackage: String,
         handleNameProvider: (XrossType) -> String = { "" },
     ): CodeBlock {
         val body = CodeBlock.builder()
@@ -184,19 +185,9 @@ object FieldBodyGenerator {
                 val handleName = handleNameProvider(ty)
                 if (handleName.isNotEmpty()) {
                     body.beginControlFlow("%T.ofConfined().use { arena ->", java.lang.foreign.Arena::class)
-                    when (ty) {
-                        is XrossType.RustString -> {
-                            body.addStatement("$handleName.invoke(this.segment, arena.allocateFrom(v))")
-                        }
-                        is XrossType.Optional -> {
-                            body.addStatement("val allocated = if (v == null) %T.NULL else %L", MEMORY_SEGMENT, GeneratorUtils.generateAllocMsg(ty.inner, "v"))
-                            body.addStatement("$handleName.invoke(this.segment, allocated)")
-                        }
-                        is XrossType.Result -> {
-                            body.addResultAllocation(ty, "v", "xrossRes")
-                            body.addStatement("$handleName.invoke(this.segment, xrossRes)")
-                        }
-                    }
+                    val callArgs = mutableListOf<CodeBlock>()
+                    body.addArgumentPreparation(ty, "v", callArgs, basePackage = basePackage)
+                    body.addStatement("$handleName.invoke(this.segment, ${callArgs.joinToString(", ")})")
                     body.endControlFlow()
                 } else {
                     if (ty is XrossType.RustString) {

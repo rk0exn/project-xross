@@ -47,7 +47,7 @@ object EnumVariantGenerator {
                             CodeBlock.of("STRUCT_SIZE"),
                             CodeBlock.of("dropHandle"),
                             isPersistent = true,
-                            handleMode = org.xross.structures.HandleMode.Normal
+                            handleMode = org.xross.structures.HandleMode.Normal,
                         )
                         // entries マップ用のインスタンスは永続フラグを立てる
                         // addFactoryBody 内ですでに flag 変数が作成されているため、ここでは何も定義しない
@@ -81,7 +81,7 @@ object EnumVariantGenerator {
             CodeBlock.builder()
                 .beginControlFlow("val name = run")
                 .addStatement("if (ptr == %T.NULL) throw %T(%S)", MEMORY_SEGMENT, NullPointerException::class.asTypeName(), "Pointer is NULL")
-                .addRustStringResolution("getVariantNameHandle.invokeExact(ptr)", "n")
+                .addRustStringResolution("getVariantNameHandle.invokeExact(this.arena as java.lang.foreign.SegmentAllocator, ptr)", "n", basePackage = basePackage)
                 .addStatement("n")
                 .endControlFlow()
                 .build(),
@@ -95,7 +95,7 @@ object EnumVariantGenerator {
                 .apply {
                     meta.variants.forEach { addEnumConstant(it.name) }
                 }
-                .build()
+                .build(),
         )
 
         meta.variants.forEach { variant ->
@@ -111,7 +111,7 @@ object EnumVariantGenerator {
                     PropertySpec.builder("variantType", variantTypeEnum)
                         .addModifiers(KModifier.OVERRIDE)
                         .getter(FunSpec.getterBuilder().addStatement("return %T.%N", variantTypeEnum, variant.name).build())
-                        .build()
+                        .build(),
                 )
 
             val primaryConstructor = FunSpec.constructorBuilder()
@@ -119,7 +119,7 @@ object EnumVariantGenerator {
                 .addParameter("raw", MEMORY_SEGMENT)
                 .addParameter("arena", ClassName("java.lang.foreign", "Arena"))
                 .addParameter("sharedFlag", aliveFlagType)
-            
+
             variantTypeBuilder.primaryConstructor(primaryConstructor.build())
 
             variantTypeBuilder.addFunction(
@@ -205,7 +205,7 @@ object EnumVariantGenerator {
                             .getter(GeneratorUtils.buildFullGetter(kType, buildVariantGetterBody(variant.name, field, vhName, offsetName, kType, baseClassName, backingFieldName, basePackage)))
                             .apply {
                                 if (field.safety != XrossThreadSafety.Immutable) {
-                                    setter(GeneratorUtils.buildFullSetter(field.safety, kType, buildVariantSetterBody(variant.name, field, vhName, offsetName, kType, backingFieldName)))
+                                    setter(GeneratorUtils.buildFullSetter(field.safety, kType, buildVariantSetterBody(variant.name, field, vhName, offsetName, kType, backingFieldName, basePackage)))
                                 }
                             }
                             .build(),
@@ -225,13 +225,13 @@ object EnumVariantGenerator {
             PropertySpec.builder("entries", List::class.asClassName().parameterizedBy(baseClassName))
                 .mutable(true)
                 .initializer("emptyList()")
-                .build()
+                .build(),
         )
 
         classBuilder.addProperty(
             PropertySpec.builder("variantType", variantTypeEnum)
                 .addModifiers(KModifier.ABSTRACT)
-                .build()
+                .build(),
         )
 
         companionBuilder.addFunction(fromPointerBuilder.build())
@@ -258,7 +258,7 @@ object EnumVariantGenerator {
         }
     }
 
-    private fun buildVariantSetterBody(variantName: String, field: XrossField, vhName: String, offsetName: String, kType: TypeName, backingFieldName: String?): CodeBlock {
+    private fun buildVariantSetterBody(variantName: String, field: XrossField, vhName: String, offsetName: String, kType: TypeName, backingFieldName: String?, basePackage: String): CodeBlock {
         val baseCamel = field.name.toCamelCase()
         val combinedName = "${variantName}_$baseCamel"
         return FieldBodyGenerator.buildSetterBody(
@@ -268,6 +268,7 @@ object EnumVariantGenerator {
             kType,
             ClassName("", "UNUSED"),
             backingFieldName,
+            basePackage,
         ) { ty ->
             when (ty) {
                 is XrossType.Optional -> "${combinedName}OptSetHandle"

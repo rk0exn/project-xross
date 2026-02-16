@@ -1,10 +1,13 @@
 use serde::{Deserialize, Serialize};
 
 /// Defines the thread safety level for accessing fields or calling methods.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 pub enum ThreadSafety {
     /// No synchronization. Fastest access but requires external synchronization or single-threaded use.
     Unsafe,
+
+    /// Direct access without any safety checks (even beyond Unsafe).
+    Direct,
 
     /// Mutual exclusion using read-write locks on the JVM side.
     /// Allows multiple concurrent readers or a single writer.

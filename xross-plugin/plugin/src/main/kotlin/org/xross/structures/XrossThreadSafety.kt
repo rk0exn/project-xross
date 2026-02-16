@@ -10,6 +10,9 @@ enum class XrossThreadSafety {
     /** No synchronization. */
     Unsafe,
 
+    /** Direct access without any safety checks. */
+    Direct,
+
     /** Mutual exclusion using locks. */
     Lock,
 
