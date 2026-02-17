@@ -5,21 +5,21 @@ pub mod all_types;
 pub mod counters;
 pub mod enums;
 pub mod fast;
+pub mod graphics;
+pub mod heavy;
 pub mod models;
 pub mod services;
 pub mod standalone;
-pub mod heavy;
-pub mod graphics;
 
 pub use all_types::*;
 pub use counters::*;
 pub use enums::*;
 pub use fast::*;
+pub use graphics::*;
+pub use heavy::*;
 pub use models::*;
 pub use services::*;
 pub use standalone::*;
-pub use heavy::*;
-pub use graphics::*;
 
 #[cfg(test)]
 mod tests {

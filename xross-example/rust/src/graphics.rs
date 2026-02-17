@@ -21,10 +21,7 @@ pub struct SegmentData {
 }
 impl Default for SegmentData {
     fn default() -> Self {
-        Self {
-            points: Vec::new(),
-            is_closed: false,
-        }
+        Self { points: Vec::new(), is_closed: false }
     }
 }
 
@@ -60,12 +57,7 @@ pub struct Color {
 
 impl Default for Color {
     fn default() -> Self {
-        Self {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 0.0,
-        }
+        Self { r: 0.0, g: 0.0, b: 0.0, a: 0.0 }
     }
 }
 
@@ -245,11 +237,8 @@ impl Path2D {
         let needs_new_segment = self.segments.last().map(|s| s.is_closed).unwrap_or(false);
 
         if needs_new_segment {
-            let last_start_point = self
-                .segments
-                .last()
-                .and_then(|s| s.points.first())
-                .map(|p| (p.x, p.y));
+            let last_start_point =
+                self.segments.last().and_then(|s| s.points.first()).map(|p| (p.x, p.y));
 
             if let Some((sx, sy)) = last_start_point {
                 self.move_to(sx, sy);
@@ -431,10 +420,7 @@ impl Path2D {
         let v_bisect = (v1.0 / len1 + v2.0 / len2, v1.1 / len1 + v2.1 / len2);
         let len_b = (v_bisect.0.powi(2) + v_bisect.1.powi(2)).sqrt();
         let center_dist = radius / (theta / 2.0).sin();
-        let center = (
-            x1 + v_bisect.0 / len_b * center_dist,
-            y1 + v_bisect.1 / len_b * center_dist,
-        );
+        let center = (x1 + v_bisect.0 / len_b * center_dist, y1 + v_bisect.1 / len_b * center_dist);
 
         let start_angle = (p_start.1 - center.1).atan2(p_start.0 - center.0);
         let end_angle = (p_end.1 - center.1).atan2(p_end.0 - center.0);
@@ -442,14 +428,7 @@ impl Path2D {
         self.line_to(p_start.0, p_start.1);
 
         let cross_product = v1.0 * v2.1 - v1.1 * v2.0;
-        self.arc(
-            center.0,
-            center.1,
-            radius,
-            start_angle,
-            end_angle,
-            cross_product > 0.0,
-        );
+        self.arc(center.0, center.1, radius, start_angle, end_angle, cross_product > 0.0);
     }
 
     #[xross_method(panicable)]
@@ -577,12 +556,7 @@ impl Path2D {
                 let n_curr = (-v_curr.1, v_curr.0);
 
                 let colors = if enable_gradient {
-                    [
-                        p0.color.to_raw(),
-                        p0.color.to_raw(),
-                        p1.color.to_raw(),
-                        p1.color.to_raw(),
-                    ]
+                    [p0.color.to_raw(), p0.color.to_raw(), p1.color.to_raw(), p1.color.to_raw()]
                 } else {
                     let c = self.pen.color.to_raw();
                     [c, c, c, c]
@@ -710,16 +684,8 @@ impl Path2D {
                     return;
                 }
 
-                let nx = if cross > 0.0 {
-                    -miter_v.0 * miter_len
-                } else {
-                    miter_v.0 * miter_len
-                };
-                let ny = if cross > 0.0 {
-                    -miter_v.1 * miter_len
-                } else {
-                    miter_v.1 * miter_len
-                };
+                let nx = if cross > 0.0 { -miter_v.0 * miter_len } else { miter_v.0 * miter_len };
+                let ny = if cross > 0.0 { -miter_v.1 * miter_len } else { miter_v.1 * miter_len };
 
                 if cross > 0.0 {
                     Self::static_push_quad(
@@ -742,16 +708,8 @@ impl Path2D {
                 }
             }
             LineJoin::Round => {
-                let start_ang = if cross > 0.0 {
-                    (-v1.1).atan2(-v1.0)
-                } else {
-                    v1.1.atan2(v1.0)
-                };
-                let end_ang = if cross > 0.0 {
-                    (-v2.1).atan2(-v2.0)
-                } else {
-                    v2.1.atan2(v2.0)
-                };
+                let start_ang = if cross > 0.0 { (-v1.1).atan2(-v1.0) } else { v1.1.atan2(v1.0) };
+                let end_ang = if cross > 0.0 { (-v2.1).atan2(-v2.0) } else { v2.1.atan2(v2.0) };
                 let mut diff = end_ang - start_ang;
                 while diff > PI {
                     diff -= 2.0 * PI;
@@ -930,10 +888,7 @@ impl<'a> FillGeometryBuilder for FillOutput<'a> {
         let pos = vertex.position();
         let color = self.current_pen_color;
 
-        self.vertices.push(VertexInfo {
-            position: [pos.x, pos.y],
-            color,
-        });
+        self.vertices.push(VertexInfo { position: [pos.x, pos.y], color });
 
         Ok(VertexId(self.vertices.len() as u32 - 1))
     }
@@ -941,9 +896,5 @@ impl<'a> FillGeometryBuilder for FillOutput<'a> {
 
 fn normalize(x: f64, y: f64) -> (f64, f64) {
     let len = (x * x + y * y).sqrt();
-    if len < 1e-9 {
-        (0.0, 0.0)
-    } else {
-        (x / len, y / len)
-    }
+    if len < 1e-9 { (0.0, 0.0) } else { (x / len, y / len) }
 }

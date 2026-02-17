@@ -3,8 +3,8 @@ package org.xross.generator
 import com.squareup.kotlinpoet.*
 import org.xross.generator.util.GeneratorUtils
 import org.xross.generator.util.addArenaAndFlag
-import org.xross.generator.util.addArgumentPreparation
 import org.xross.generator.util.addFactoryBody
+import org.xross.helper.StringHelper.escapeKotlinKeyword
 import org.xross.helper.StringHelper.toCamelCase
 import org.xross.structures.HandleMode
 import org.xross.structures.XrossMethod
@@ -36,7 +36,7 @@ object ConstructorGenerator {
             .addParameters(
                 method.args.map {
                     ParameterSpec.builder(
-                        "argOf" + it.name.toCamelCase(),
+                        ("argOf" + it.name.toCamelCase()).escapeKotlinKeyword(),
                         GeneratorUtils.resolveReturnType(it.ty, basePackage),
                     ).build()
                 },
@@ -48,17 +48,7 @@ object ConstructorGenerator {
         body.addArenaAndFlag(basePackage, externalArena = CodeBlock.of("externalArena"))
 
         val callArgs = mutableListOf<CodeBlock>()
-        val needsArena = method.args.any { it.ty is XrossType.RustString || it.ty is XrossType.Optional || it.ty is XrossType.Result }
-        val arenaForArg = if (needsArena) "arena" else "java.lang.foreign.Arena.ofAuto()"
-
-        if (needsArena) {
-            body.beginControlFlow("%T.ofConfined().use { arena ->", Arena::class)
-        }
-
-        method.args.forEach { arg ->
-            val name = "argOf" + arg.name.toCamelCase()
-            body.addArgumentPreparation(arg.ty, name, callArgs, basePackage = basePackage, handleMode = method.handleMode, arenaName = arenaForArg)
-        }
+        val arenaForArg = GeneratorUtils.prepareArgumentsAndArena(method, body, basePackage, callArgs, namePrefix = "argOf")
 
         val isPanicable = method.handleMode is HandleMode.Panicable
         val handleCall = if (method.isAsync || method.ret is XrossType.Result || isPanicable) {
@@ -91,7 +81,7 @@ object ConstructorGenerator {
             Triple::class.asTypeName(),
         )
 
-        if (needsArena) {
+        if (method.args.any { it.ty is XrossType.RustString || it.ty is XrossType.Optional || it.ty is XrossType.Result }) {
             body.endControlFlow()
         }
 
@@ -100,13 +90,13 @@ object ConstructorGenerator {
 
         val constructorParams = method.args.map {
             ParameterSpec.builder(
-                "argOf" + it.name.toCamelCase(),
+                ("argOf" + it.name.toCamelCase()).escapeKotlinKeyword(),
                 GeneratorUtils.resolveReturnType(it.ty, basePackage),
             ).build()
         }.toMutableList()
         constructorParams.add(ParameterSpec.builder("arena", Arena::class.asTypeName().copy(nullable = true)).defaultValue("null").build())
 
-        val callArgsString = method.args.joinToString(", ") { "argOf" + it.name.toCamelCase() }
+        val callArgsString = method.args.joinToString(", ") { ("argOf" + it.name.toCamelCase()).escapeKotlinKeyword() }
         val finalCallArgs = if (callArgsString.isEmpty()) "externalArena = arena" else "$callArgsString, externalArena = arena"
 
         classBuilder.addFunction(
@@ -121,7 +111,7 @@ object ConstructorGenerator {
             .addParameters(
                 method.args.map {
                     ParameterSpec.builder(
-                        "argOf" + it.name.toCamelCase(),
+                        ("argOf" + it.name.toCamelCase()).escapeKotlinKeyword(),
                         GeneratorUtils.resolveReturnType(it.ty, basePackage),
                     ).build()
                 },
@@ -131,7 +121,7 @@ object ConstructorGenerator {
             .returns(TypeVariableName("R"))
             .addCode(
                 CodeBlock.builder()
-                    .add("return %T(%L).use { it.block() }\n", selfType, method.args.joinToString(", ") { "argOf" + it.name.toCamelCase() })
+                    .add("return %T(%L).use { it.block() }\n", selfType, method.args.joinToString(", ") { ("argOf" + it.name.toCamelCase()).escapeKotlinKeyword() })
                     .build(),
             )
         companionBuilder.addFunction(useFunBuilder.build())

@@ -42,28 +42,22 @@ object PropertyGenerator {
             }
         }
 
-        if (backingFields.isNotEmpty()) {
-            val clearCache = FunSpec.builder("clearCache")
-                .addModifiers(KModifier.OVERRIDE)
-                .apply {
-                    backingFields.forEach { addStatement("this.$it = null") }
-                }
-                .build()
-            classBuilder.addFunction(clearCache)
-        }
+        GeneratorUtils.addClearCacheFunction(classBuilder, backingFields)
     }
     private fun buildGetterBody(field: XrossField, vhName: String, kType: TypeName, backingFieldName: String?, selfType: ClassName, basePackage: String): CodeBlock {
         val baseName = field.name.toCamelCase()
         val offsetName = "OFFSET_$baseName"
         return FieldBodyGenerator.buildGetterBody(
-            field,
-            baseName,
-            vhName,
-            offsetName,
-            kType,
-            selfType,
-            backingFieldName,
-            basePackage,
+            FieldBodyGenerator.FieldContext(
+                field,
+                baseName,
+                vhName,
+                offsetName,
+                kType,
+                selfType,
+                backingFieldName,
+                basePackage,
+            ),
         )
     }
 
@@ -72,14 +66,16 @@ object PropertyGenerator {
         val offsetName = "OFFSET_$baseName"
 
         return FieldBodyGenerator.buildSetterBody(
-            field,
-            baseName,
-            vhName,
-            offsetName,
-            kType,
-            selfType,
-            backingFieldName,
-            basePackage,
+            FieldBodyGenerator.FieldContext(
+                field,
+                baseName,
+                vhName,
+                offsetName,
+                kType,
+                selfType,
+                backingFieldName,
+                basePackage,
+            ),
         )
     }
 }

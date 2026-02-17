@@ -64,14 +64,14 @@ fun runHeavyBenchmarks(): List<BenchmarkResult> {
     val timeXrossAdvanced = measureTimeMillis {
         repeat(count) {
             org.example.heavy.AdvancedResult(
-                2.0f, 0f, 0f, 0f, 100f, 10f, 100f, 0f, 0f, 0f, 0.05f, 0.05f, 0.05f, 10, 100, 10
+                2.0f, 0f, 0f, 0f, 100f, 10f, 100f, 0f, 0f, 0f, 0.05f, 0.05f, 0.05f, 10, 100, 10,
             ).close()
         }
     }
     val timePKAdvanced = measureTimeMillis {
         repeat(count) {
             PKAdvancedResult(
-                2.0f, 0f, 0f, 0f, 100f, 10f, 100f, 0f, 0f, 0f, 0.05f, 0.05f, 0.05f, 10, 100, 10
+                2.0f, 0f, 0f, 0f, 100f, 10f, 100f, 0f, 0f, 0f, 0.05f, 0.05f, 0.05f, 10, 100, 10,
             )
         }
     }
@@ -79,7 +79,7 @@ fun runHeavyBenchmarks(): List<BenchmarkResult> {
     return listOf(
         BenchmarkResult("Heavy", "Prime Factorization (Batch)", timeXrossPrimeBatch, timeKotlinPrime),
         BenchmarkResult("Heavy", "Matrix Multiplication (Batch)", timeXrossMatrixBatch, timeKotlinMatrix),
-        BenchmarkResult("Heavy", "Advanced Result Simulation ($count)", timeXrossAdvanced, timePKAdvanced)
+        BenchmarkResult("Heavy", "Advanced Result Simulation ($count)", timeXrossAdvanced, timePKAdvanced),
     )
 }
 
@@ -101,12 +101,14 @@ fun runGraphicsBenchmarks(): List<BenchmarkResult> {
     val timePKPath = measureTimeMillis {
         repeat(iterations) {
             var sum = 0.0
-            for (i in 0..1000) { sum += Math.sin(i.toDouble()) }
+            for (i in 0..1000) {
+                sum += Math.sin(i.toDouble())
+            }
         }
     }
 
     return listOf(
-        BenchmarkResult("Graphics", "Path2D Tessellation ($iterations)", timeXrossPath, timePKPath)
+        BenchmarkResult("Graphics", "Path2D Tessellation ($iterations)", timeXrossPath, timePKPath),
     )
 }
 

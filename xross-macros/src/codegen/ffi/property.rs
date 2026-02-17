@@ -1,3 +1,4 @@
+use crate::utils::is_primitive_type;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use xross_metadata::{Ownership, XrossType};
@@ -94,12 +95,7 @@ pub fn generate_property_accessors(
         _ => {
             let type_str = quote!(#field_ty).to_string();
             let is_ptr_or_ref = type_str.contains('*') || type_str.contains('&');
-            let is_primitive = [
-                "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "bool",
-                "isize", "usize", "()",
-            ]
-            .iter()
-            .any(|&p| type_str == p || (type_str.contains(p) && type_str.len() <= 5));
+            let is_primitive = is_primitive_type(field_ty);
 
             setter_args.push(if !is_primitive && !is_ptr_or_ref {
                 quote! { _val: *mut std::ffi::c_void }

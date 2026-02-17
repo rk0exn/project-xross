@@ -17,9 +17,9 @@ object EnumVariantGenerator {
     private fun addVariantFactoryMethod(
         companionBuilder: TypeSpec.Builder,
         factoryMethodName: String,
+        handleName: String,
         tripleType: TypeName,
         basePackage: String,
-        handleCall: CodeBlock,
         fields: List<XrossField> = emptyList(),
     ) {
         val runtimePkg = "$basePackage.xross.runtime"
@@ -41,6 +41,15 @@ object EnumVariantGenerator {
                 .returns(tripleType)
                 .addCode(
                     CodeBlock.builder().apply {
+                        val callArgs = mutableListOf<CodeBlock>()
+                        val arenaForArg = GeneratorUtils.prepareArgumentsAndArena(fields, org.xross.structures.HandleMode.Normal, this, basePackage, callArgs, namePrefix = "argOf")
+
+                        val handleCall = if (callArgs.isEmpty()) {
+                            CodeBlock.of("$handleName.invokeExact()")
+                        } else {
+                            CodeBlock.of("$handleName.invokeExact(${callArgs.joinToString(", ")})")
+                        }
+
                         addFactoryBody(
                             basePackage,
                             handleCall,
@@ -49,6 +58,11 @@ object EnumVariantGenerator {
                             isPersistent = true,
                             handleMode = org.xross.structures.HandleMode.Normal,
                         )
+
+                        if (fields.any { it.ty is XrossType.RustString || it.ty is XrossType.Optional || it.ty is XrossType.Result }) {
+                            endControlFlow()
+                        }
+
                         // entries マップ用のインスタンスは永続フラグを立てる
                         // addFactoryBody 内ですでに flag 変数が作成されているため、ここでは何も定義しない
                         fields.forEach { field ->
@@ -121,9 +135,9 @@ object EnumVariantGenerator {
                 addVariantFactoryMethod(
                     companionBuilder,
                     factoryMethodName,
+                    "new${variant.name}Handle",
                     tripleType,
                     basePackage,
-                    CodeBlock.of("new${variant.name}Handle.invokeExact()"),
                 )
 
                 variantTypeBuilder.addFunction(
@@ -136,18 +150,9 @@ object EnumVariantGenerator {
                 addVariantFactoryMethod(
                     companionBuilder,
                     factoryMethodName,
+                    "new${variant.name}Handle",
                     tripleType,
                     basePackage,
-                    CodeBlock.of(
-                        "new${variant.name}Handle.invokeExact(${variant.fields.joinToString(", ") { field ->
-                            val argName = "argOf" + field.name.toCamelCase()
-                            when (field.ty) {
-                                is XrossType.Bool -> "if ($argName) 1.toByte() else 0.toByte()"
-                                is XrossType.Object -> "$argName.segment"
-                                else -> argName
-                            }
-                        }})",
-                    ),
                     variant.fields,
                 )
 
@@ -197,15 +202,7 @@ object EnumVariantGenerator {
                     )
                 }
 
-                if (backingFields.isNotEmpty()) {
-                    val clearCache = FunSpec.builder("clearCache")
-                        .addModifiers(KModifier.OVERRIDE)
-                        .apply {
-                            backingFields.forEach { addStatement("this.$it = null") }
-                        }
-                        .build()
-                    variantTypeBuilder.addFunction(clearCache)
-                }
+                GeneratorUtils.addClearCacheFunction(variantTypeBuilder, backingFields)
             }
 
             classBuilder.addType(variantTypeBuilder.build())
@@ -236,14 +233,16 @@ object EnumVariantGenerator {
         val baseCamel = field.name.toCamelCase()
         val combinedName = "${variantName}_$baseCamel"
         return FieldBodyGenerator.buildGetterBody(
-            field,
-            combinedName,
-            vhName,
-            offsetName,
-            kType,
-            selfType,
-            backingFieldName,
-            basePackage,
+            FieldBodyGenerator.FieldContext(
+                field,
+                combinedName,
+                vhName,
+                offsetName,
+                kType,
+                selfType,
+                backingFieldName,
+                basePackage,
+            ),
         )
     }
 
@@ -251,14 +250,16 @@ object EnumVariantGenerator {
         val baseCamel = field.name.toCamelCase()
         val combinedName = "${variantName}_$baseCamel"
         return FieldBodyGenerator.buildSetterBody(
-            field,
-            combinedName,
-            vhName,
-            offsetName,
-            kType,
-            ClassName("", "UNUSED"),
-            backingFieldName,
-            basePackage,
+            FieldBodyGenerator.FieldContext(
+                field,
+                combinedName,
+                vhName,
+                offsetName,
+                kType,
+                ClassName("", "UNUSED"),
+                backingFieldName,
+                basePackage,
+            ),
         )
     }
 }

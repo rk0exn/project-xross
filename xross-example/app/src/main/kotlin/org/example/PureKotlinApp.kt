@@ -147,7 +147,7 @@ class PKAdvancedResult(
     var targetPosX: Float,
     var targetPosY: Float,
     var targetPosZ: Float,
-    var maxRangeDist: Float
+    var maxRangeDist: Float,
 ) {
     companion object {
         private fun simulateStep(v: FloatArray, p: FloatArray, drag: Float, grav: Float) {
@@ -181,9 +181,22 @@ class PKAdvancedResult(
         }
 
         operator fun invoke(
-            power: Float, sX: Float, sY: Float, sZ: Float, tX: Float, tY: Float, tZ: Float,
-            vX: Float, vY: Float, vZ: Float, drag: Float, grav: Float, tGrav: Float,
-            prec: Int, maxS: Int, iter: Int
+            power: Float,
+            sX: Float,
+            sY: Float,
+            sZ: Float,
+            tX: Float,
+            tY: Float,
+            tZ: Float,
+            vX: Float,
+            vY: Float,
+            vZ: Float,
+            drag: Float,
+            grav: Float,
+            tGrav: Float,
+            prec: Int,
+            maxS: Int,
+            iter: Int,
         ): PKAdvancedResult {
             var pX = tX
             var pY = tY
@@ -242,8 +255,14 @@ class PKAdvancedResult(
             }
 
             return PKAdvancedResult(
-                lP, hP, (-(pX - sX).toDouble().let { Math.atan2(it, (pZ - sZ).toDouble()) } * (180.0 / Math.PI)).toFloat(),
-                lT, pX, pY, pZ, mD
+                lP,
+                hP,
+                (-(pX - sX).toDouble().let { Math.atan2(it, (pZ - sZ).toDouble()) } * (180.0 / Math.PI)).toFloat(),
+                lT,
+                pX,
+                pY,
+                pZ,
+                mD,
             )
         }
     }

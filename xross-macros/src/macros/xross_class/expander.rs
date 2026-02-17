@@ -186,14 +186,26 @@ pub fn impl_xross_class(input: XrossClassInput) -> proc_macro::TokenStream {
                         }
                     }
 
-                    if is_named {
-                        extra_functions.push(quote! { #[unsafe(no_mangle)] pub unsafe extern "C" fn #constructor_name(#(#c_param_defs),*) -> *mut #type_ident { #(#internal_conversions)* Box::into_raw(Box::new(#type_ident::#v_ident { #(#call_args),* })) } });
-                        variant_name_arms
-                            .push(quote! { #type_ident::#v_ident { .. } => #v_name_str });
+                    let (construction, pattern) = if is_named {
+                        (
+                            quote! { #type_ident::#v_ident { #(#call_args),* } },
+                            quote! { #type_ident::#v_ident { .. } },
+                        )
                     } else {
-                        extra_functions.push(quote! { #[unsafe(no_mangle)] pub unsafe extern "C" fn #constructor_name(#(#c_param_defs),*) -> *mut #type_ident { #(#internal_conversions)* Box::into_raw(Box::new(#type_ident::#v_ident(#(#call_args),*))) } });
-                        variant_name_arms.push(quote! { #type_ident::#v_ident(..) => #v_name_str });
-                    }
+                        (
+                            quote! { #type_ident::#v_ident(#(#call_args),*) },
+                            quote! { #type_ident::#v_ident(..) },
+                        )
+                    };
+
+                    extra_functions.push(quote! {
+                        #[unsafe(no_mangle)]
+                        pub unsafe extern "C" fn #constructor_name(#(#c_param_defs),*) -> *mut #type_ident {
+                            #(#internal_conversions)*
+                            Box::into_raw(Box::new(#construction))
+                        }
+                    });
+                    variant_name_arms.push(quote! { #pattern => #v_name_str });
                     variant_specs.push(
                         quote! { format!("{}{{{}}}", #v_name_str, vec![#(#field_specs),*].join(";")) },
                     );

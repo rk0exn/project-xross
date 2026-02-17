@@ -65,3 +65,17 @@ pub fn build_symbol_base(crate_name: &str, package: &str, type_name: &str) -> St
         format!("{}_{}_{}", crate_name, package.replace(".", "_"), type_snake)
     }
 }
+
+pub fn is_primitive_type(ty: &syn::Type) -> bool {
+    let type_str = quote::quote!(#ty).to_string();
+    let is_ptr_or_ref = type_str.contains('*') || type_str.contains('&');
+    if is_ptr_or_ref {
+        return false;
+    }
+
+    let primitives = [
+        "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "bool", "isize",
+        "usize", "()",
+    ];
+    primitives.iter().any(|&p| type_str == p || (type_str.contains(p) && type_str.len() <= 5))
+}

@@ -3,11 +3,9 @@ package org.xross.generator
 import com.squareup.kotlinpoet.*
 import org.xross.generator.util.FFMConstants
 import org.xross.generator.util.GeneratorUtils
-import org.xross.generator.util.addArgumentPreparation
 import org.xross.helper.StringHelper.escapeKotlinKeyword
 import org.xross.helper.StringHelper.toCamelCase
 import org.xross.structures.*
-import java.lang.foreign.Arena
 
 /**
  * Generates Kotlin methods that wrap native Rust functions using Java FFM.
@@ -91,16 +89,7 @@ object MethodGenerator {
 
             val argPrep = CodeBlock.builder()
             val needsArena = method.args.any { it.ty is XrossType.RustString || it.ty is XrossType.Optional || it.ty is XrossType.Result }
-            val arenaForArg = if (needsArena) "arena" else "java.lang.foreign.Arena.ofAuto()"
-
-            if (needsArena) {
-                argPrep.beginControlFlow("%T.ofConfined().use { arena ->", Arena::class.asTypeName())
-            }
-
-            method.args.forEach { arg ->
-                val name = arg.name.toCamelCase().escapeKotlinKeyword()
-                argPrep.addArgumentPreparation(arg.ty, name, callArgs, checkObjectValidity = true, basePackage = basePackage, handleMode = method.handleMode, arenaName = arenaForArg)
-            }
+            val arenaForArg = GeneratorUtils.prepareArgumentsAndArena(method, argPrep, basePackage, callArgs, checkObjectValidity = true)
 
             val handleName = "${method.name.toCamelCase()}Handle"
             val isPanicable = method.handleMode is HandleMode.Panicable

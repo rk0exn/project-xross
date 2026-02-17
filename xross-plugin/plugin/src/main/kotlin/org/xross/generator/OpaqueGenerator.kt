@@ -36,21 +36,13 @@ object OpaqueGenerator {
             classBuilder.addProperty(propBuilder.build())
         }
 
-        if (backingFields.isNotEmpty()) {
-            val clearCache = FunSpec.builder("clearCache")
-                .addModifiers(KModifier.OVERRIDE)
-                .apply {
-                    backingFields.forEach { addStatement("this.$it = null") }
-                }
-                .build()
-            classBuilder.addFunction(clearCache)
-        }
+        GeneratorUtils.addClearCacheFunction(classBuilder, backingFields)
     }
 
     private fun buildOpaqueGetter(field: XrossField, kType: TypeName, backingFieldName: String?, basePackage: String): FunSpec {
         val baseName = field.name.toCamelCase()
         val body = CodeBlock.builder()
-        body.addStatement("if (this.segment == %T.NULL || !this.isValid) throw %T(%S)", MemorySegment::class, NullPointerException::class, "Access error")
+        GeneratorUtils.addAliveCheck(body, "Access error")
 
         if (backingFieldName != null) {
             body.addStatement("val cached = this.$backingFieldName")
@@ -101,7 +93,7 @@ object OpaqueGenerator {
 
     private fun buildOpaqueSetterBody(field: XrossField, backingFieldName: String?, basePackage: String): CodeBlock {
         val body = CodeBlock.builder()
-        body.addStatement("if (this.segment == %T.NULL || !this.isValid) throw %T(%S)", MemorySegment::class, NullPointerException::class, "Object invalid")
+        GeneratorUtils.addAliveCheck(body, "Object invalid")
 
         val setHandle = when (field.ty) {
             is XrossType.RustString -> "${field.name.toCamelCase()}StrSetHandle"

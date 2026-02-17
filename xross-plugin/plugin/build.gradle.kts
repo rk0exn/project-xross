@@ -97,7 +97,9 @@ project.tasks.withType(JavaExec::class.java).configureEach {
 
 group = "org.xross"
 
-version = "3.0.0"
+version = "3.0.1"
+
+
 
 kotlin {
 

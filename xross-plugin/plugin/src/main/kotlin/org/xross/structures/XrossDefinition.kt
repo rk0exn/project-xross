@@ -13,12 +13,12 @@ import kotlinx.serialization.json.JsonClassDiscriminator
 @JsonClassDiscriminator("kind")
 sealed class XrossDefinition {
     abstract val signature: String
-    abstract val symbolPrefix: String
     abstract val packageName: String
     abstract val name: String
     abstract val methods: List<XrossMethod>
     abstract val docs: List<String>
     abstract val isCopy: Boolean
+    abstract val symbolPrefix: String
 
     /**
      * A standard Rust struct.

@@ -1,4 +1,6 @@
-use crate::codegen::ffi::{gen_arg_conversion, gen_receiver_logic, gen_ret_wrapping};
+use crate::codegen::ffi::{
+    gen_arg_conversion, gen_panic_error_arm, gen_receiver_logic, gen_ret_wrapping,
+};
 use crate::utils::extract_safety_attr;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -95,6 +97,7 @@ pub fn write_ffi_function(
             }
         };
 
+        let error_arm = gen_panic_error_arm("");
         let panic_handling = quote! {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
                 #wrapper_body
@@ -104,21 +107,7 @@ pub fn write_ffi_function(
                 Ok(val) => {
                     #success_return
                 }
-                Err(panic_err) => {
-                    let msg = if let Some(s) = panic_err.downcast_ref::<&str>() {
-                        s.to_string()
-                    } else if let Some(s) = panic_err.downcast_ref::<String>() {
-                        s.clone()
-                    } else {
-                        "Unknown panic".to_string()
-                    };
-
-                    let xs = xross_core::XrossString::from(msg);
-                    xross_core::XrossResult {
-                        is_ok: false,
-                        ptr: Box::into_raw(Box::new(xs)) as *mut std::ffi::c_void,
-                    }
-                }
+                #error_arm
             }
         };
 

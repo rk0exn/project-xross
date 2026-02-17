@@ -22,22 +22,21 @@ pub fn generate_common_ffi(
         impl #trait_name for #name { fn xross_layout() -> String { #layout_logic } }
     });
 
+    let drop_inner = quote! {
+        if !ptr.is_null() { drop(unsafe { Box::from_raw(ptr) }); }
+    };
+
     if drop_mode == HandleMode::Panicable {
+        let error_arm = gen_panic_error_arm("drop");
         toks.push(quote! {
             #[unsafe(no_mangle)]
             pub unsafe extern "C" fn #drop_id(ptr: *mut #name) -> xross_core::XrossResult {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-                    if !ptr.is_null() { drop(unsafe { Box::from_raw(ptr) }); }
+                    #drop_inner
                 }));
                 match result {
                     Ok(_) => xross_core::XrossResult { is_ok: true, ptr: std::ptr::null_mut() },
-                    Err(panic_err) => {
-                        let msg = if let Some(s) = panic_err.downcast_ref::<&str>() { s.to_string() }
-                        else if let Some(s) = panic_err.downcast_ref::<String>() { s.clone() }
-                        else { "Unknown panic during drop".to_string() };
-                        let xs = xross_core::XrossString::from(msg);
-                        xross_core::XrossResult { is_ok: false, ptr: Box::into_raw(Box::new(xs)) as *mut std::ffi::c_void }
-                    }
+                    #error_arm
                 }
             }
         });
@@ -45,32 +44,31 @@ pub fn generate_common_ffi(
         toks.push(quote! {
             #[unsafe(no_mangle)]
             pub unsafe extern "C" fn #drop_id(ptr: *mut #name) {
-                if !ptr.is_null() { drop(unsafe { Box::from_raw(ptr) }); }
+                #drop_inner
             }
         });
     }
 
     if is_clonable {
+        let clone_inner = quote! {
+            if ptr.is_null() { return std::ptr::null_mut(); }
+            let val_on_stack: #name = std::ptr::read_unaligned(ptr);
+            let cloned_val = val_on_stack.clone();
+            std::mem::forget(val_on_stack);
+            Box::into_raw(Box::new(cloned_val))
+        };
+
         if clone_mode == HandleMode::Panicable {
+            let error_arm = gen_panic_error_arm("clone");
             toks.push(quote! {
                 #[unsafe(no_mangle)]
                 pub unsafe extern "C" fn #clone_id(ptr: *const #name) -> xross_core::XrossResult {
                     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-                        if ptr.is_null() { return std::ptr::null_mut(); }
-                        let val_on_stack: #name = std::ptr::read_unaligned(ptr);
-                        let cloned_val = val_on_stack.clone();
-                        std::mem::forget(val_on_stack);
-                        Box::into_raw(Box::new(cloned_val))
+                        #clone_inner
                     }));
                     match result {
                         Ok(p) => xross_core::XrossResult { is_ok: true, ptr: p as *mut std::ffi::c_void },
-                        Err(panic_err) => {
-                            let msg = if let Some(s) = panic_err.downcast_ref::<&str>() { s.to_string() }
-                            else if let Some(s) = panic_err.downcast_ref::<String>() { s.clone() }
-                            else { "Unknown panic during clone".to_string() };
-                            let xs = xross_core::XrossString::from(msg);
-                            xross_core::XrossResult { is_ok: false, ptr: Box::into_raw(Box::new(xs)) as *mut std::ffi::c_void }
-                        }
+                        #error_arm
                     }
                 }
             });
@@ -78,11 +76,7 @@ pub fn generate_common_ffi(
             toks.push(quote! {
                 #[unsafe(no_mangle)]
                 pub unsafe extern "C" fn #clone_id(ptr: *const #name) -> *mut #name {
-                    if ptr.is_null() { return std::ptr::null_mut(); }
-                    let val_on_stack: #name = std::ptr::read_unaligned(ptr);
-                    let cloned_val = val_on_stack.clone();
-                    std::mem::forget(val_on_stack);
-                    Box::into_raw(Box::new(cloned_val))
+                    #clone_inner
                 }
             });
         }
@@ -124,4 +118,28 @@ pub fn generate_enum_aux_ffi(
             unsafe { std::ptr::write_unaligned(out, xross_core::XrossString::from(name.to_string())) };
         }
     });
+}
+
+pub fn gen_panic_error_arm(context: &str) -> TokenStream {
+    let msg_prefix =
+        if context.is_empty() { "".to_string() } else { format!(" during {}", context) };
+    let default_msg = format!("Unknown panic{}", msg_prefix);
+
+    quote! {
+        Err(panic_err) => {
+            let msg = if let Some(s) = panic_err.downcast_ref::<&str>() {
+                s.to_string()
+            } else if let Some(s) = panic_err.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                #default_msg .to_string()
+            };
+
+            let xs = xross_core::XrossString::from(msg);
+            xross_core::XrossResult {
+                is_ok: false,
+                ptr: Box::into_raw(Box::new(xs)) as *mut std::ffi::c_void,
+            }
+        }
+    }
 }
