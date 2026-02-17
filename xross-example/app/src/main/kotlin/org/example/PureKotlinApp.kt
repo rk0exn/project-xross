@@ -139,6 +139,116 @@ class PKComprehensiveNode(var id: Int, var data: String) : AutoCloseable {
     override fun close() {}
 }
 
+class PKAdvancedResult(
+    var lowPitch: Float,
+    var highPitch: Float,
+    var yaw: Float,
+    var travelTicks: Int,
+    var targetPosX: Float,
+    var targetPosY: Float,
+    var targetPosZ: Float,
+    var maxRangeDist: Float
+) {
+    companion object {
+        private fun simulateStep(v: FloatArray, p: FloatArray, drag: Float, grav: Float) {
+            p[0] += v[0]
+            p[1] += v[1]
+            v[0] *= drag
+            v[1] = (v[1] * drag) - grav
+        }
+
+        private fun simulateToX(v: Float, pitch: Float, dx: Float, maxStep: Int, drag: Float, grav: Float): Pair<Float, Int> {
+            val rad = pitch * (Math.PI.toFloat() / 180.0f)
+            val p = floatArrayOf(0f, 0f)
+            val vel = floatArrayOf(v * Math.cos(rad.toDouble()).toFloat(), -Math.sin(rad.toDouble()).toFloat() * v)
+
+            for (t in 1..maxStep) {
+                simulateStep(vel, p, drag, grav)
+                if (p[0] >= dx) return Pair(p[1], t)
+            }
+            return Pair(p[1], maxStep)
+        }
+
+        private fun simulateMaxDist(v: Float, pitch: Float, dy: Float, maxStep: Int, drag: Float, grav: Float): Float {
+            val rad = pitch * (Math.PI.toFloat() / 180.0f)
+            val p = floatArrayOf(0f, 0f)
+            val vel = floatArrayOf(v * Math.cos(rad.toDouble()).toFloat(), -Math.sin(rad.toDouble()).toFloat() * v)
+            for (i in 1..maxStep) {
+                simulateStep(vel, p, drag, grav)
+                if (vel[1] < 0f && p[1] <= dy) return p[0]
+            }
+            return p[0]
+        }
+
+        operator fun invoke(
+            power: Float, sX: Float, sY: Float, sZ: Float, tX: Float, tY: Float, tZ: Float,
+            vX: Float, vY: Float, vZ: Float, drag: Float, grav: Float, tGrav: Float,
+            prec: Int, maxS: Int, iter: Int
+        ): PKAdvancedResult {
+            var pX = tX
+            var pY = tY
+            var pZ = tZ
+            var lP = 0f
+            var hP = 0f
+            var mD = 0f
+            var lT = 10
+
+            for (i in 0 until iter) {
+                val t = lT.toFloat()
+                pX = tX + vX * t
+                pY = tY + (vY * t) - (0.5f * tGrav * t * t)
+                pZ = tZ + vZ * t
+
+                val dx = Math.hypot((pX - sX).toDouble(), (pZ - sZ).toDouble()).toFloat()
+                val dy = pY - sY
+
+                var lowLimit = -90.0f
+                var highLimit = 90.0f
+                for (j in 0 until 10) {
+                    val m1 = lowLimit + (highLimit - lowLimit) / 3.0f
+                    val m2 = highLimit - (highLimit - lowLimit) / 3.0f
+                    if (simulateMaxDist(power, m1, dy, maxS, drag, grav) > simulateMaxDist(power, m2, dy, maxS, drag, grav)) {
+                        highLimit = m2
+                    } else {
+                        lowLimit = m1
+                    }
+                }
+                val maxP = (lowLimit + highLimit) * 0.5f
+                mD = simulateMaxDist(power, maxP, dy, maxS, drag, grav)
+
+                var lp = maxP
+                var hp = 90.0f
+                var lastLt = maxS
+                for (j in 0 until prec) {
+                    val mid = (lp + hp) * 0.5f
+                    val (y, tRes) = simulateToX(power, mid, dx, maxS, drag, grav)
+                    if (y < dy) hp = mid else lp = mid
+                    lastLt = tRes
+                }
+                lP = (lp + hp) * 0.5f
+                val prevLt = lT
+                lT = lastLt
+
+                var la = -90.0f
+                var ha = maxP
+                for (j in 0 until prec) {
+                    val mid = (la + ha) * 0.5f
+                    val (y, _) = simulateToX(power, mid, dx, maxS, drag, grav)
+                    if (y > dy) la = mid else ha = mid
+                }
+                hP = (la + ha) * 0.5f
+
+                if (Math.abs(lT - prevLt) < 1) break
+            }
+
+            return PKAdvancedResult(
+                lP, hP, (-(pX - sX).toDouble().let { Math.atan2(it, (pZ - sZ).toDouble()) } * (180.0 / Math.PI)).toFloat(),
+                lT, pX, pY, pZ, mD
+            )
+        }
+    }
+}
+
 class PKAllTypesTest : AutoCloseable {
     var b: Boolean = true
     var i8: Byte = -8

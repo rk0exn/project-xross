@@ -8,6 +8,8 @@ pub mod fast;
 pub mod models;
 pub mod services;
 pub mod standalone;
+pub mod heavy;
+pub mod graphics;
 
 pub use all_types::*;
 pub use counters::*;
@@ -16,6 +18,8 @@ pub use fast::*;
 pub use models::*;
 pub use services::*;
 pub use standalone::*;
+pub use heavy::*;
+pub use graphics::*;
 
 #[cfg(test)]
 mod tests {

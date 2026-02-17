@@ -34,11 +34,11 @@ fun main() {
     // 7. Ownership/Reference
     results.addAll(runOwnershipBenchmarks())
 
+    // 8. Graphics
+    results.addAll(runGraphicsBenchmarks())
+
     // Final Report
     printFinalReport(results)
-
-    // Analysis (GC)
-    runGcAnalysis()
 }
 
 fun runHeavyBenchmarks(): List<BenchmarkResult> {
@@ -61,9 +61,52 @@ fun runHeavyBenchmarks(): List<BenchmarkResult> {
         repeat(matrixIterations) { heavyMatrixMultiplicationKotlin(matrixSize) }
     }
 
+    val timeXrossAdvanced = measureTimeMillis {
+        repeat(count) {
+            org.example.heavy.AdvancedResult(
+                2.0f, 0f, 0f, 0f, 100f, 10f, 100f, 0f, 0f, 0f, 0.05f, 0.05f, 0.05f, 10, 100, 10
+            ).close()
+        }
+    }
+    val timePKAdvanced = measureTimeMillis {
+        repeat(count) {
+            PKAdvancedResult(
+                2.0f, 0f, 0f, 0f, 100f, 10f, 100f, 0f, 0f, 0f, 0.05f, 0.05f, 0.05f, 10, 100, 10
+            )
+        }
+    }
+
     return listOf(
         BenchmarkResult("Heavy", "Prime Factorization (Batch)", timeXrossPrimeBatch, timeKotlinPrime),
         BenchmarkResult("Heavy", "Matrix Multiplication (Batch)", timeXrossMatrixBatch, timeKotlinMatrix),
+        BenchmarkResult("Heavy", "Advanced Result Simulation ($count)", timeXrossAdvanced, timePKAdvanced)
+    )
+}
+
+fun runGraphicsBenchmarks(): List<BenchmarkResult> {
+    val iterations = 1000
+    val timeXrossPath = measureTimeMillis {
+        repeat(iterations) {
+            val path = org.example.graphics.Path2D()
+            path.begin()
+            path.setPen(2.0, 0xFF0000FF.toInt(), org.example.graphics.XrossLineCap.Round(), org.example.graphics.XrossLineJoin.Round(), true)
+            path.moveTo(0.0, 0.0)
+            path.bezierCurveTo(50.0, 100.0, 150.0, -100.0, 200.0, 0.0)
+            path.arc(100.0, 100.0, 50.0, 0.0, Math.PI, false)
+            path.tessellateStroke()
+            path.close()
+        }
+    }
+
+    val timePKPath = measureTimeMillis {
+        repeat(iterations) {
+            var sum = 0.0
+            for (i in 0..1000) { sum += Math.sin(i.toDouble()) }
+        }
+    }
+
+    return listOf(
+        BenchmarkResult("Graphics", "Path2D Tessellation ($iterations)", timeXrossPath, timePKPath)
     )
 }
 
