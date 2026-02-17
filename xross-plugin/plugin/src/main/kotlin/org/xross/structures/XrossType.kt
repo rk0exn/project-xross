@@ -94,6 +94,8 @@ sealed class XrossType {
     val layoutCode: com.squareup.kotlinpoet.CodeBlock
         get() = when (this) {
             is Result -> FFMConstants.XROSS_RESULT_LAYOUT_CODE
+            is RustString -> FFMConstants.XROSS_STRING_LAYOUT_CODE
+            is Async -> FFMConstants.XROSS_TASK_LAYOUT_CODE
             else -> com.squareup.kotlinpoet.CodeBlock.of("%M", layoutMember)
         }
 
@@ -107,6 +109,9 @@ sealed class XrossType {
             else -> false
         }
 
+    val isComplex: Boolean get() = this is Object || this is Optional || this is Result || this is RustString || this is Async
+    val isPrimitive: Boolean get() = !isComplex
+
     /**
      * Returns the size in bytes for the primitive type.
      */
@@ -114,8 +119,13 @@ sealed class XrossType {
         get() = when (this) {
             is I32, is U32, is F32 -> 4L
             is I64, is U64, is F64, is Pointer, is RustString -> 8L
+            is ISize, is USize -> if (java.lang.foreign.ValueLayout.ADDRESS.byteSize() <= 4L) 4L else 8L
+            is Result -> 16L
+            is Async -> 24L
+            is Object -> 8L
             is Bool, is I8, is U8 -> 1L
             is I16, is U16 -> 2L
+            is Void -> 0L
             else -> 8L
         }
 }

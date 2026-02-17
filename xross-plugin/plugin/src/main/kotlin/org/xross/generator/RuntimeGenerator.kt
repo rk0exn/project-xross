@@ -41,60 +41,13 @@ object RuntimeGenerator {
             .addProperty(PropertySpec.builder("error", Any::class).initializer("error").build())
             .build()
 
-        // --- AliveFlag ---
-        val aliveFlag = TypeSpec.classBuilder("AliveFlag")
-            .primaryConstructor(
-                FunSpec.constructorBuilder()
-                    .addParameter("initial", Boolean::class)
-                    .addParameter(
-                        ParameterSpec.builder("parent", ClassName(pkg, "AliveFlag").copy(nullable = true))
-                            .defaultValue("null").build(),
-                    )
-                    .addParameter(ParameterSpec.builder("isPersistent", Boolean::class).defaultValue("false").build())
-                    .build(),
-            )
-            .addProperty(
-                PropertySpec.builder(
-                    "parent",
-                    ClassName(pkg, "AliveFlag").copy(nullable = true),
-                    KModifier.PRIVATE,
-                ).initializer("parent").build(),
-            )
-            .addProperty(
-                PropertySpec.builder("isPersistent", Boolean::class, KModifier.INTERNAL).initializer("isPersistent")
-                    .build(),
-            )
-            .addProperty(
-                PropertySpec.builder(
-                    "_isValid",
-                    ClassName("java.util.concurrent.atomic", "AtomicBoolean"),
-                    KModifier.PRIVATE,
-                ).initializer("java.util.concurrent.atomic.AtomicBoolean(initial)").build(),
-            )
-            .addProperty(
-                PropertySpec.builder("isValid", Boolean::class)
-                    .getter(
-                        FunSpec.getterBuilder()
-                            .addStatement("return (isPersistent || _isValid.get()) && (parent?.isValid ?: true)")
-                            .build(),
-                    )
-                    .build(),
-            )
-            .addFunction(FunSpec.builder("invalidate").addStatement("if (!isPersistent) _isValid.set(false)").build())
-            .addFunction(
-                FunSpec.builder("tryInvalidate")
-                    .returns(Boolean::class)
-                    .addCode("if (isPersistent) return false\nreturn _isValid.compareAndSet(true, false)\n")
-                    .build(),
-            )
-            .build()
-
         // --- XrossObject Interface ---
         val xrossObject = TypeSpec.interfaceBuilder("XrossObject")
             .addSuperinterface(AutoCloseable::class)
             .addProperty(PropertySpec.builder("segment", MEMORY_SEGMENT).build())
-            .addProperty(PropertySpec.builder("aliveFlag", ClassName(pkg, "AliveFlag")).build())
+            .addProperty(PropertySpec.builder("isValid", Boolean::class).build())
             .addFunction(FunSpec.builder("relinquish").build())
+            .addFunction(FunSpec.builder("clearCache").build())
             .build()
 
         // --- XrossNativeObject Base Class ---
@@ -104,32 +57,85 @@ object RuntimeGenerator {
             .primaryConstructor(
                 FunSpec.constructorBuilder()
                     .addParameter("segment", MEMORY_SEGMENT)
-                    .addParameter("arena", Arena::class)
-                    .addParameter("aliveFlag", ClassName(pkg, "AliveFlag"))
+                    .addParameter(ParameterSpec.builder("parent", ClassName(pkg, "XrossObject").copy(nullable = true)).defaultValue("null").build())
+                    .addParameter(ParameterSpec.builder("isPersistent", Boolean::class).defaultValue("false").build())
                     .build(),
             )
             .addProperty(
                 PropertySpec.builder("segment", MEMORY_SEGMENT, KModifier.OVERRIDE).initializer("segment").build(),
             )
-            .addProperty(PropertySpec.builder("arena", Arena::class, KModifier.INTERNAL).initializer("arena").build())
             .addProperty(
-                PropertySpec.builder("aliveFlag", ClassName(pkg, "AliveFlag"), KModifier.OVERRIDE)
-                    .initializer("aliveFlag").build(),
+                PropertySpec.builder("parent", ClassName(pkg, "XrossObject").copy(nullable = true), KModifier.PRIVATE)
+                    .initializer("parent").build(),
+            )
+            .addProperty(
+                PropertySpec.builder("isPersistent", Boolean::class, KModifier.PRIVATE)
+                    .initializer("isPersistent").build(),
+            )
+            .addProperty(
+                PropertySpec.builder("_isValid", ClassName("java.util.concurrent.atomic", "AtomicBoolean"), KModifier.PRIVATE)
+                    .initializer("java.util.concurrent.atomic.AtomicBoolean(true)").build(),
+            )
+            .addProperty(
+                PropertySpec.builder("isValid", Boolean::class, KModifier.OVERRIDE)
+                    .getter(
+                        FunSpec.getterBuilder()
+                            .addStatement("return (isPersistent || _isValid.get()) && (parent?.isValid ?: true)")
+                            .build(),
+                    )
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder("lockState", ClassName(pkg, "XrossLockState"), KModifier.INTERNAL)
+                    .delegate("lazy(LazyThreadSafetyMode.PUBLICATION) { XrossLockState() }")
+                    .build(),
             )
             .addProperty(
                 PropertySpec.builder("cleanable", CLEANABLE.copy(nullable = true), KModifier.PRIVATE)
-                    .initializer("if (aliveFlag.isPersistent) null else %T.registerCleaner(this, arena, aliveFlag)", ClassName(pkg, "XrossRuntime")).build(),
+                    .initializer("null").mutable(true).build(),
+            )
+            .addFunction(
+                FunSpec.builder("clearCache")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addStatement("// Default implementation does nothing")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("registerNativeCleaner")
+                    .addModifiers(KModifier.INTERNAL)
+                    .addParameter("dropHandle", MethodHandle::class)
+                    .addCode(
+                        "if (isPersistent || parent != null) return\n" +
+                            "val s = segment\n" +
+                            "val v = _isValid\n" +
+                            "this.cleanable = %T.registerCleaner(this) {\n" +
+                            "    if (v.compareAndSet(true, false)) {\n" +
+                            "        %T.invokeDrop(dropHandle, s)\n" +
+                            "    }\n" +
+                            "}",
+                        ClassName(pkg, "XrossRuntime"),
+                        ClassName(pkg, "XrossRuntime"),
+                    )
+                    .build(),
             )
             .addFunction(
                 FunSpec.builder("close")
                     .addModifiers(KModifier.OVERRIDE, KModifier.FINAL)
-                    .addStatement("cleanable?.clean()")
+                    .addCode(
+                        "val c = cleanable\n" +
+                            "if (c != null) {\n" +
+                            "    c.clean()\n" +
+                            "    cleanable = null\n" +
+                            "} else {\n" +
+                            "    relinquish()\n" +
+                            "}",
+                    )
                     .build(),
             )
             .addFunction(
                 FunSpec.builder("relinquish")
                     .addModifiers(KModifier.OVERRIDE, KModifier.FINAL)
-                    .addStatement("aliveFlag.invalidate()")
+                    .addStatement("_isValid.set(false)")
                     .build(),
             )
             .build()
@@ -145,22 +151,15 @@ object RuntimeGenerator {
                 FunSpec.builder("ofSmart")
                     .returns(Arena::class)
                     .addKdoc("Returns an Arena managed by GC.")
-                    .addCode("return %T.ofShared()", Arena::class)
+                    .addCode("return %T.ofAuto()", Arena::class)
                     .build(),
             )
             .addFunction(
                 FunSpec.builder("registerCleaner")
                     .addParameter("target", Any::class)
-                    .addParameter("arena", Arena::class)
-                    .addParameter("flag", ClassName(pkg, "AliveFlag"))
+                    .addParameter("action", Runnable::class)
                     .returns(CLEANABLE)
-                    .addCode(
-                        "return CLEANER.register(target) {\n" +
-                            "    if (flag.tryInvalidate()) {\n" +
-                            "        try { arena.close() } catch (e: Throwable) {}\n" +
-                            "    }\n" +
-                            "}\n",
-                    )
+                    .addCode("return CLEANER.register(target, action)\n")
                     .build(),
             )
             .addFunction(
@@ -289,6 +288,14 @@ object RuntimeGenerator {
             .addFunction(FunSpec.builder("unlockWriteBlocking").addCode("rw.writeLock().unlock()").build())
             .build()
 
+        // --- LockState ---
+        val lockState = TypeSpec.classBuilder("XrossLockState")
+            .addModifiers(KModifier.INTERNAL)
+            .addProperty(PropertySpec.builder("sl", ClassName("java.util.concurrent.locks", "StampedLock"), KModifier.INTERNAL).initializer("java.util.concurrent.locks.StampedLock()").build())
+            .addProperty(PropertySpec.builder("fl", ClassName("java.util.concurrent.locks", "ReentrantLock"), KModifier.INTERNAL).initializer("java.util.concurrent.locks.ReentrantLock(true)").build())
+            .addProperty(PropertySpec.builder("al", ClassName(pkg, "XrossAsyncLock"), KModifier.INTERNAL).initializer("XrossAsyncLock()").build())
+            .build()
+
         val toStringBody = CodeBlock.builder()
             .add(
                 "if (ptr == %T.NULL || len == 0L) return \"\"\n" +
@@ -329,12 +336,12 @@ object RuntimeGenerator {
             .addImport("java.util.concurrent.locks", "ReentrantReadWriteLock")
             .addImport("java.lang.foreign", "ValueLayout", "SegmentAllocator", "Arena", "Linker", "SymbolLookup", "FunctionDescriptor")
             .addType(xrossException)
-            .addType(aliveFlag)
             .addType(xrossObject)
             .addType(xrossNativeObject)
             .addType(xrossRuntime)
             .addType(xrossAsync)
             .addType(xrossAsyncLock)
+            .addType(lockState)
             .addType(xrossString)
             .addType(xrossStringView)
             .build()

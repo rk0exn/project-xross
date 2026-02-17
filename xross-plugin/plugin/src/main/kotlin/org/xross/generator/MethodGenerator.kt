@@ -8,7 +8,6 @@ import org.xross.helper.StringHelper.escapeKotlinKeyword
 import org.xross.helper.StringHelper.toCamelCase
 import org.xross.structures.*
 import java.lang.foreign.Arena
-import java.lang.foreign.SegmentAllocator
 
 /**
  * Generates Kotlin methods that wrap native Rust functions using Java FFM.
@@ -76,9 +75,10 @@ object MethodGenerator {
             }
 
             val body = CodeBlock.builder()
+            val needsLocks = GeneratorUtils.needsLocks(meta)
             if (method.methodType != XrossMethodType.Static) {
                 body.addStatement("val currentSegment = this.segment")
-                body.beginControlFlow("if (currentSegment == %T.NULL || !this.aliveFlag.isValid)", MEMORY_SEGMENT)
+                body.beginControlFlow("if (currentSegment == %T.NULL || !this.isValid)", MEMORY_SEGMENT)
                 body.addStatement("throw %T(%S)", NullPointerException::class.asTypeName(), "Object dropped or invalid")
                 body.endControlFlow()
             }
@@ -91,6 +91,7 @@ object MethodGenerator {
 
             val argPrep = CodeBlock.builder()
             val needsArena = method.args.any { it.ty is XrossType.RustString || it.ty is XrossType.Optional || it.ty is XrossType.Result }
+            val arenaForArg = if (needsArena) "arena" else "java.lang.foreign.Arena.ofAuto()"
 
             if (needsArena) {
                 argPrep.beginControlFlow("%T.ofConfined().use { arena ->", Arena::class.asTypeName())
@@ -98,7 +99,7 @@ object MethodGenerator {
 
             method.args.forEach { arg ->
                 val name = arg.name.toCamelCase().escapeKotlinKeyword()
-                argPrep.addArgumentPreparation(arg.ty, name, callArgs, checkObjectValidity = true, basePackage = basePackage, handleMode = method.handleMode)
+                argPrep.addArgumentPreparation(arg.ty, name, callArgs, checkObjectValidity = true, basePackage = basePackage, handleMode = method.handleMode, arenaName = arenaForArg)
             }
 
             val handleName = "${method.name.toCamelCase()}Handle"
@@ -106,7 +107,6 @@ object MethodGenerator {
             val isComplexRet = method.ret is XrossType.RustString || method.isAsync
 
             val call = if (isComplexRet || isPanicable) {
-                val alloc = if (needsArena) "arena" else "this.arena"
                 val layout = if (isPanicable) {
                     FFMConstants.XROSS_RESULT_LAYOUT_CODE
                 } else if (method.isAsync) {
@@ -116,7 +116,7 @@ object MethodGenerator {
                 } else {
                     method.ret.layoutCode
                 }
-                argPrep.addStatement("val outBuf = ($alloc as %T).allocate(%L)", java.lang.foreign.SegmentAllocator::class.asTypeName(), layout)
+                argPrep.addStatement("val outBuf = $arenaForArg.allocate(%L)", layout)
                 val pArgs = mutableListOf(CodeBlock.of("outBuf"))
                 pArgs.addAll(callArgs)
                 argPrep.addStatement("$handleName.invokeExact(%L)", pArgs.joinToCode(", "))

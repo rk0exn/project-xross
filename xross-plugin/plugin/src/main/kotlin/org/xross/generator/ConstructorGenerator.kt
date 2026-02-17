@@ -23,13 +23,7 @@ object ConstructorGenerator {
         selfType: ClassName,
     ) {
         val tripleType = GeneratorUtils.getFactoryTripleType(basePackage)
-        val handleName = if (method.isDefault) {
-            "defaultHandle"
-        } else if (method.name == "new") {
-            "newHandle"
-        } else {
-            "${method.name.toCamelCase()}Handle"
-        }
+        val handleName = GeneratorUtils.getHandleName(method)
         val internalName = if (method.isDefault) {
             "xrossDefaultInternal"
         } else if (method.name == "new") {
@@ -55,6 +49,7 @@ object ConstructorGenerator {
 
         val callArgs = mutableListOf<CodeBlock>()
         val needsArena = method.args.any { it.ty is XrossType.RustString || it.ty is XrossType.Optional || it.ty is XrossType.Result }
+        val arenaForArg = if (needsArena) "arena" else "java.lang.foreign.Arena.ofAuto()"
 
         if (needsArena) {
             body.beginControlFlow("%T.ofConfined().use { arena ->", Arena::class)
@@ -62,7 +57,7 @@ object ConstructorGenerator {
 
         method.args.forEach { arg ->
             val name = "argOf" + arg.name.toCamelCase()
-            body.addArgumentPreparation(arg.ty, name, callArgs, basePackage = basePackage, handleMode = method.handleMode)
+            body.addArgumentPreparation(arg.ty, name, callArgs, basePackage = basePackage, handleMode = method.handleMode, arenaName = arenaForArg)
         }
 
         val isPanicable = method.handleMode is HandleMode.Panicable
@@ -90,9 +85,9 @@ object ConstructorGenerator {
             defineArenaAndFlag = false,
         )
 
-        // Triple(MemorySegment, Arena, AliveFlag)
+        // Triple(MemorySegment, XrossObject?, Boolean)
         body.addStatement(
-            "return %T(res, newOwnerArena, flag)",
+            "return %T(res, null, isPersistentVal)",
             Triple::class.asTypeName(),
         )
 

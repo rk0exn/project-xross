@@ -21,17 +21,20 @@ object InvocationGenerator {
     ): CodeBlock {
         val isVoid = method.ret is XrossType.Void
         val body = CodeBlock.builder()
+        val needsLocks = GeneratorUtils.needsLocks(meta)
 
         // Prepare list of objects to lock (including self and arguments)
         val targets = mutableListOf<LockTarget>()
-        if (method.methodType != XrossMethodType.Static) {
+        if (needsLocks && method.methodType != XrossMethodType.Static) {
             val isMut = method.methodType == XrossMethodType.MutInstance || method.methodType == XrossMethodType.OwnedInstance
             targets.add(LockTarget("this", isMut, isSelf = true))
         }
-        method.args.forEach { arg ->
-            if (arg.ty is XrossType.Object) {
-                val isMut = arg.ty.ownership == XrossType.Ownership.MutRef || arg.ty.ownership == XrossType.Ownership.Owned || arg.ty.ownership == XrossType.Ownership.Boxed
-                targets.add(LockTarget(arg.name.toCamelCase().escapeKotlinKeyword(), isMut, isSelf = false))
+        if (needsLocks) {
+            method.args.forEach { arg ->
+                if (arg.ty is XrossType.Object) {
+                    val isMut = arg.ty.ownership == XrossType.Ownership.MutRef || arg.ty.ownership == XrossType.Ownership.Owned || arg.ty.ownership == XrossType.Ownership.Boxed
+                    targets.add(LockTarget(arg.name.toCamelCase().escapeKotlinKeyword(), isMut, isSelf = false))
+                }
             }
         }
 
@@ -83,7 +86,7 @@ object InvocationGenerator {
         }
 
         // Special handling for Immutable synchronous locking (Fair lock)
-        if (!method.isAsync && method.safety == XrossThreadSafety.Immutable && method.methodType != XrossMethodType.Static) {
+        if (needsLocks && !method.isAsync && method.safety == XrossThreadSafety.Immutable && method.methodType != XrossMethodType.Static) {
             body.addStatement("this.fl.lock()")
             body.beginControlFlow("try")
             wrapWithLocks(0)
@@ -111,10 +114,22 @@ object InvocationGenerator {
         }
 
         method.args.forEach { arg ->
-            if (arg.ty is XrossType.Object && arg.ty.isOwned) {
+            if (arg.ty is XrossType.Object) {
                 val name = arg.name.toCamelCase().escapeKotlinKeyword()
-                body.addStatement("%L.relinquish()", name)
+                val isMutableArg = arg.ty.ownership == XrossType.Ownership.MutRef ||
+                    arg.ty.ownership == XrossType.Ownership.Owned ||
+                    arg.ty.ownership == XrossType.Ownership.Boxed
+                if (isMutableArg) {
+                    body.addStatement("%L.clearCache()", name)
+                }
+                if (arg.ty.isOwned) {
+                    body.addStatement("%L.relinquish()", name)
+                }
             }
+        }
+
+        if (method.methodType == XrossMethodType.MutInstance || method.methodType == XrossMethodType.OwnedInstance) {
+            body.addStatement("this.clearCache()")
         }
 
         if (!isVoid) body.addStatement("resValue")
@@ -231,47 +246,15 @@ object InvocationGenerator {
                 body.beginControlFlow("run")
                 val callExpr = if (call.toString() == "outPanic") call else CodeBlock.of("%L as %T", call, MEMORY_SEGMENT)
                 body.addStatement("val resRaw = %L", callExpr)
-                body.beginControlFlow("if (resRaw == %T.NULL)", MEMORY_SEGMENT)
-                    .addStatement("null")
-                body.nextControlFlow("else")
-                // Optionalの中身(inner)を解決
-                val innerType = GeneratorUtils.resolveReturnType(retTy.inner, basePackage)
-                body.addResultVariantResolution(retTy.inner, "resRaw", innerType, selfType, basePackage, "dropHandle")
-                body.endControlFlow().endControlFlow()
+                body.addOptionalResolution(retTy.inner, "resRaw", selfType, basePackage)
+                body.endControlFlow()
             }
 
             is XrossType.Result -> {
                 body.beginControlFlow("run")
                 val callExpr = if (call.toString() == "outPanic") call else CodeBlock.of("%L as %T", call, MEMORY_SEGMENT)
                 body.addStatement("val resRaw = %L", callExpr)
-                // Resultのレイアウト: [1 byte: isOk, 7 bytes: padding, 8 bytes: pointer]
-                body.addStatement("val isOk = resRaw.get(%M, 0L) != (0).toByte()", FFMConstants.JAVA_BYTE)
-                body.addStatement("val ptr = resRaw.get(%M, 8L)", ADDRESS)
-
-                body.beginControlFlow("if (isOk)")
-                body.add("val okVal = ")
-                body.addResultVariantResolution(
-                    retTy.ok,
-                    "ptr",
-                    GeneratorUtils.resolveReturnType(retTy.ok, basePackage),
-                    selfType,
-                    basePackage,
-                    "dropHandle",
-                )
-                body.addStatement("Result.success(okVal)")
-
-                body.nextControlFlow("else")
-                body.add("val errVal = ")
-                body.addResultVariantResolution(
-                    retTy.err,
-                    "ptr",
-                    GeneratorUtils.resolveReturnType(retTy.err, basePackage),
-                    selfType,
-                    basePackage,
-                    "dropHandle",
-                )
-                body.addStatement("Result.failure(%T(errVal))", ClassName(runtimePkg, "XrossException"))
-                body.endControlFlow()
+                body.addResultResolution(retTy, "resRaw", selfType, basePackage)
                 body.endControlFlow()
             }
             // 数値型やBooleanなどのプリミティブ型

@@ -57,7 +57,7 @@ object EnumVariantGenerator {
                                 addStatement("$argName.relinquish()")
                             }
                         }
-                        addStatement("return %T(res, newOwnerArena, flag)", Triple::class.asTypeName())
+                        addStatement("return %T(res, null, true)", Triple::class.asTypeName())
                     }.build(),
                 )
                 .build(),
@@ -72,7 +72,7 @@ object EnumVariantGenerator {
         basePackage: String,
     ) {
         val baseClassName = ClassName(targetPackage, meta.name)
-        val aliveFlagType = ClassName("$basePackage.xross.runtime", "AliveFlag")
+        val xrossObject = ClassName("$basePackage.xross.runtime", "XrossObject")
         val tripleType = GeneratorUtils.getFactoryTripleType(basePackage)
         val variantTypeEnum = baseClassName.nestedClass("VariantType")
 
@@ -81,7 +81,7 @@ object EnumVariantGenerator {
             CodeBlock.builder()
                 .beginControlFlow("val name = run")
                 .addStatement("if (ptr == %T.NULL) throw %T(%S)", MEMORY_SEGMENT, NullPointerException::class.asTypeName(), "Pointer is NULL")
-                .addStatement("val outBuf = (this.arena as %T).allocate(%L)", java.lang.foreign.SegmentAllocator::class.asTypeName(), FFMConstants.XROSS_STRING_LAYOUT_CODE)
+                .addStatement("val outBuf = java.lang.foreign.Arena.ofAuto().allocate(%L)", FFMConstants.XROSS_STRING_LAYOUT_CODE)
                 .addStatement("getVariantNameHandle.invokeExact(outBuf, ptr)")
                 .addRustStringResolution("outBuf", "n", basePackage = basePackage)
                 .addStatement("n")
@@ -113,7 +113,7 @@ object EnumVariantGenerator {
                         .build(),
                 )
 
-            GeneratorUtils.buildRawInitializer(variantTypeBuilder, aliveFlagType)
+            GeneratorUtils.buildRawInitializer(variantTypeBuilder, xrossObject)
             GeneratorUtils.addInternalConstructor(variantTypeBuilder, tripleType)
 
             if (isPureVariant) {
@@ -167,6 +167,7 @@ object EnumVariantGenerator {
                         .build(),
                 )
 
+                val backingFields = mutableListOf<String>()
                 variant.fields.forEach { field ->
                     val baseCamelName = field.name.toCamelCase()
                     val isPrimitive = field.ty !is XrossType.Object && field.ty !is XrossType.Optional && field.ty !is XrossType.Result
@@ -180,23 +181,35 @@ object EnumVariantGenerator {
                     }
 
                     val backingFieldName = GeneratorUtils.addBackingPropertyIfNeeded(variantTypeBuilder, field, baseCamelName, kType)
+                    if (backingFieldName != null) backingFields.add(backingFieldName)
+                    val useLocks = field.safety != XrossThreadSafety.Direct && field.safety != XrossThreadSafety.Unsafe
 
                     variantTypeBuilder.addProperty(
                         PropertySpec.builder(baseCamelName.escapeKotlinKeyword(), kType)
                             .mutable(field.safety != XrossThreadSafety.Immutable)
-                            .getter(GeneratorUtils.buildFullGetter(kType, buildVariantGetterBody(variant.name, field, vhName, offsetName, kType, baseClassName, backingFieldName, basePackage)))
+                            .getter(GeneratorUtils.buildFullGetter(kType, buildVariantGetterBody(variant.name, field, vhName, offsetName, kType, baseClassName, backingFieldName, basePackage), useAsyncLock = useLocks))
                             .apply {
                                 if (field.safety != XrossThreadSafety.Immutable) {
-                                    setter(GeneratorUtils.buildFullSetter(field.safety, kType, buildVariantSetterBody(variant.name, field, vhName, offsetName, kType, backingFieldName, basePackage)))
+                                    setter(GeneratorUtils.buildFullSetter(field.safety, kType, buildVariantSetterBody(variant.name, field, vhName, offsetName, kType, backingFieldName, basePackage), useAsyncLock = useLocks))
                                 }
                             }
                             .build(),
                     )
                 }
+
+                if (backingFields.isNotEmpty()) {
+                    val clearCache = FunSpec.builder("clearCache")
+                        .addModifiers(KModifier.OVERRIDE)
+                        .apply {
+                            backingFields.forEach { addStatement("this.$it = null") }
+                        }
+                        .build()
+                    variantTypeBuilder.addFunction(clearCache)
+                }
             }
 
             classBuilder.addType(variantTypeBuilder.build())
-            fromPointerBuilder.addStatement("%S -> %T(reinterpretedPtr, arena, sharedFlag = sharedFlag)", variant.name, variantClassName)
+            fromPointerBuilder.addStatement("%S -> %T(reinterpretedPtr, parent = parent, isPersistent = isPersistent)", variant.name, variantClassName)
         }
 
         fromPointerBuilder.addStatement("else -> throw %T(%S + name)", RuntimeException::class.asTypeName(), "Unknown variant: ")
@@ -224,20 +237,14 @@ object EnumVariantGenerator {
         val combinedName = "${variantName}_$baseCamel"
         return FieldBodyGenerator.buildGetterBody(
             field,
+            combinedName,
             vhName,
             offsetName,
             kType,
             selfType,
             backingFieldName,
             basePackage,
-        ) { ty ->
-            when (ty) {
-                is XrossType.Optional -> "${combinedName}OptGetHandle"
-                is XrossType.Result -> "${combinedName}ResGetHandle"
-                is XrossType.RustString -> "${combinedName}StrGetHandle"
-                else -> ""
-            }
-        }
+        )
     }
 
     private fun buildVariantSetterBody(variantName: String, field: XrossField, vhName: String, offsetName: String, kType: TypeName, backingFieldName: String?, basePackage: String): CodeBlock {
@@ -245,19 +252,13 @@ object EnumVariantGenerator {
         val combinedName = "${variantName}_$baseCamel"
         return FieldBodyGenerator.buildSetterBody(
             field,
+            combinedName,
             vhName,
             offsetName,
             kType,
             ClassName("", "UNUSED"),
             backingFieldName,
             basePackage,
-        ) { ty ->
-            when (ty) {
-                is XrossType.Optional -> "${combinedName}OptSetHandle"
-                is XrossType.Result -> "${combinedName}ResSetHandle"
-                is XrossType.RustString -> "${combinedName}StrSetHandle"
-                else -> ""
-            }
-        }
+        )
     }
 }

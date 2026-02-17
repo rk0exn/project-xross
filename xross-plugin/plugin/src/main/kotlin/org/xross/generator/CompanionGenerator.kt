@@ -29,8 +29,9 @@ object CompanionGenerator {
             init.addStatement("var layoutRaw: %T = %T.NULL", MEMORY_SEGMENT, MEMORY_SEGMENT)
             init.addStatement("var layoutStr = %S", "")
 
-            init.beginControlFlow("try")
-                .addStatement("layoutRaw = (this.arena as %T).allocate(%L)", java.lang.foreign.SegmentAllocator::class.asTypeName(), FFMConstants.XROSS_STRING_LAYOUT_CODE)
+            init.beginControlFlow("java.lang.foreign.Arena.ofConfined().use { initArena ->")
+                .beginControlFlow("try")
+                .addStatement("layoutRaw = initArena.allocate(%L)", FFMConstants.XROSS_STRING_LAYOUT_CODE)
                 .addStatement("layoutHandle.invokeExact(layoutRaw)")
                 .beginControlFlow("if (layoutRaw != %T.NULL)", MEMORY_SEGMENT)
                 .addStatement("val xs = %T(layoutRaw)", ClassName("$basePackage.xross.runtime", "XrossString"))
@@ -39,8 +40,7 @@ object CompanionGenerator {
                 .nextControlFlow("catch (e: %T)", Throwable::class.asTypeName())
                 .addStatement("throw %T(e)", RuntimeException::class.asTypeName())
                 .endControlFlow()
-
-            init.beginControlFlow("if (layoutStr.isNotEmpty())")
+                .beginControlFlow("if (layoutStr.isNotEmpty())")
                 .addStatement("val parts = layoutStr.split(';')")
                 .addStatement("this.STRUCT_SIZE = parts[0].toLong()")
 
@@ -57,7 +57,8 @@ object CompanionGenerator {
                 .nextControlFlow("else")
                 .addStatement("this.STRUCT_SIZE = 0L")
                 .addStatement("this.LAYOUT = %T.structLayout()", MEMORY_LAYOUT)
-                .endControlFlow()
+                .endControlFlow() // if layoutStr.isNotEmpty
+            init.endControlFlow() // use initArena
         }
 
         if (GeneratorUtils.isPureEnum(meta)) {
@@ -77,12 +78,6 @@ object CompanionGenerator {
         val handles = mutableListOf<String>()
 
         builder.addProperty(
-            PropertySpec.builder("arena", Arena::class.asTypeName(), KModifier.INTERNAL)
-                .initializer("%T.ofSmart()", ClassName("$basePackage.xross.runtime", "XrossRuntime"))
-                .build(),
-        )
-
-        builder.addProperty(
             PropertySpec.builder("linker", Linker::class.asTypeName(), KModifier.INTERNAL)
                 .initializer("%T.nativeLinker()", Linker::class.asTypeName())
                 .build(),
@@ -100,14 +95,7 @@ object CompanionGenerator {
         when (meta) {
             is XrossDefinition.Struct -> {
                 meta.methods.filter { it.isConstructor }.forEach { method ->
-                    val handleName = if (method.isDefault) {
-                        "defaultHandle"
-                    } else if (method.name == "new") {
-                        "newHandle"
-                    } else {
-                        "${method.name.toCamelCase()}Handle"
-                    }
-                    handles.add(handleName)
+                    handles.add(GeneratorUtils.getHandleName(method))
                 }
                 meta.fields.forEach { field ->
                     val baseCamel = field.name.toCamelCase()

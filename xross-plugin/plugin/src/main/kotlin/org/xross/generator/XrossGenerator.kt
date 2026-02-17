@@ -86,7 +86,7 @@ object XrossGenerator {
 
         val runtimePkg = "$basePackage.xross.runtime"
         val fileSpecBuilder = FileSpec.builder(targetPackage, className)
-            .addImport(runtimePkg, "AliveFlag", "XrossException", "XrossObject", "XrossNativeObject", "XrossRuntime")
+            .addImport(runtimePkg, "XrossObject", "XrossNativeObject", "XrossRuntime", "XrossLockState", "XrossException")
 
         val fileSpec = fileSpecBuilder
             .addType(classBuilder.build())
@@ -107,7 +107,7 @@ object XrossGenerator {
 
         val runtimePkg = "$basePackage.xross.runtime"
         val fileSpec = FileSpec.builder(targetPackage, className)
-            .addImport(runtimePkg, "AliveFlag", "XrossException", "XrossObject", "XrossNativeObject", "XrossRuntime")
+            .addImport(runtimePkg, "XrossObject", "XrossNativeObject", "XrossRuntime", "XrossLockState", "XrossException")
             .addType(classBuilder.build())
             .indent("    ")
             .build()

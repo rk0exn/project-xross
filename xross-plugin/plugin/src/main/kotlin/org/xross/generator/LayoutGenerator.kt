@@ -6,7 +6,6 @@ import org.xross.generator.util.FFMConstants.MEMORY_LAYOUT
 import org.xross.helper.StringHelper.toCamelCase
 import org.xross.structures.XrossDefinition
 import org.xross.structures.XrossThreadSafety
-import org.xross.structures.XrossType
 
 object LayoutGenerator {
     fun buildStructLayoutInit(init: CodeBlock.Builder, meta: XrossDefinition.Struct) {
@@ -30,7 +29,7 @@ object LayoutGenerator {
         meta.fields.forEach { field ->
             init.beginControlFlow("%S ->", field.name)
             val kotlinSize = field.ty.kotlinSize
-            val isComplex = field.ty is XrossType.Optional || field.ty is XrossType.Result || field.ty is XrossType.Object
+            val isComplex = field.ty.isComplex
 
             if (isComplex) {
                 init.addStatement("layouts.add(%T.paddingLayout(fSize).withName(%S))", MEMORY_LAYOUT, field.name)
@@ -43,8 +42,7 @@ object LayoutGenerator {
             }
 
             init.addStatement("this.OFFSET_${field.name.toCamelCase()} = fOffset")
-            val isPrimitive = field.ty !is XrossType.Object && field.ty !is XrossType.Optional && field.ty !is XrossType.Result
-            if (isPrimitive) {
+            if (field.ty.isPrimitive) {
                 init.addStatement("this.VH_${field.name.toCamelCase()} = %L.varHandle()", field.ty.layoutCode)
             }
             init.addStatement("currentOffsetPos = fOffset + fSize")
@@ -96,7 +94,7 @@ object LayoutGenerator {
                         .addStatement("if (fOffsetL > 0) vLayouts.add(%T.paddingLayout(fOffsetL))", MEMORY_LAYOUT)
 
                     val kotlinSize = field.ty.kotlinSize
-                    val isComplex = field.ty is XrossType.Optional || field.ty is XrossType.Result || field.ty is XrossType.Object
+                    val isComplex = field.ty.isComplex
                     if (isComplex) {
                         init.addStatement("vLayouts.add(%T.paddingLayout(fSizeL).withName(fName))", MEMORY_LAYOUT)
                     } else {
@@ -112,8 +110,7 @@ object LayoutGenerator {
                         .addStatement("val vLayout = %T.structLayout(*vLayouts.toTypedArray())", MEMORY_LAYOUT)
                         .addStatement("this.OFFSET_${variant.name}_${field.name.toCamelCase()} = fOffsetL")
 
-                    val isPrimitive = field.ty !is XrossType.Object && field.ty !is XrossType.Optional && field.ty !is XrossType.Result
-                    if (isPrimitive) {
+                    if (field.ty.isPrimitive) {
                         init.addStatement("this.VH_${variant.name}_${field.name.toCamelCase()} = %L.varHandle()", field.ty.layoutCode)
                     }
                     init.endControlFlow()

@@ -2,6 +2,7 @@ package org.xross.generator.util
 
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
+import org.xross.helper.StringHelper.toCamelCase
 import org.xross.structures.XrossDefinition
 import org.xross.structures.XrossThreadSafety
 import org.xross.structures.XrossType
@@ -18,6 +19,16 @@ object GeneratorUtils {
      * Returns true if the definition is a "pure" enum (one without fields in its variants).
      */
     fun isPureEnum(meta: XrossDefinition): Boolean = meta is XrossDefinition.Enum && meta.variants.all { it.fields.isEmpty() }
+
+    /**
+     * Returns true if the definition requires locking logic.
+     */
+    fun needsLocks(meta: XrossDefinition): Boolean = when (meta) {
+        is XrossDefinition.Struct -> meta.fields.any { it.safety != XrossThreadSafety.Direct && it.safety != XrossThreadSafety.Unsafe } || meta.methods.any { it.safety != XrossThreadSafety.Direct && it.safety != XrossThreadSafety.Unsafe }
+        is XrossDefinition.Enum -> true // Enums always have variants/locking logic for now
+        is XrossDefinition.Opaque -> meta.fields.any { it.safety != XrossThreadSafety.Direct && it.safety != XrossThreadSafety.Unsafe } || meta.methods.any { it.safety != XrossThreadSafety.Direct && it.safety != XrossThreadSafety.Unsafe }
+        else -> false
+    }
 
     /**
      * Resolves the [ClassName] for a given signature.
@@ -207,6 +218,41 @@ object GeneratorUtils {
     }
 
     /**
+     * Returns the name of the MethodHandle for a given XrossMethod.
+     */
+    fun getHandleName(method: org.xross.structures.XrossMethod): String = if (method.isDefault) {
+        "defaultHandle"
+    } else if (method.name == "new") {
+        "newHandle"
+    } else {
+        "${method.name.toCamelCase()}Handle"
+    }
+
+    /**
+     * Returns the name of the MethodHandle for a given property and type.
+     */
+    fun getPropertyHandleName(baseName: String, type: XrossType, isGet: Boolean): String {
+        val suffix = when (type) {
+            is XrossType.Optional -> "Opt"
+            is XrossType.Result -> "Res"
+            is XrossType.RustString -> "Str"
+            else -> ""
+        }
+        val action = if (isGet) "Get" else "Set"
+        return "${baseName}${suffix}${action}Handle"
+    }
+
+    /**
+     * Adds common lock properties (sl, fl, al) to a type builder.
+     */
+    fun addLockProperties(builder: TypeSpec.Builder, basePackage: String) {
+        val runtimePkg = "$basePackage.xross.runtime"
+        builder.addProperty(PropertySpec.builder("sl", ClassName("java.util.concurrent.locks", "StampedLock")).addModifiers(KModifier.INTERNAL).getter(FunSpec.getterBuilder().addStatement("return lockState.sl").build()).build())
+        builder.addProperty(PropertySpec.builder("fl", ClassName("java.util.concurrent.locks", "ReentrantLock")).addModifiers(KModifier.INTERNAL).getter(FunSpec.getterBuilder().addStatement("return lockState.fl").build()).build())
+        builder.addProperty(PropertySpec.builder("al", ClassName(runtimePkg, "XrossAsyncLock")).addModifiers(KModifier.INTERNAL).getter(FunSpec.getterBuilder().addStatement("return lockState.al").build()).build())
+    }
+
+    /**
      * Compares the target type with the self type and returns appropriate expressions for size, drop, and fromPointer.
      */
     fun compareExprs(
@@ -225,16 +271,16 @@ object GeneratorUtils {
      * Returns the type for the factory method return value.
      */
     fun getFactoryTripleType(basePackage: String): TypeName {
-        val aliveFlagType = ClassName("$basePackage.xross.runtime", "AliveFlag")
-        return Triple::class.asClassName().parameterizedBy(MEMORY_SEGMENT, ARENA, aliveFlagType)
+        val xrossObject = ClassName("$basePackage.xross.runtime", "XrossObject")
+        return Triple::class.asClassName().parameterizedBy(MEMORY_SEGMENT, xrossObject.copy(nullable = true), BOOLEAN)
     }
 
     /**
      * Returns an allocation expression based on the XrossType.
      */
-    fun generateAllocMsg(ty: XrossType, valueName: String): CodeBlock = when (ty) {
+    fun generateAllocMsg(ty: XrossType, valueName: String, arenaName: String = "java.lang.foreign.Arena.ofAuto()"): CodeBlock = when (ty) {
         is XrossType.Object -> CodeBlock.of("$valueName.segment")
-        is XrossType.RustString -> CodeBlock.of("arena.allocateFrom($valueName)")
+        is XrossType.RustString -> CodeBlock.of("$arenaName.allocateFrom($valueName)")
         is XrossType.F32 -> CodeBlock.of("MemorySegment.ofAddress(%L.toRawBits().toLong())", valueName)
         is XrossType.F64 -> CodeBlock.of("MemorySegment.ofAddress(%L.toRawBits())", valueName)
         is XrossType.Bool -> CodeBlock.of("MemorySegment.ofAddress(if (%L) 1L else 0L)", valueName)
@@ -248,11 +294,11 @@ object GeneratorUtils {
      * Adds common internal constructor/factory parameters to a FunSpec builder.
      */
     fun FunSpec.Builder.addInternalParameters(
-        aliveFlagType: TypeName,
+        xrossObject: TypeName,
         firstParamName: String = "ptr",
     ): FunSpec.Builder = this.addParameter(firstParamName, MEMORY_SEGMENT)
-        .addParameter("arena", ARENA)
-        .addParameter("sharedFlag", aliveFlagType)
+        .addParameter("parent", xrossObject.copy(nullable = true))
+        .addParameter("isPersistent", BOOLEAN)
 
     /**
      * Builds the base for a 'fromPointer' method.
@@ -262,10 +308,10 @@ object GeneratorUtils {
         returnType: TypeName,
         basePackage: String,
     ): FunSpec.Builder {
-        val aliveFlagType = ClassName("$basePackage.xross.runtime", "AliveFlag")
+        val xrossObject = ClassName("$basePackage.xross.runtime", "XrossObject")
 
         return FunSpec.builder(name)
-            .addInternalParameters(aliveFlagType, "ptr")
+            .addInternalParameters(xrossObject, "ptr")
             .returns(returnType)
             .addModifiers(KModifier.INTERNAL)
     }
@@ -279,13 +325,13 @@ object GeneratorUtils {
         baseName: String,
         kType: TypeName,
     ): String? {
-        if (field.ty is XrossType.Object) {
+        if (field.ty is XrossType.Object || field.ty is XrossType.RustString) {
             val backingFieldName = "_$baseName"
-            val weakRefType = ClassName("java.lang.ref", "WeakReference").parameterizedBy(kType)
             val backingProp =
-                PropertySpec.builder(backingFieldName, weakRefType.copy(nullable = true))
+                PropertySpec.builder(backingFieldName, kType.copy(nullable = true))
                     .mutable(true)
                     .addModifiers(KModifier.PRIVATE)
+                    .addAnnotation(ClassName("kotlin.jvm", "Volatile"))
                     .initializer("null")
                     .build()
             builder.addProperty(backingProp)
@@ -296,19 +342,19 @@ object GeneratorUtils {
 
     fun buildRawInitializer(
         builder: TypeSpec.Builder,
-        aliveFlagType: ClassName,
+        xrossObject: ClassName,
     ) {
         builder.primaryConstructor(
             FunSpec.constructorBuilder()
                 .addModifiers(KModifier.INTERNAL)
                 .addParameter("raw", MEMORY_SEGMENT)
-                .addParameter("arena", ARENA)
-                .addParameter("sharedFlag", aliveFlagType)
+                .addParameter("parent", xrossObject.copy(nullable = true))
+                .addParameter("isPersistent", BOOLEAN)
                 .build(),
         )
         builder.addSuperclassConstructorParameter("raw")
-        builder.addSuperclassConstructorParameter("arena")
-        builder.addSuperclassConstructorParameter("sharedFlag")
+        builder.addSuperclassConstructorParameter("parent")
+        builder.addSuperclassConstructorParameter("isPersistent")
     }
 
     /**
@@ -324,6 +370,7 @@ object GeneratorUtils {
                     CodeBlock.of("p.second"),
                     CodeBlock.of("p.third"),
                 )
+                .addCode("this.registerNativeCleaner(dropHandle)\n")
                 .build(),
         )
     }

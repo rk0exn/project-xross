@@ -11,6 +11,7 @@ import org.xross.generator.util.FFMConstants.JAVA_BYTE
 import org.xross.generator.util.FFMConstants.JAVA_INT
 import org.xross.generator.util.FFMConstants.JAVA_LONG
 import org.xross.generator.util.FFMConstants.VAL_LAYOUT
+import org.xross.generator.util.GeneratorUtils
 import org.xross.helper.StringHelper.toCamelCase
 import org.xross.structures.*
 
@@ -89,13 +90,7 @@ object HandleResolver {
                 }
             }
 
-            val handleName = if (method.isDefault) {
-                "defaultHandle"
-            } else if (method.name == "new") {
-                "newHandle"
-            } else {
-                "${method.name.toCamelCase()}Handle"
-            }
+            val handleName = GeneratorUtils.getHandleName(method)
             init.addStatement("this.%L = linker.downcallHandle(lookup.find(%S).get(), %L)", handleName, method.symbol, desc)
         }
         resolvePropertyHandles(init, meta.symbolPrefix, meta.fields)

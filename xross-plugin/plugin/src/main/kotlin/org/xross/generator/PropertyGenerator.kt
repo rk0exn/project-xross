@@ -13,6 +13,7 @@ object PropertyGenerator {
 
     fun generateFields(classBuilder: TypeSpec.Builder, meta: XrossDefinition.Struct, basePackage: String) {
         val selfType = GeneratorUtils.getClassName(meta.signature, basePackage)
+        val backingFields = mutableListOf<String>()
         meta.fields.forEach { field ->
             val baseName = field.name.toCamelCase()
             val escapedName = baseName.escapeKotlinKeyword()
@@ -24,19 +25,31 @@ object PropertyGenerator {
             val kType = GeneratorUtils.resolveReturnType(field.ty, basePackage)
 
             val backingFieldName = GeneratorUtils.addBackingPropertyIfNeeded(classBuilder, field, baseName, kType)
+            if (backingFieldName != null) backingFields.add(backingFieldName)
 
             if (field.safety == XrossThreadSafety.Atomic) {
                 AtomicPropertyGenerator.generateAtomicProperty(classBuilder, baseName, escapedName, vhName, kType)
             } else {
                 val isMutable = field.safety != XrossThreadSafety.Immutable
+                val useLocks = field.safety != XrossThreadSafety.Direct && field.safety != XrossThreadSafety.Unsafe
 
                 val propBuilder = PropertySpec.builder(escapedName, kType)
                     .mutable(isMutable)
-                    .getter(GeneratorUtils.buildFullGetter(kType, buildGetterBody(field, vhName, kType, backingFieldName, selfType, basePackage), safety = field.safety))
+                    .getter(GeneratorUtils.buildFullGetter(kType, buildGetterBody(field, vhName, kType, backingFieldName, selfType, basePackage), safety = field.safety, useAsyncLock = useLocks))
 
-                if (isMutable) propBuilder.setter(GeneratorUtils.buildFullSetter(field.safety, kType, buildSetterBody(field, vhName, kType, backingFieldName, selfType, basePackage)))
+                if (isMutable) propBuilder.setter(GeneratorUtils.buildFullSetter(field.safety, kType, buildSetterBody(field, vhName, kType, backingFieldName, selfType, basePackage), useAsyncLock = useLocks))
                 classBuilder.addProperty(propBuilder.build())
             }
+        }
+
+        if (backingFields.isNotEmpty()) {
+            val clearCache = FunSpec.builder("clearCache")
+                .addModifiers(KModifier.OVERRIDE)
+                .apply {
+                    backingFields.forEach { addStatement("this.$it = null") }
+                }
+                .build()
+            classBuilder.addFunction(clearCache)
         }
     }
     private fun buildGetterBody(field: XrossField, vhName: String, kType: TypeName, backingFieldName: String?, selfType: ClassName, basePackage: String): CodeBlock {
@@ -44,20 +57,14 @@ object PropertyGenerator {
         val offsetName = "OFFSET_$baseName"
         return FieldBodyGenerator.buildGetterBody(
             field,
+            baseName,
             vhName,
             offsetName,
             kType,
             selfType,
             backingFieldName,
             basePackage,
-        ) { ty ->
-            when (ty) {
-                is XrossType.Optional -> "${baseName}OptGetHandle"
-                is XrossType.Result -> "${baseName}ResGetHandle"
-                is XrossType.RustString -> "${baseName}StrGetHandle"
-                else -> ""
-            }
-        }
+        )
     }
 
     private fun buildSetterBody(field: XrossField, vhName: String, kType: TypeName, backingFieldName: String?, selfType: ClassName, basePackage: String): CodeBlock {
@@ -66,19 +73,13 @@ object PropertyGenerator {
 
         return FieldBodyGenerator.buildSetterBody(
             field,
+            baseName,
             vhName,
             offsetName,
             kType,
             selfType,
             backingFieldName,
             basePackage,
-        ) { ty ->
-            when (ty) {
-                is XrossType.Optional -> "${baseName}OptSetHandle"
-                is XrossType.Result -> "${baseName}ResSetHandle"
-                is XrossType.RustString -> "${baseName}StrSetHandle"
-                else -> ""
-            }
-        }
+        )
     }
 }
