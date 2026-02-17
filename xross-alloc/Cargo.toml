@@ -8,7 +8,7 @@ rand = "0.10.0"
 rlsf = { version = "0.2", optional = true }
 spin = "0.10"
 
-# macOS 以外（Linux/Windows）の場合のみ、外部アロケーターをビルド可能にする
+# macOS 以外の場合のみ、外部アロケーターを依存関係に含める
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 mimalloc = { version = "0.1.48", optional = true }
 jemallocator = { version = "0.5.4", optional = true }
@@ -21,12 +21,23 @@ default = ["multi-thread"]
 multi-thread = []
 jvmalloc = ["dep:rlsf"]
 
-# jvmalloc 以外のすべてのアロケーターを有効化するフィーチャー
-# macOS では依存関係自体が存在しないため、これらは空のフィーチャーとして扱われ、エラーを防ぎます
-full = ["mimalloc", "jemalloc", "rpmalloc", "snmalloc", "tcmalloc"]
+# --- ターゲットに応じたフィーチャーの振る舞い設定 ---
 
+# macOS 以外の場合：各フィーチャーはそれぞれの外部アロケーターを有効化する
+[target.'cfg(not(target_os = "macos"))'.features]
 mimalloc = ["dep:mimalloc"]
 jemalloc = ["dep:jemallocator"]
 rpmalloc = ["dep:rpmalloc"]
 snmalloc = ["dep:snmalloc-rs"]
 tcmalloc = ["dep:tcmalloc"]
+full = ["mimalloc", "jemalloc", "rpmalloc", "snmalloc", "tcmalloc"]
+
+# macOS の場合：これらのフィーチャーは何もしない（空のリスト）
+# これにより、dep:mimalloc 等が参照されず、ビルド対象から完全に除外される
+[target.'cfg(target_os = "macos")'.features]
+mimalloc = []
+jemalloc = []
+rpmalloc = []
+snmalloc = []
+tcmalloc = []
+full = []
