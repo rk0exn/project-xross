@@ -32,7 +32,7 @@ object RuntimeGenerator {
         )
 
     fun generate(outputDir: File, basePackage: String) {
-        val pkg = "$basePackage.xross.runtime"
+        val pkg = if (basePackage.isEmpty()) "xross.runtime" else "$basePackage.xross.runtime"
 
         // --- XrossException ---
         val xrossException = TypeSpec.classBuilder("XrossException")
@@ -145,6 +145,47 @@ object RuntimeGenerator {
             .addProperty(
                 PropertySpec.builder("CLEANER", ClassName("java.lang.ref", "Cleaner"), KModifier.PRIVATE)
                     .initializer("java.lang.ref.Cleaner.create()")
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder("heapInitialized", ClassName("java.util.concurrent.atomic", "AtomicBoolean"), KModifier.PRIVATE)
+                    .initializer("java.util.concurrent.atomic.AtomicBoolean(false)")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("initializeHeap")
+                    .addParameter("lookup", ClassName("java.lang.foreign", "SymbolLookup"))
+                    .addParameter("linker", ClassName("java.lang.foreign", "Linker"))
+                    .addCode(
+                        "if (System.getProperty(\"xross.heap.initialized\") == \"true\") return\n" +
+                            "synchronized(XrossRuntime::class.java) {\n" +
+                            "    if (System.getProperty(\"xross.heap.initialized\") == \"true\") return\n" +
+                            "    try {\n" +
+                            "        val symbol = lookup.find(\"xross_alloc_init\").orElseGet { \n" +
+                            "            java.lang.foreign.Linker.nativeLinker().defaultLookup().find(\"xross_alloc_init\").orElse(null) \n" +
+                            "        } ?: return\n" +
+                            "        val rt = Runtime.getRuntime()\n" +
+                            "        val maxHeap = rt.maxMemory()\n" +
+                            "        val initialHeap = rt.totalMemory()\n" +
+                            "        val limit512 = 512L * 1024 * 1024\n" +
+                            "        val halfMax = if (maxHeap == Long.MAX_VALUE) limit512 else maxHeap / 2\n" +
+                            "        val targetSize = minOf(limit512, halfMax, initialHeap)\n" +
+                            "        val size = (targetSize / 4096) * 4096\n" +
+                            "        if (size > 0) {\n" +
+                            "            val arena = java.lang.foreign.Arena.global()\n" +
+                            "            val segment = arena.allocate(size, 4096)\n" +
+                            "            val descriptor = java.lang.foreign.FunctionDescriptor.ofVoid(java.lang.foreign.ValueLayout.ADDRESS, java.lang.foreign.ValueLayout.JAVA_LONG, java.lang.foreign.ValueLayout.JAVA_LONG)\n" +
+                            "            val handle = linker.downcallHandle(symbol, descriptor)\n" +
+                            "            handle.invoke(segment, size, 4096L)\n" +
+                            "        }\n" +
+                            "    } catch (e: Throwable) {\n" +
+                            "        System.err.println(\"[Xross] Global heap init failed: \" + e.message)\n" +
+                            "    } finally {\n" +
+                            "        System.setProperty(\"xross.heap.initialized\", \"true\")\n" +
+                            "    }\n" +
+                            "}\n",
+                        Long::class.asTypeName(),
+                    )
                     .build(),
             )
             .addFunction(

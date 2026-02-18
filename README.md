@@ -3,53 +3,53 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Version](https://img.shields.io/badge/version-2.0.1-blue.svg)](https://github.com/the-infinitys/xross)
 
-**Xross** (クロス) は、Rust と JVM (Kotlin/Java) の境界を消滅させるために設計された、高性能・メモリ安全なクロス言語フレームワークです。
+**Xross** (Cross) is a high-performance, memory-safe cross-language framework designed to dissolve the boundary between Rust and JVM (Kotlin/Java).
 
-Java 25 で標準化された **Project Panama (Foreign Function & Memory API)** を最大限に活用し、従来の JNI (Java Native Interface) が抱えていたパフォーマンスの限界と開発の複雑さを根本から解決します。
+By leveraging **Project Panama (Foreign Function & Memory API)**, which is standardized in Java 25, it fundamentally resolves the performance limits and development complexity inherent in traditional JNI (Java Native Interface).
 
-## 🚀 主な特徴
+## 🚀 Key Features
 
-*   **⚡️ 極限のパフォーマンス**: MethodHandle とインラインメモリアクセスにより、JNI 特有のオーバーヘッドを排除。ネイティブ呼び出しのコストを最小化します。
-*   **🛡️ Rust の安全性を JVM へ**: Rust の所有権モデル（Owned, Ref, MutRef）をメタデータとして抽出し、Kotlin 側のライフサイクル管理と型システムに統合。
-*   **🛠️ 完全自動バインディング**: Rust のコードにアノテーションを付けるだけで、スレッドセーフで慣習的な Kotlin コードが自動生成されます。
-*   **🔒 強固なスレッド安全性**: データの性質に合わせて `StampedLock`, `VarHandle`, `Atomic` 等の同期機構を自動選択し、データ競合を防ぎます。
-*   **🌐 非同期処理の統合 (Async/Await)**: Rust の `Future` と Kotlin の `Coroutines` をシームレスにブリッジ。ネイティブの非同期ロジックを `suspend` 関数として呼び出せます。
-*   **💎 高度な型サポート**: 構造体はもちろん、Rust 特有の列挙型 (Algebraic Data Types) や不透明型 (Opaque Types) もシームレスに扱えます。
+*   **⚡️ Extreme Performance**: Eliminates JNI-specific overhead via `MethodHandle` and inline memory access. Minimizes the cost of native calls.
+*   **🛡️ Rust Safety for JVM**: Extracts Rust's ownership model (Owned, Ref, MutRef) as metadata and integrates it into Kotlin's lifecycle management and type system.
+*   **🛠️ Fully Automated Bindings**: Simply annotate your Rust code, and thread-safe, idiomatic Kotlin code is automatically generated.
+*   **🔒 Robust Thread Safety**: Automatically selects synchronization mechanisms such as `StampedLock`, `VarHandle`, or `Atomic` based on data nature to prevent data races.
+*   **🌐 Async/Await Integration**: Seamlessly bridges Rust's `Future` and Kotlin's `Coroutines`. Native async logic can be called as `suspend` functions.
+*   **💎 Advanced Type Support**: Handles structs, Rust-specific enums (Algebraic Data Types), and opaque types seamlessly.
 
-## 🏗️ アーキテクチャ
+## 🏗️ Architecture
 
-Xross は以下のコンポーネントで構成されています。詳細な仕様については [ARCHITECTURE.md](./ARCHITECTURE.md) を参照してください。
+Xross consists of the following components. See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed specifications.
 
-*   `xross-core`: Rust 側のランタイム基盤とアノテーション。
-*   `xross-macros`: プロキシコード生成のための手続き型マクロ。
-*   `xross-plugin`: Kotlin バインディングを生成する強力な Gradle プラグイン。
-*   `xross-metadata`: 言語間で共有される高精度な型定義スキーマ。
+*   `xross-core`: Rust-side runtime foundation and annotations.
+*   `xross-macros`: Procedural macros for proxy code generation.
+*   `xross-plugin`: A powerful Gradle plugin that generates Kotlin bindings.
+*   `xross-metadata`: High-precision type definition schema shared across languages.
 
-## 📦 インストールと利用方法
+## 📦 Installation and Usage
 
-### 1. Gradle プラグインの導入
+### 1. Introducing the Gradle Plugin
 
-プロジェクトの状況に合わせて、以下のいずれかの方法でプラグインを導入できます。
+You can introduce the plugin in several ways depending on your project.
 
-#### A. GitHub レポジトリを直接使用 (Composite Build - 推奨)
-開発中の最新バージョンを試す場合や、Xross 自体の開発に携わる場合に最適です。
+#### A. Direct Use from GitHub Repository (Composite Build - Recommended)
+Best for trying out the latest version during development or contributing to Xross itself.
 
-1.  `xross` レポジトリをクローンします。
-2.  自分のプロジェクトの `settings.gradle.kts` に以下を追記します。
+1.  Clone the `xross` repository.
+2.  Add the following to your project's `settings.gradle.kts`:
     ```kotlin
     pluginManagement {
         includeBuild("../path/to/xross/xross-plugin")
     }
     ```
-3.  `build.gradle.kts` で適用します。
+3.  Apply it in `build.gradle.kts`:
     ```kotlin
     plugins {
         id("org.xross")
     }
     ```
 
-#### B. JitPack を使用 (リモートから直接)
-クローンなしで GitHub の `main` ブランチをそのまま利用できます。
+#### B. Using JitPack (Remote)
+Use the `main` branch directly from GitHub without cloning.
 
 ```kotlin
 // settings.gradle.kts
@@ -68,28 +68,28 @@ buildscript {
 apply(plugin = "org.xross")
 ```
 
-### 2. Rust 側の設定 (`Cargo.toml`)
+### 2. Rust-side Configuration (`Cargo.toml`)
 
 ```toml
 [dependencies]
 xross-core = "2.0.1"
 ```
 
-## 🛠️ Rust と Kotlin の対応関係
+## 🛠️ Rust and Kotlin Mapping
 
-Xross は Rust の型定義を解析し、最適な Kotlin コードを生成します。
+Xross analyzes Rust type definitions and generates optimal Kotlin code.
 
-| Rust コード | 生成される Kotlin コード | 特徴 |
+| Rust Code | Generated Kotlin Code | Characteristics |
 | :--- | :--- | :--- |
-| `#[derive(XrossClass)] struct S` | `class S : AutoCloseable` | ネイティブメモリを管理するクラス |
-| `#[xross_new] fn new() -> Self` | `constructor(...)` | Rust のインスタンスを生成 |
-| `&self` / `&mut self` | 普通のメソッド | スレッド安全性が自動的に付与される |
-| `async fn foo()` | `suspend fun foo()` | Coroutines 統合された非同期関数 |
-| `self` (所有権消費) | `fun consume()...` | 呼び出し後に Kotlin 側でも無効化される |
-| `Option<T>` | `T?` (Nullable) | `null` を使った自然な表現 |
-| `Result<T, E>` | `Result<T>` | 例外を内包した標準の Result 型 |
+| `#[derive(XrossClass)] struct S` | `class S : AutoCloseable` | Class managing native memory |
+| `#[xross_new] fn new() -> Self` | `constructor(...)` | Creates a Rust instance |
+| `&self` / `&mut self` | Ordinary methods | Thread safety automatically applied |
+| `async fn foo()` | `suspend fun foo()` | Async function integrated with Coroutines |
+| `self` (Ownership consumption) | `fun consume()...` | Invalidated on Kotlin side after call |
+| `Option<T>` | `T?` (Nullable) | Natural expression using `null` |
+| `Result<T, E>` | `Result<T>` | Standard Result type containing exceptions |
 
-### 実際の変換例
+### Example Conversion
 
 **Rust:**
 ```rust
@@ -103,35 +103,35 @@ impl MyService {
 }
 ```
 
-**Kotlin (生成後):**
+**Kotlin (Generated):**
 ```kotlin
 val result: Result<String> = runBlocking {
     service.process("hello")
 }
 ```
 
-## 🔍 開発者向けノート: 内部実装の仕組み
+## 🔍 Developer Notes: Internal Mechanism
 
-Xross は内部的に以下のような `extern "C"` 関数を自動生成し、Java 25 の FFM API (MethodHandle) を介して呼び出します。
+Xross automatically generates `extern "C"` functions internally and calls them via Java 25's FFM API (`MethodHandle`).
 
-### シンボル命名規則
-生成されるシンボルは以下の形式になります：
+### Symbol Naming Convention
+Generated symbols follow this format:
 `{crate}_{package}_{type}_{method}`
 
-例: `my_lib_com_example_MyService_process`
+Example: `my_lib_com_example_MyService_process`
 
-### 自動生成される共通関数
-すべての `XrossClass` に対して、以下の管理用関数が生成されます：
-- `_drop`: `Box::from_raw` を呼び出し、Rust 側のメモリを解放します。
-- `_size`: 型の `size_of` を返し、Kotlin 側の `MemorySegment` 割り当てに使用されます。
-- `_clone`: `Clone` トレイトが実装されている場合、新しいインスタンスをヒープに作成します。
+### Automatically Generated Common Functions
+For every `XrossClass`, the following management functions are generated:
+- `_drop`: Calls `Box::from_raw` to release Rust-side memory.
+- `_size`: Returns `size_of` of the type, used for `MemorySegment` allocation on the Kotlin side.
+- `_clone`: If `Clone` is implemented, creates a new instance on the heap.
 
-### 高度な拡張
-自分で特定の関数を FFM API から直接呼び出したい場合は、これらの命名規則に従って `SymbolLookup` を行うことで、Xross が管理するオブジェクトと相互運用することが可能です。
+### Advanced Extension
+If you want to call specific functions directly via the FFM API, you can interoperate with Xross-managed objects by performing a `SymbolLookup` following these naming conventions.
 
-## 💡 使用方法
+## 💡 Usage
 
-### 1. Rust でロジックを記述
+### 1. Write Logic in Rust
 
 ```rust
 use xross_core::{XrossClass, xross_class};
@@ -156,67 +156,67 @@ impl Calculator {
 }
 ```
 
-### 2. Gradle タスクを実行
+### 2. Run Gradle Task
 
 ```bash
 ./gradlew generateXrossBindings
 ```
 
-### 3. Kotlin から利用
+### 3. Use from Kotlin
 
 ```kotlin
 import com.example.generated.Calculator
 
 fun main() {
-    // Rust 側のインスタンスを安全に生成 (AutoCloseable により自動解放)
+    // Safely create a Rust instance (automatically released via AutoCloseable)
     Calculator(10).use { calc ->
-        // アトミックな更新
+        // Atomic update
         calc.value.update { it + 5 }
         println("Result: ${calc.value.value}") // 15
     }
 }
 ```
 
-## 🔥 高度な機能
+## 🔥 Advanced Features
 
-### 🌐 Async/Await 統合
-Rust 側の `async fn` は、Kotlin 側では `suspend` 関数として生成されます。内部的には Rust の `Future` をポーリングし、完了時に Coroutine を再開する効率的なブリッジが構築されます。
+### 🌐 Async/Await Integration
+Rust `async fn` is generated as a `suspend` function on the Kotlin side. Internally, it builds an efficient bridge that polls the Rust `Future` and resumes the Coroutine upon completion.
 
-### 🧵 スレッド安全性 (Thread Safety)
-Xross は Rust の借用チェッカーの概念を Kotlin に持ち込みます。
-- **Atomic**: `VarHandle` による CAS 操作を提供。
-- **Lock**: `StampedLock` を使用し、不変参照には楽観的読み取りを、可変参照には排他ロックを適用します。
+### 🧵 Thread Safety
+Xross brings Rust's borrow checker concepts to Kotlin.
+- **Atomic**: Provides CAS operations via `VarHandle`.
+- **Lock**: Uses `StampedLock` to apply optimistic reads for immutable references and exclusive locks for mutable references.
 
-### 🧬 代数的データ型 (ADTs)
-Rust の `enum` は Kotlin の `sealed class` として生成され、`when` 式による安全なパターンマッチングが可能です。
+### 🧬 Algebraic Data Types (ADTs)
+Rust `enum` is generated as a Kotlin `sealed class`, allowing safe pattern matching via `when` expressions.
 
-### 🔍 スタンドアロン関数
-`#[xross_function]` を使用することで、クラスに属さないグローバルな関数もバインディング可能です。
+### 🔍 Standalone Functions
+Using `#[xross_function]`, you can bind global functions that do not belong to a class.
 
-### 🔎 不透明型 (Opaque Types)
-`#[xross_core::opaque_class]` を使用することで、Rust 側の詳細を隠蔽したまま Kotlin へポインタを安全に渡すことができます。
+### 🔎 Opaque Types
+Using `#[xross_core::opaque_class]`, you can safely pass pointers to Kotlin while hiding Rust-side details.
 
-## 🛡️ ベストプラクティス
+## 🛡️ Best Practices
 
-1.  **所有権の意識**: `Owned` として返されたオブジェクトは必ず `use` ブロックまたは `close()` で解放してください。
-2.  **パッケージ管理**: `#[xross_package("com.example")]` を活用して、Kotlin 側のパッケージ構成を整理しましょう。
-3.  **エラーハンドリング**: Rust 側の `Result<T, E>` は Kotlin の `Result<T>` に変換されます。適切に `onFailure` 等で例外処理を行ってください。
-4.  **アロケーションを最小化せよ**: Native 側で頻繁にメモリを確保・解放すると、JVM のメモリ管理（TLAB）の方が速い場合があります。
-5.  **キャッシュを意識せよ**: データを平坦化し、CPU が先読みしやすいメモリアクセスを行うことで、Native の真価が出ます。
-6.  **1 回の処理を重くせよ**: Rust 側での実行時間が十分長ければ、FFI 境界のオーバーヘッドは誤差の範囲になります。
+1.  **Ownership Awareness**: Objects returned as `Owned` must be released using a `use` block or by calling `close()`.
+2.  **Package Management**: Use `#[xross_package("com.example")]` to organize your Kotlin package structure.
+3.  **Error Handling**: Rust's `Result<T, E>` is converted to Kotlin's `Result<T>`. Handle exceptions appropriately using `onFailure`, etc.
+4.  **Minimize Allocation**: Frequently allocating/releasing memory on the native side may be slower than JVM's memory management (TLAB) in some cases.
+5.  **Be Cache-Aware**: Flatten data and use memory access patterns that are easy for the CPU to prefetch to realize the true value of Native.
+6.  **Heavier Processing per Call**: If the execution time on the Rust side is long enough, the overhead of the FFI boundary becomes negligible.
 
-## ⚠️ 必要条件と実行時設定
+## ⚠️ Requirements and Runtime Settings
 
-*   **Rust**: 1.80+ (Edition 2024 推奨)
+*   **Rust**: 1.80+ (Edition 2024 recommended)
 *   **Java**: 25+ (Project Panama / FFM API)
 *   **Gradle**: 8.0+
 
-実行時には、FFM API へのアクセスを許可するために以下の JVM 引数が必要です。
+At runtime, the following JVM argument is required to permit FFM API access:
 
 ```bash
 --enable-native-access=ALL-UNNAMED
 ```
 
-## 📜 ライセンス
+## 📜 License
 
-このプロジェクトは MIT ライセンスの下で公開されています。
+This project is licensed under the MIT License.

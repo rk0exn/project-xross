@@ -13,5 +13,5 @@ futures = { version = "0.3", optional = true }
 [features]
 default = []
 # xross-alloc フィーチャーを定義
-xross-alloc = ["dep:xross-alloc", "xross-alloc/jvmalloc"]
+xross-alloc = ["dep:xross-alloc", "xross-alloc/jvm"]
 tokio = ["dep:tokio", "dep:futures"]

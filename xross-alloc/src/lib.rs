@@ -1,336 +1,384 @@
-use std::alloc::{GlobalAlloc, Layout};
-use std::cell::UnsafeCell;
-use std::ptr::null_mut;
-use std::sync::OnceLock;
-use std::sync::atomic::{AtomicPtr, Ordering};
+pub mod heap;
 
-#[cfg(feature = "jvmalloc")]
+use crate::heap::heap;
 use rlsf::Tlsf;
-#[cfg(feature = "jvmalloc")]
-use spin::Mutex;
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::cell::UnsafeCell;
+use std::mem::MaybeUninit;
+use std::ptr::{self, NonNull};
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
-pub mod jvm;
-mod parent;
-#[cfg(feature = "jvmalloc")]
-pub use jvm::xross_runtime_init as xross_alloc_init;
-use parent::ParentAlloc;
+// --- 定数定義 (15ビットシフトで32KB境界を判定) ---
+const CHUNK_SIZE: usize = 2 * 1024 * 1024;
+const LARGE_THRESHOLD: usize = CHUNK_SIZE / 2;
+const MAX_CHUNKS: usize = 256;
 
-// --- 定数調整 ---
-const SIZE_CLASSES: [usize; 7] = [16, 32, 64, 128, 256, 512, 1024];
-const CHUNK_SIZE: usize = 64 * 1024; // 64KB
-const BATCH_SIZE: usize = 32;
-const FLUSH_THRESHOLD: usize = 64;
+const SLAB_SIZES: [usize; 6] = [32, 64, 128, 256, 512, 1024];
+const SLAB_LENS: [usize; 6] = [1024, 512, 256, 128, 64, 32];
+const SLAB_OFFSETS: [usize; 7] = [0, 32768, 65536, 98304, 131072, 163840, 196608];
 
-#[repr(C)]
+const SLAB_TOTAL_CAPACITY: usize = SLAB_OFFSETS[6];
+const TLSF_CAPACITY: usize = CHUNK_SIZE - SLAB_TOTAL_CAPACITY;
+
 struct FreeNode {
     next: *mut FreeNode,
 }
 
-pub(crate) struct GlobalState {
-    #[cfg(feature = "jvmalloc")]
-    tlsf: Mutex<Tlsf<'static, usize, usize, 32, 32>>,
-    central_freelists: [AtomicPtr<FreeNode>; SIZE_CLASSES.len()],
-    managed_range: (usize, usize),
+pub struct XrossGlobalAllocator {
+    base_ptr: *mut u8,
+    size: usize,
+    end_ptr: usize,
+    next: AtomicUsize,
+    free_chunks: AtomicPtr<FreeNode>,
+    remote_free_queues: [AtomicPtr<FreeNode>; MAX_CHUNKS],
 }
 
-unsafe impl Send for GlobalState {}
-unsafe impl Sync for GlobalState {}
+// GlobalAllocatorとしての安全性を保証
+unsafe impl Send for XrossGlobalAllocator {}
+unsafe impl Sync for XrossGlobalAllocator {}
 
-static GLOBAL: OnceLock<GlobalState> = OnceLock::new();
+impl XrossGlobalAllocator {
+    pub fn new(ptr: *mut u8, size: usize) -> Self {
+        const EMPTY_PTR: AtomicPtr<FreeNode> = AtomicPtr::new(ptr::null_mut());
+        Self {
+            base_ptr: ptr,
+            size,
+            end_ptr: ptr as usize + size,
+            next: AtomicUsize::new(0),
+            free_chunks: AtomicPtr::new(ptr::null_mut()),
+            remote_free_queues: [EMPTY_PTR; MAX_CHUNKS],
+        }
+    }
+
+    #[inline(always)]
+    pub unsafe fn alloc_chunk(&self) -> *mut u8 {
+        unsafe {
+            let reused = self.pop_free_chunk();
+            if !reused.is_null() {
+                return reused;
+            }
+
+            let offset = self.next.fetch_add(CHUNK_SIZE, Ordering::Relaxed);
+            if offset + CHUNK_SIZE <= self.size {
+                self.base_ptr.add(offset)
+            } else {
+                ptr::null_mut()
+            }
+        }
+    }
+
+    #[inline(always)]
+    pub unsafe fn push_free_chunk(&self, chunk_ptr: *mut u8) {
+        unsafe {
+            let node_ptr = chunk_ptr as *mut FreeNode;
+            let mut head = self.free_chunks.load(Ordering::Acquire);
+            loop {
+                (*node_ptr).next = head;
+                match self.free_chunks.compare_exchange_weak(
+                    head,
+                    node_ptr,
+                    Ordering::Release,
+                    Ordering::Acquire,
+                ) {
+                    Ok(_) => break,
+                    Err(new_head) => head = new_head,
+                }
+            }
+        }
+    }
+
+    unsafe fn pop_free_chunk(&self) -> *mut u8 {
+        unsafe {
+            let mut head = self.free_chunks.load(Ordering::Acquire);
+            loop {
+                if head.is_null() {
+                    return ptr::null_mut();
+                }
+                let next = (*head).next;
+                match self.free_chunks.compare_exchange_weak(
+                    head,
+                    next,
+                    Ordering::Release,
+                    Ordering::Acquire,
+                ) {
+                    Ok(_) => return head as *mut u8,
+                    Err(new_head) => head = new_head,
+                }
+            }
+        }
+    }
+
+    #[inline(always)]
+    pub fn is_own(&self, ptr: *mut u8) -> bool {
+        let addr = ptr as usize;
+        addr >= self.base_ptr as usize && addr < self.end_ptr
+    }
+
+    #[inline(always)]
+    pub unsafe fn push_remote_free(&self, ptr: *mut u8) {
+        unsafe {
+            let offset = ptr as usize - self.base_ptr as usize;
+            let chunk_idx = offset / CHUNK_SIZE;
+            if chunk_idx >= MAX_CHUNKS {
+                return;
+            }
+
+            let node_ptr = ptr as *mut FreeNode;
+            let queue = &self.remote_free_queues[chunk_idx];
+            let mut head = queue.load(Ordering::Relaxed);
+            loop {
+                (*node_ptr).next = head;
+                match queue.compare_exchange_weak(
+                    head,
+                    node_ptr,
+                    Ordering::Release,
+                    Ordering::Relaxed,
+                ) {
+                    Ok(_) => break,
+                    Err(new_head) => head = new_head,
+                }
+            }
+        }
+    }
+}
+
+// --- スラブ割り当ての共通化 ---
+
+struct LocalSlab {
+    base: *mut u8,
+    bump_idx: u32,
+    free_list: *mut FreeNode,
+}
+
+pub struct XrossLocalAllocator {
+    slabs: [LocalSlab; 6],
+    tlsf: Tlsf<'static, usize, usize, 12, 16>,
+    chunk_ptr: *mut u8,
+    alloc_count: u32,
+}
+
+impl XrossLocalAllocator {
+    #[inline(always)]
+    unsafe fn new(chunk: *mut u8) -> Self {
+        unsafe {
+            let slabs = [
+                LocalSlab {
+                    base: chunk.add(SLAB_OFFSETS[0]),
+                    bump_idx: 0,
+                    free_list: ptr::null_mut(),
+                },
+                LocalSlab {
+                    base: chunk.add(SLAB_OFFSETS[1]),
+                    bump_idx: 0,
+                    free_list: ptr::null_mut(),
+                },
+                LocalSlab {
+                    base: chunk.add(SLAB_OFFSETS[2]),
+                    bump_idx: 0,
+                    free_list: ptr::null_mut(),
+                },
+                LocalSlab {
+                    base: chunk.add(SLAB_OFFSETS[3]),
+                    bump_idx: 0,
+                    free_list: ptr::null_mut(),
+                },
+                LocalSlab {
+                    base: chunk.add(SLAB_OFFSETS[4]),
+                    bump_idx: 0,
+                    free_list: ptr::null_mut(),
+                },
+                LocalSlab {
+                    base: chunk.add(SLAB_OFFSETS[5]),
+                    bump_idx: 0,
+                    free_list: ptr::null_mut(),
+                },
+            ];
+            let mut tlsf = Tlsf::new();
+            let tlsf_slice =
+                ptr::slice_from_raw_parts_mut(chunk.add(SLAB_TOTAL_CAPACITY), TLSF_CAPACITY)
+                    as *mut [MaybeUninit<u8>];
+            tlsf.insert_free_block(&mut *tlsf_slice);
+            Self { slabs, tlsf, chunk_ptr: chunk, alloc_count: 0 }
+        }
+    }
+
+    #[inline(always)]
+    fn get_slab_idx_from_offset(offset: usize) -> usize {
+        // 全てのスラブサイズは 32KB (32768 bytes) 単位で配置されているため
+        // offset >> 15 で 0, 1, 2, 3... とインデックス化できる
+        offset >> 15
+    }
+
+    #[inline(never)]
+    unsafe fn process_remote_frees(&mut self) {
+        unsafe {
+            let g = xross_global_alloc();
+            let chunk_idx = (self.chunk_ptr as usize - g.base_ptr as usize) / CHUNK_SIZE;
+            let mut node = g.remote_free_queues[chunk_idx].swap(ptr::null_mut(), Ordering::Acquire);
+
+            while !node.is_null() {
+                let next = (*node).next;
+                let ptr = node as *mut u8;
+                let offset = ptr as usize - self.chunk_ptr as usize;
+
+                if offset < SLAB_TOTAL_CAPACITY {
+                    self.slabs[Self::get_slab_idx_from_offset(offset)].dealloc(ptr);
+                } else {
+                    self.tlsf.deallocate(NonNull::new_unchecked(ptr), 16);
+                }
+                node = next;
+            }
+        }
+    }
+}
+
+impl LocalSlab {
+    #[inline(always)]
+    unsafe fn alloc(&mut self, idx: usize) -> *mut u8 {
+        unsafe {
+            if !self.free_list.is_null() {
+                let node = self.free_list;
+                self.free_list = (*node).next;
+                return node as *mut u8;
+            }
+            if (self.bump_idx as usize) < SLAB_LENS[idx] {
+                let ptr = self.base.add(self.bump_idx as usize * SLAB_SIZES[idx]);
+                self.bump_idx += 1;
+                return ptr;
+            }
+            ptr::null_mut()
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn dealloc(&mut self, ptr: *mut u8) {
+        unsafe {
+            let node = ptr as *mut FreeNode;
+            (*node).next = self.free_list;
+            self.free_list = node;
+        }
+    }
+}
+
+impl Drop for XrossLocalAllocator {
+    fn drop(&mut self) {
+        unsafe {
+            self.process_remote_frees();
+            xross_global_alloc().push_free_chunk(self.chunk_ptr);
+        }
+    }
+}
 
 thread_local! {
-    static LOCAL_CACHES: UnsafeCell<[LocalCache; SIZE_CLASSES.len()]> = const {
-        UnsafeCell::new([LocalCache::new(); SIZE_CLASSES.len()])
-    };
+    static LOCAL_ALLOC: UnsafeCell<Option<XrossLocalAllocator>> = const { UnsafeCell::new(None) };
 }
 
-#[derive(Copy, Clone)]
-struct LocalCache {
-    head: *mut FreeNode,
-    count: usize,
+static XROSS_GLOBAL_ALLOC: OnceLock<XrossGlobalAllocator> = OnceLock::new();
+
+#[inline(always)]
+fn xross_global_alloc() -> &'static XrossGlobalAllocator {
+    XROSS_GLOBAL_ALLOC.get_or_init(|| {
+        let h = heap();
+        XrossGlobalAllocator::new(h.ptr, h.size)
+    })
 }
 
-impl LocalCache {
-    const fn new() -> Self {
-        LocalCache { head: null_mut(), count: 0 }
-    }
-}
-
-#[derive(Default)]
 pub struct XrossAlloc;
 
-impl XrossAlloc {
-    pub const fn new() -> Self {
-        Self
-    }
-
-    #[inline(always)]
-    pub(crate) fn get_global(&self) -> &GlobalState {
-        if let Some(g) = GLOBAL.get() { g } else { GLOBAL.get_or_init(Self::init_global) }
-    }
-
-    #[inline(always)]
-    fn get_size_class_idx(size: usize) -> Option<usize> {
-        if size > 1024 {
-            return None;
-        }
-        if size <= 16 {
-            return Some(0);
-        }
-        let power = usize::BITS - (size - 1).leading_zeros();
-        let idx = (power as usize).saturating_sub(4);
-        if idx < SIZE_CLASSES.len() { Some(idx) } else { None }
-    }
-
-    fn init_global() -> GlobalState {
-        #[cfg(feature = "jvmalloc")]
-        {
-            if let Some(&(jvm::RawPtr(ptr), size)) = jvm::EXTERNAL_HEAP.get() {
-                let mut tlsf = Tlsf::new();
-                unsafe {
-                    let slice =
-                        std::slice::from_raw_parts_mut(ptr as *mut std::mem::MaybeUninit<u8>, size);
-                    tlsf.insert_free_block(slice);
-                }
-                return GlobalState {
-                    tlsf: Mutex::new(tlsf),
-                    central_freelists: std::array::from_fn(|_| AtomicPtr::new(null_mut())),
-                    managed_range: (ptr as usize, ptr as usize + size),
-                };
-            }
-        }
-
-        let total_init = 128 * 1024 * 1024;
-        let layout = Layout::from_size_align(total_init, 4096).unwrap();
-        let base_ptr = unsafe { ParentAlloc.alloc(layout) };
-
-        #[cfg(feature = "jvmalloc")]
-        {
-            let mut tlsf = Tlsf::new();
-            unsafe {
-                let slice = std::slice::from_raw_parts_mut(
-                    base_ptr as *mut std::mem::MaybeUninit<u8>,
-                    total_init,
-                );
-                tlsf.insert_free_block(slice);
-            }
-            GlobalState {
-                tlsf: Mutex::new(tlsf),
-                central_freelists: std::array::from_fn(|_| AtomicPtr::new(null_mut())),
-                managed_range: (base_ptr as usize, base_ptr as usize + total_init),
-            }
-        }
-        #[cfg(not(feature = "jvmalloc"))]
-        {
-            GlobalState {
-                central_freelists: std::array::from_fn(|_| AtomicPtr::new(null_mut())),
-                managed_range: (base_ptr as usize, base_ptr as usize + total_init),
-            }
-        }
-    }
-
-    #[cold]
-    unsafe fn refill_from_global(&self, cache: &mut LocalCache, idx: usize, g: &GlobalState) {
-        let size = SIZE_CLASSES[idx];
-        let mut current = g.central_freelists[idx].load(Ordering::Acquire);
-
-        if current.is_null() {
-            let chunk = unsafe { self.alloc_from_backend(g, CHUNK_SIZE, 16) };
-            if chunk.is_null() {
-                return;
-            }
-
-            let num_blocks = CHUNK_SIZE / size;
-            let mut head = null_mut();
-
-            unsafe {
-                for i in (BATCH_SIZE..num_blocks).rev() {
-                    let node = chunk.add(i * size) as *mut FreeNode;
-                    (*node).next = head;
-                    head = node;
-                }
-
-                loop {
-                    let old = g.central_freelists[idx].load(Ordering::Relaxed);
-                    let last_node = chunk.add((num_blocks - 1) * size) as *mut FreeNode;
-                    (*last_node).next = old;
-                    if g.central_freelists[idx]
-                        .compare_exchange_weak(old, head, Ordering::Release, Ordering::Relaxed)
-                        .is_ok()
-                    {
-                        break;
-                    }
-                }
-
-                let mut l_head = null_mut();
-                for i in (0..BATCH_SIZE).rev() {
-                    let node = chunk.add(i * size) as *mut FreeNode;
-                    (*node).next = l_head;
-                    l_head = node;
-                }
-                cache.head = l_head;
-                cache.count = BATCH_SIZE;
-            }
-            return;
-        }
-
-        loop {
-            if current.is_null() {
-                break;
-            }
-            let mut last = current;
-            let mut count = 1;
-            unsafe {
-                for _ in 0..(BATCH_SIZE - 1) {
-                    let next = (*last).next;
-                    if next.is_null() {
-                        break;
-                    }
-                    last = next;
-                    count += 1;
-                }
-                let next_global = (*last).next;
-                if g.central_freelists[idx]
-                    .compare_exchange_weak(
-                        current,
-                        next_global,
-                        Ordering::Acquire,
-                        Ordering::Relaxed,
-                    )
-                    .is_ok()
-                {
-                    (*last).next = null_mut();
-                    cache.head = current;
-                    cache.count = count;
-                    break;
-                } else {
-                    current = g.central_freelists[idx].load(Ordering::Acquire);
-                }
-            }
-        }
-    }
-
-    #[cold]
-    unsafe fn flush_to_global(&self, cache: &mut LocalCache, idx: usize, g: &GlobalState) {
-        unsafe {
-            let mut last = cache.head;
-            for _ in 0..(BATCH_SIZE - 1) {
-                last = (*last).next;
-            }
-            let to_flush = cache.head;
-            cache.head = (*last).next;
-            cache.count -= BATCH_SIZE;
-
-            loop {
-                let old = g.central_freelists[idx].load(Ordering::Relaxed);
-                (*last).next = old;
-                if g.central_freelists[idx]
-                    .compare_exchange_weak(old, to_flush, Ordering::Release, Ordering::Relaxed)
-                    .is_ok()
-                {
-                    break;
-                }
-            }
-        }
-    }
-
-    #[inline(always)]
-    unsafe fn alloc_from_backend(&self, g: &GlobalState, size: usize, align: usize) -> *mut u8 {
-        #[cfg(feature = "jvmalloc")]
-        {
-            let layout = Layout::from_size_align(size, align).unwrap();
-            g.tlsf.lock().allocate(layout).map(|p| p.as_ptr()).unwrap_or(null_mut())
-        }
-        #[cfg(not(feature = "jvmalloc"))]
-        {
-            let _ = g;
-            let layout = Layout::from_size_align(size, align).unwrap();
-            unsafe { ParentAlloc.alloc(layout) }
-        }
-    }
-
-    #[inline(always)]
-    unsafe fn dealloc_to_backend(&self, g: &GlobalState, ptr: *mut u8, layout: Layout) {
-        #[cfg(feature = "jvmalloc")]
-        {
-            use std::ptr::NonNull;
-            if let Some(p) = NonNull::new(ptr) {
-                unsafe {
-                    g.tlsf.lock().deallocate(p, layout.align());
-                }
-            }
-        }
-        #[cfg(not(feature = "jvmalloc"))]
-        {
-            let _ = g;
-            unsafe {
-                ParentAlloc.dealloc(ptr, layout);
-            }
-        }
-    }
-}
-
 unsafe impl GlobalAlloc for XrossAlloc {
-    #[inline(always)]
+    #[inline]
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let size = layout.size();
-        if size <= 1024
-            && layout.align() <= 8
-            && let Some(idx) = Self::get_size_class_idx(size)
-        {
-            return LOCAL_CACHES.with(|caches_cell| {
-                let caches = unsafe { &mut *caches_cell.get() };
-                let cache = &mut caches[idx];
-
-                if cache.head.is_null() {
-                    unsafe { self.refill_from_global(cache, idx, self.get_global()) };
-                }
-
-                let node = cache.head;
-                if !node.is_null() {
-                    unsafe {
-                        cache.head = (*node).next;
-                        cache.count -= 1;
-                    }
-                    return node as *mut u8;
-                }
-                unsafe { self.alloc_from_backend(self.get_global(), size, layout.align()) }
-            });
-        }
-        unsafe { self.alloc_from_backend(self.get_global(), size, layout.align()) }
-    }
-
-    #[inline(always)]
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        let g = self.get_global();
-        let ptr_u = ptr as usize;
-
-        if ptr_u >= g.managed_range.0 && ptr_u < g.managed_range.1 {
+        unsafe {
             let size = layout.size();
-            if size <= 1024
-                && layout.align() <= 8
-                && let Some(idx) = Self::get_size_class_idx(size)
-            {
-                LOCAL_CACHES.with(|caches_cell| {
-                    let caches = unsafe { &mut *caches_cell.get() };
-                    let cache = &mut caches[idx];
 
-                    let node = ptr as *mut FreeNode;
-                    unsafe {
-                        (*node).next = cache.head;
-                        cache.head = node;
-                        cache.count += 1;
+            // 分岐のヒント: 1024バイト以下が圧倒的に多いと想定
+            if size <= 1024 {
+                return LOCAL_ALLOC.with(|cell| {
+                    let local_ptr = cell.get();
+                    if (*local_ptr).is_none() {
+                        let chunk = xross_global_alloc().alloc_chunk();
+                        if chunk.is_null() {
+                            return System.alloc(layout);
+                        }
+                        ptr::write(local_ptr, Some(XrossLocalAllocator::new(chunk)));
+                    }
+                    let local = (*local_ptr).as_mut().unwrap_unchecked();
+
+                    // カウンタ更新 (ビット演算で分岐回避)
+                    local.alloc_count = local.alloc_count.wrapping_add(1);
+                    if local.alloc_count & 63 == 0 {
+                        local.process_remote_frees();
                     }
 
-                    if cache.count >= FLUSH_THRESHOLD {
-                        unsafe { self.flush_to_global(cache, idx, g) };
+                    // スラブインデックス計算 (CLZ命令を活用したビット魔法)
+                    // 32, 64, 128, 256, 512, 1024 -> idx 0, 1, 2, 3, 4, 5
+                    let idx = if size <= 32 {
+                        0
+                    } else {
+                        (usize::BITS - (size - 1).leading_zeros()) as usize - 5
+                    };
+
+                    let p = local.slabs[idx].alloc(idx);
+                    if !p.is_null() {
+                        p
+                    } else {
+                        local
+                            .tlsf
+                            .allocate(layout)
+                            .map_or_else(|| System.alloc(layout), |p| p.as_ptr())
                     }
                 });
+            }
+
+            if size > LARGE_THRESHOLD {
+                return System.alloc(layout);
+            }
+
+            // 中規模（1KB超）はTLSFへ
+            LOCAL_ALLOC.with(|cell| {
+                let local_ptr = cell.get();
+                if let Some(local) = (*local_ptr).as_mut() {
+                    local.tlsf.allocate(layout).map_or_else(|| System.alloc(layout), |p| p.as_ptr())
+                } else {
+                    System.alloc(layout)
+                }
+            })
+        }
+    }
+
+    #[inline]
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        unsafe {
+            if ptr.is_null() {
                 return;
             }
-            unsafe { self.dealloc_to_backend(g, ptr, layout) };
-        } else {
-            unsafe { ParentAlloc.dealloc(ptr, layout) };
+            let g = xross_global_alloc();
+
+            if !g.is_own(ptr) {
+                System.dealloc(ptr, layout);
+                return;
+            }
+
+            LOCAL_ALLOC.with(|cell| {
+                let local_ptr = cell.get();
+                if let Some(local) = (*local_ptr).as_mut() {
+                    let addr = ptr as usize;
+                    let base = local.chunk_ptr as usize;
+                    // 境界チェック: addr - base が CHUNK_SIZE 未満なら自分のチャンク
+                    let off = addr.wrapping_sub(base);
+                    if off < CHUNK_SIZE {
+                        if off < SLAB_TOTAL_CAPACITY {
+                            local.slabs[XrossLocalAllocator::get_slab_idx_from_offset(off)]
+                                .dealloc(ptr);
+                        } else {
+                            local.tlsf.deallocate(NonNull::new_unchecked(ptr), layout.align());
+                        }
+                        return;
+                    }
+                }
+                g.push_remote_free(ptr);
+            });
         }
     }
 }

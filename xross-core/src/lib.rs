@@ -5,11 +5,11 @@ pub use xross_macros::{
 };
 
 #[cfg(feature = "xross-alloc")]
-pub use xross_alloc::xross_alloc_init;
+pub use xross_alloc::heap::xross_alloc_init;
 
 #[cfg(feature = "xross-alloc")]
 #[global_allocator]
-static ALLOC: xross_alloc::XrossAlloc = xross_alloc::XrossAlloc::new();
+static ALLOC: xross_alloc::XrossAlloc = xross_alloc::XrossAlloc;
 
 #[repr(C)]
 pub struct XrossResult {
@@ -113,7 +113,7 @@ fn get_runtime() -> &'static tokio::runtime::Runtime {
 #[cfg(feature = "tokio")]
 pub fn xross_spawn_task<F, T>(future: F, mapper: fn(T) -> XrossResult) -> XrossTask
 where
-    F: std::future::Future<Output = T> + Send + 'static,
+    F: Future<Output = T> + Send + 'static,
     T: Send + 'static,
 {
     let rt = get_runtime();

@@ -21,6 +21,7 @@ object CompanionGenerator {
 
         val init = CodeBlock.builder()
             .addStatement("val lookup = %T.loaderLookup()", SymbolLookup::class.asTypeName())
+            .addStatement("%T.initializeHeap(lookup, linker)", ClassName(if (basePackage.isEmpty()) "xross.runtime" else "$basePackage.xross.runtime", "XrossRuntime"))
 
         HandleResolver.resolveAllHandles(init, meta)
 

@@ -1,16 +1,11 @@
-#[cfg(not(target_os = "macos"))]
 use jemallocator::Jemalloc;
-#[cfg(not(target_os = "macos"))]
 use mimalloc::MiMalloc;
 use rand::prelude::*;
-#[cfg(not(target_os = "macos"))]
 use rpmalloc::RpMalloc;
-#[cfg(not(target_os = "macos"))]
 use snmalloc_rs::SnMalloc;
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::thread;
 use std::time::Instant;
-#[cfg(not(target_os = "macos"))]
 use tcmalloc::TCMalloc;
 use xross_alloc::XrossAlloc;
 
@@ -21,18 +16,13 @@ const ITERS: usize = 100; // 試行回数
 
 type Scenario = (&'static str, for<'a> fn(&'a dyn GlobalAlloc));
 fn main() {
-    let xross = Box::leak(Box::new(XrossAlloc::new()));
+    let xross = Box::leak(Box::new(XrossAlloc));
     let sys = Box::leak(Box::new(System));
 
-    #[cfg(not(target_os = "macos"))]
     let mi = Box::leak(Box::new(MiMalloc));
-    #[cfg(not(target_os = "macos"))]
     let je = Box::leak(Box::new(Jemalloc));
-    #[cfg(not(target_os = "macos"))]
     let tc = Box::leak(Box::new(TCMalloc));
-    #[cfg(not(target_os = "macos"))]
     let sn = Box::leak(Box::new(SnMalloc));
-    #[cfg(not(target_os = "macos"))]
     let rpm = Box::leak(Box::new(RpMalloc));
 
     let scenarios: [Scenario; 5] = [
@@ -123,16 +113,14 @@ fn mixed_size_alloc(alloc: &dyn GlobalAlloc) {
 
 fn random_shuffle_alloc(alloc: &dyn GlobalAlloc) {
     let layout = Layout::from_size_align(64, 16).unwrap();
-    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+    let mut rng = StdRng::seed_from_u64(42);
     let chunk_size = 500;
     let mut ptrs = Vec::with_capacity(chunk_size);
 
     for _ in 0..(OPS_PER_THREAD / chunk_size) {
-        for _ in 0..chunk_size {
-            unsafe {
-                ptrs.push(alloc.alloc(layout));
-            }
-        }
+        (0..chunk_size).for_each(|_| unsafe {
+            ptrs.push(alloc.alloc(layout));
+        });
         ptrs.shuffle(&mut rng);
         for ptr in ptrs.drain(..) {
             unsafe {

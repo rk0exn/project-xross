@@ -1018,6 +1018,7 @@ name = "xross-alloc"
 version = "3.0.1"
 dependencies = [
  "jemallocator",
+ "libc",
  "mimalloc",
  "rand",
  "rlsf",

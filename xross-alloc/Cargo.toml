@@ -4,12 +4,10 @@ version = "3.0.1"
 edition = "2024"
 
 [dependencies]
-rand = "0.10.0"
-rlsf = { version = "0.2", optional = true }
+rlsf = "0.2"
 spin = "0.10"
-
-# macOS 以外の場合のみ、外部アロケーターを依存関係に含める
-[target.'cfg(not(target_os = "macos"))'.dependencies]
+libc = "0.2"
+rand = { version = "0.10.0", optional = true }
 mimalloc = { version = "0.1.48", optional = true }
 jemallocator = { version = "0.5.4", optional = true }
 rpmalloc = { version = "0.2.2", optional = true }
@@ -17,27 +15,16 @@ snmalloc-rs = { version = "0.3.8", optional = true }
 tcmalloc = { version = "0.3.0", optional = true }
 
 [features]
-default = ["multi-thread"]
-multi-thread = []
-jvmalloc = ["dep:rlsf"]
+jvm = []
+benchmark = [
+    "dep:rand",
+    "dep:mimalloc",
+    "dep:jemallocator",
+    "dep:rpmalloc",
+    "dep:snmalloc-rs",
+    "dep:tcmalloc"
+]
 
-# --- ターゲットに応じたフィーチャーの振る舞い設定 ---
-
-# macOS 以外の場合：各フィーチャーはそれぞれの外部アロケーターを有効化する
-[target.'cfg(not(target_os = "macos"))'.features]
-mimalloc = ["dep:mimalloc"]
-jemalloc = ["dep:jemallocator"]
-rpmalloc = ["dep:rpmalloc"]
-snmalloc = ["dep:snmalloc-rs"]
-tcmalloc = ["dep:tcmalloc"]
-full = ["mimalloc", "jemalloc", "rpmalloc", "snmalloc", "tcmalloc"]
-
-# macOS の場合：これらのフィーチャーは何もしない（空のリスト）
-# これにより、dep:mimalloc 等が参照されず、ビルド対象から完全に除外される
-[target.'cfg(target_os = "macos")'.features]
-mimalloc = []
-jemalloc = []
-rpmalloc = []
-snmalloc = []
-tcmalloc = []
-full = []
+[[example]]
+name = "benchmark"
+required-features = ["benchmark"]
