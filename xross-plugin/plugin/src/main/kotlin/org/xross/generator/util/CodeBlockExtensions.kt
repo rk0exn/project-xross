@@ -158,49 +158,45 @@ fun CodeBlock.Builder.addResultVariantResolution(
     basePackage: String,
     dropHandleName: String = "dropHandle",
 ) {
-    val needsRun = type is XrossType.Object || type is XrossType.RustString
-    if (needsRun) beginControlFlow("run")
-
     when (type) {
         is XrossType.Object -> {
+            beginControlFlow("run")
             val (sizeExpr, dropExpr, fromPointerExpr) = GeneratorUtils.compareExprs(targetTypeName, selfType, dropHandleName)
             addResourceConstruction(type, ptrName, sizeExpr, fromPointerExpr, dropExpr, ClassName("", "UNUSED"))
+            endControlFlow()
         }
         is XrossType.RustString -> {
+            beginControlFlow("run")
             addRustStringResolution(ptrName, basePackage = basePackage)
             addStatement("str")
+            endControlFlow()
         }
         is XrossType.F32 -> {
-            val code = CodeBlock.of("%T.fromBits(%L.address().toInt())", Float::class, ptrName)
-            if (needsRun) addStatement("%L", code) else add("%L", code)
+            add("%T.fromBits(%L.address().toInt())", Float::class, ptrName)
         }
         is XrossType.F64 -> {
-            val code = CodeBlock.of("%T.fromBits(%L.address())", Double::class, ptrName)
-            if (needsRun) addStatement("%L", code) else add("%L", code)
+            add("%T.fromBits(%L.address())", Double::class, ptrName)
         }
         is XrossType.Bool -> {
-            val code = CodeBlock.of("%L.address() != 0L", ptrName)
-            if (needsRun) addStatement("%L", code) else add("%L", code)
+            add("%L.address() != 0L", ptrName)
         }
         else -> {
             val kType = type.kotlinType
-            val code = if (type.kotlinSize <= 4) {
+            if (type.kotlinSize <= 4) {
                 if (kType == INT) {
-                    CodeBlock.of("%L.address().toInt()", ptrName)
+                    add("%L.address().toInt()", ptrName)
                 } else {
-                    CodeBlock.of("%L.address().toInt() as %T", ptrName, kType)
+                    add("%L.address().toInt() as %T", ptrName, kType)
                 }
             } else {
                 if (kType == LONG) {
-                    CodeBlock.of("%L.address()", ptrName)
+                    add("%L.address()", ptrName)
                 } else {
-                    CodeBlock.of("%L.address() as %T", ptrName, kType)
+                    add("%L.address() as %T", ptrName, kType)
                 }
             }
-            if (needsRun) addStatement("%L", code) else add("%L", code)
         }
     }
-    if (needsRun) endControlFlow()
     this.add("\n")
 }
 

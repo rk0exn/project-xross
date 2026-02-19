@@ -49,7 +49,6 @@ object CompanionGenerator {
                 is XrossDefinition.Struct -> LayoutGenerator.buildStructLayoutInit(init, meta)
                 is XrossDefinition.Enum -> LayoutGenerator.buildEnumLayoutInit(init, meta)
                 is XrossDefinition.Opaque -> {}
-                is XrossDefinition.Function -> {}
             }
 
             init.beginControlFlow("if (layoutRaw != %T.NULL)", MEMORY_SEGMENT)

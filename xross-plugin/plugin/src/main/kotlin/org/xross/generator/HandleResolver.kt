@@ -229,11 +229,7 @@ object HandleResolver {
                 CodeBlock.of("%T.ofVoid(%L)", FUNCTION_DESCRIPTOR, allArgs.joinToCode(", "))
             } else {
                 val argsPart = if (args.isEmpty()) CodeBlock.of("") else CodeBlock.of(", %L", args.joinToCode(", "))
-                val retLayout = when {
-                    method.isAsync -> FFMConstants.XROSS_TASK_LAYOUT_CODE
-                    method.ret is XrossType.RustString -> FFMConstants.XROSS_STRING_LAYOUT_CODE
-                    else -> method.ret.layoutCode
-                }
+                val retLayout = method.ret.layoutCode
                 CodeBlock.of("%T.of(%L%L)", FUNCTION_DESCRIPTOR, retLayout, argsPart)
             }
 
