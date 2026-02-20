@@ -28,7 +28,8 @@ pub fn map_type(ty: &syn::Type) -> XrossType {
                 "String" => XrossType::String,
 
                 // ジェネリック型の処理
-                "Box" | "Option" | "Result" | "Vec" => {
+                "Box" | "Option" | "Result" | "Vec" | "VecDeque" | "LinkedList" | "HashSet"
+                | "BTreeSet" | "BinaryHeap" | "HashMap" | "BTreeMap" => {
                     if let PathArguments::AngleBracketed(args) = &last_segment.arguments {
                         let generic_types: Vec<XrossType> = args
                             .args
@@ -52,6 +53,23 @@ pub fn map_type(ty: &syn::Type) -> XrossType {
                             }
                             "Option" => XrossType::Option(Box::new(generic_types[0].clone())),
                             "Vec" => XrossType::Vec(Box::new(generic_types[0].clone())),
+                            "VecDeque" => XrossType::VecDeque(Box::new(generic_types[0].clone())),
+                            "LinkedList" => {
+                                XrossType::LinkedList(Box::new(generic_types[0].clone()))
+                            }
+                            "HashSet" => XrossType::HashSet(Box::new(generic_types[0].clone())),
+                            "BTreeSet" => XrossType::BTreeSet(Box::new(generic_types[0].clone())),
+                            "BinaryHeap" => {
+                                XrossType::BinaryHeap(Box::new(generic_types[0].clone()))
+                            }
+                            "HashMap" => XrossType::HashMap {
+                                key: Box::new(generic_types[0].clone()),
+                                value: Box::new(generic_types[1].clone()),
+                            },
+                            "BTreeMap" => XrossType::BTreeMap {
+                                key: Box::new(generic_types[0].clone()),
+                                value: Box::new(generic_types[1].clone()),
+                            },
                             "Result" => XrossType::Result {
                                 ok: Box::new(generic_types[0].clone()),
                                 err: Box::new(generic_types[1].clone()),
@@ -71,5 +89,29 @@ pub fn map_type(ty: &syn::Type) -> XrossType {
             }
         }
         _ => XrossType::Pointer,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::map_type;
+    use syn::Type;
+    use xross_metadata::XrossType;
+
+    #[test]
+    fn maps_std_collections() {
+        let hash_map: Type = syn::parse_str("std::collections::HashMap<String, i32>").unwrap();
+        let set: Type = syn::parse_str("std::collections::HashSet<u64>").unwrap();
+
+        assert!(matches!(map_type(&hash_map), XrossType::HashMap { .. }));
+        assert!(matches!(map_type(&set), XrossType::HashSet(_)));
+    }
+
+    #[test]
+    fn maps_nested_option_result() {
+        let nested: Type =
+            syn::parse_str("Option<Result<Option<i32>, Result<String, u8>>>").unwrap();
+
+        assert!(matches!(map_type(&nested), XrossType::Option(_)));
     }
 }

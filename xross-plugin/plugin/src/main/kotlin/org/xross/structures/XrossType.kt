@@ -36,6 +36,13 @@ sealed class XrossType {
      * An owned vector of values (Vec<T>).
      */
     data class Vec(val inner: XrossType) : XrossType()
+    data class VecDeque(val inner: XrossType) : XrossType()
+    data class LinkedList(val inner: XrossType) : XrossType()
+    data class HashSet(val inner: XrossType) : XrossType()
+    data class BTreeSet(val inner: XrossType) : XrossType()
+    data class BinaryHeap(val inner: XrossType) : XrossType()
+    data class HashMap(val key: XrossType, val value: XrossType) : XrossType()
+    data class BTreeMap(val key: XrossType, val value: XrossType) : XrossType()
 
     /**
      * Ownership model for bridged types.
@@ -98,6 +105,13 @@ sealed class XrossType {
                 Bool -> BooleanArray::class.asTypeName()
                 else -> List::class.asClassName().parameterizedBy(inner.kotlinType)
             }
+            is VecDeque -> ClassName("kotlin.collections", "ArrayDeque").parameterizedBy(inner.kotlinType)
+            is LinkedList -> List::class.asClassName().parameterizedBy(inner.kotlinType)
+            is HashSet -> Set::class.asClassName().parameterizedBy(inner.kotlinType)
+            is BTreeSet -> Set::class.asClassName().parameterizedBy(inner.kotlinType)
+            is BinaryHeap -> List::class.asClassName().parameterizedBy(inner.kotlinType)
+            is HashMap -> Map::class.asClassName().parameterizedBy(key.kotlinType, value.kotlinType)
+            is BTreeMap -> Map::class.asClassName().parameterizedBy(key.kotlinType, value.kotlinType)
             is Optional -> inner.kotlinType.copy(nullable = true)
             is Result -> ok.kotlinType
             is Async -> inner.kotlinType
@@ -119,7 +133,16 @@ sealed class XrossType {
             I16 -> FFMConstants.JAVA_SHORT
             U16 -> FFMConstants.JAVA_CHAR
             Void -> throw IllegalStateException("Void has no layout")
-            is Slice, is Vec -> FFMConstants.ADDRESS
+            is Slice,
+            is Vec,
+            is VecDeque,
+            is LinkedList,
+            is HashSet,
+            is BTreeSet,
+            is BinaryHeap,
+            is HashMap,
+            is BTreeMap
+            -> FFMConstants.ADDRESS
             else -> FFMConstants.ADDRESS
         }
 
@@ -137,11 +160,36 @@ sealed class XrossType {
     val isOwned: Boolean
         get() = when (this) {
             is Object -> ownership == Ownership.Owned || ownership == Ownership.Boxed
-            is Result, is Async, is Vec -> true
+            is Result,
+            is Async,
+            is Vec,
+            is VecDeque,
+            is LinkedList,
+            is HashSet,
+            is BTreeSet,
+            is BinaryHeap,
+            is HashMap,
+            is BTreeMap
+            -> true
             else -> false
         }
 
-    val isComplex: Boolean get() = this is Object || this is Optional || this is Result || this is RustString || this is Async || this is Slice || this is Vec
+    val isComplex: Boolean
+        get() =
+            this is Object ||
+                this is Optional ||
+                this is Result ||
+                this is RustString ||
+                this is Async ||
+                this is Slice ||
+                this is Vec ||
+                this is VecDeque ||
+                this is LinkedList ||
+                this is HashSet ||
+                this is BTreeSet ||
+                this is BinaryHeap ||
+                this is HashMap ||
+                this is BTreeMap
     val isPrimitive: Boolean get() = !isComplex
 
     /**
@@ -155,6 +203,7 @@ sealed class XrossType {
             is Result -> 16L
             is Async -> 24L
             is Slice, is Vec -> 16L
+            is VecDeque, is LinkedList, is HashSet, is BTreeSet, is BinaryHeap, is HashMap, is BTreeMap -> 8L
             is Object -> 8L
             is Bool, is I8, is U8 -> 1L
             is I16, is U16 -> 2L

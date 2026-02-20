@@ -5,6 +5,22 @@ use quote::{format_ident, quote};
 use syn::{Attribute, Receiver, ReturnType, Type};
 use xross_metadata::{Ownership, XrossType};
 
+fn extract_result_types(ty: &Type) -> Option<(&Type, &Type)> {
+    let ty = if let Type::Reference(r) = ty { &*r.elem } else { ty };
+    let Type::Path(tp) = ty else { return None };
+    let last = tp.path.segments.last()?;
+    if last.ident != "Result" {
+        return None;
+    }
+    let syn::PathArguments::AngleBracketed(args) = &last.arguments else {
+        return None;
+    };
+    let mut iter = args.args.iter().filter_map(|arg| {
+        if let syn::GenericArgument::Type(inner) = arg { Some(inner) } else { None }
+    });
+    Some((iter.next()?, iter.next()?))
+}
+
 /// Resolves the Xross return type and ownership.
 pub fn resolve_return_type(
     output: &ReturnType,
@@ -139,41 +155,64 @@ pub fn gen_arg_conversion(
                 quote!(#arg_id),
             )
         }
-        XrossType::Object { ownership, .. } => (
+        XrossType::Object { .. }
+        | XrossType::VecDeque(_)
+        | XrossType::LinkedList(_)
+        | XrossType::HashSet(_)
+        | XrossType::BTreeSet(_)
+        | XrossType::BinaryHeap(_)
+        | XrossType::HashMap { .. }
+        | XrossType::BTreeMap { .. } => (
             quote! { #arg_id: *mut std::ffi::c_void },
-            match ownership {
-                Ownership::Ref => {
-                    let base = extract_base_type(arg_ty);
-                    quote! { let #arg_id = unsafe { &*(#arg_id as *const #base) }; }
-                }
-                Ownership::MutRef => {
-                    let base = extract_base_type(arg_ty);
-                    quote! { let #arg_id = unsafe { &mut *(#arg_id as *mut #base) }; }
-                }
-                Ownership::Boxed => {
-                    let inner = extract_inner_type(arg_ty);
-                    quote! { let #arg_id = unsafe { Box::from_raw(#arg_id as *mut #inner) }; }
-                }
-                Ownership::Owned => {
-                    let base = extract_base_type(arg_ty);
-                    // Use ptr::read instead of Box::from_raw to avoid freeing memory that might be owned by Kotlin (e.g. Pure Enums).
-                    quote! { let #arg_id = unsafe { std::ptr::read(#arg_id as *const #base) }; }
+            match x_ty {
+                XrossType::Object { ownership, .. } => match ownership {
+                    Ownership::Ref => {
+                        let base = extract_base_type(arg_ty);
+                        quote! { let #arg_id = unsafe { &*(#arg_id as *const #base) }; }
+                    }
+                    Ownership::MutRef => {
+                        let base = extract_base_type(arg_ty);
+                        quote! { let #arg_id = unsafe { &mut *(#arg_id as *mut #base) }; }
+                    }
+                    Ownership::Boxed => {
+                        let inner = extract_inner_type(arg_ty);
+                        quote! { let #arg_id = unsafe { Box::from_raw(#arg_id as *mut #inner) }; }
+                    }
+                    Ownership::Owned => {
+                        let base = extract_base_type(arg_ty);
+                        // Use ptr::read instead of Box::from_raw to avoid freeing memory that might be owned by Kotlin (e.g. Pure Enums).
+                        quote! { let #arg_id = unsafe { std::ptr::read(#arg_id as *const #base) }; }
+                    }
+                },
+                _ => {
+                    quote! {
+                        let #arg_id = if #arg_id.is_null() {
+                            <#arg_ty as std::default::Default>::default()
+                        } else {
+                            unsafe { std::ptr::read(#arg_id as *const #arg_ty) }
+                        };
+                    }
                 }
             },
             quote! { #arg_id },
         ),
         XrossType::Option(inner) => {
-            let inner_rust_ty = extract_base_type(arg_ty);
+            let inner_rust_ty = extract_inner_type(arg_ty);
             (
                 quote! { #arg_id: *mut std::ffi::c_void },
                 match &**inner {
-                    XrossType::String => quote! {
-                        let #arg_id = unsafe {
-                            if #arg_id.is_null() { None }
-                            else { Some(std::ffi::CStr::from_ptr(#arg_id as *const _).to_string_lossy().into_owned()) }
-                        };
-                    },
-                    XrossType::Object { .. } => quote! {
+                    XrossType::String
+                    | XrossType::Object { .. }
+                    | XrossType::Option(_)
+                    | XrossType::Result { .. }
+                    | XrossType::Vec(_)
+                    | XrossType::VecDeque(_)
+                    | XrossType::LinkedList(_)
+                    | XrossType::HashSet(_)
+                    | XrossType::BTreeSet(_)
+                    | XrossType::BinaryHeap(_)
+                    | XrossType::HashMap { .. }
+                    | XrossType::BTreeMap { .. } => quote! {
                         let #arg_id = if #arg_id.is_null() { None }
                         else { unsafe { Some(std::ptr::read(#arg_id as *const #inner_rust_ty)) } };
                     },
@@ -193,28 +232,35 @@ pub fn gen_arg_conversion(
                 quote! { #arg_id },
             )
         }
-        XrossType::Result { ok, err: _ } => {
-            let ok_inner = extract_base_type(arg_ty);
-            let gen_read = |ty: &XrossType, ptr: TokenStream, rust_ty: TokenStream| match ty {
-                XrossType::String => {
-                    quote! { std::ffi::CStr::from_ptr(#ptr as *const _).to_string_lossy().into_owned() }
-                }
-                XrossType::Object { .. } => quote! { std::ptr::read(#ptr as *const #rust_ty) },
+        XrossType::Result { ok, err } => {
+            let (ok_ty, err_ty) = extract_result_types(arg_ty)
+                .unwrap_or_else(|| panic!("Result arg must have concrete Ok/Err types"));
+            let gen_read = |ty: &XrossType, ptr: TokenStream, rust_ty: &Type| match ty {
+                XrossType::String
+                | XrossType::Object { .. }
+                | XrossType::Option(_)
+                | XrossType::Result { .. }
+                | XrossType::Vec(_)
+                | XrossType::VecDeque(_)
+                | XrossType::LinkedList(_)
+                | XrossType::HashSet(_)
+                | XrossType::BTreeSet(_)
+                | XrossType::BinaryHeap(_)
+                | XrossType::HashMap { .. }
+                | XrossType::BTreeMap { .. } => quote! { std::ptr::read(#ptr as *const #rust_ty) },
                 XrossType::F32 => quote! { f32::from_bits(#ptr as u32) },
                 XrossType::F64 => quote! { f64::from_bits(#ptr as u64) },
                 _ => quote! { #ptr as usize as #rust_ty },
             };
-            let ok_read = gen_read(ok, quote! { #arg_id.ptr }, quote! { #ok_inner });
+            let ok_read = gen_read(ok, quote! { #arg_id.ptr }, ok_ty);
+            let err_read = gen_read(err, quote! { #arg_id.ptr }, err_ty);
             (
                 quote! { #arg_id: xross_core::XrossResult },
                 quote! {
                     let #arg_id = if #arg_id.is_ok {
                         Ok(unsafe { #ok_read })
                     } else {
-                        Err(unsafe {
-                            if #arg_id.ptr.is_null() { "Unknown Error".to_string() }
-                            else { std::ffi::CStr::from_ptr(#arg_id.ptr as *const _).to_string_lossy().into_owned() }
-                        })
+                        Err(unsafe { #err_read })
                     };
                 },
                 quote! { #arg_id },
@@ -231,6 +277,18 @@ pub fn gen_single_value_to_ptr(ty: &XrossType, val_ident: TokenStream) -> TokenS
             quote! { Box::into_raw(Box::new(xross_core::XrossString::from(#val_ident))) as *mut std::ffi::c_void }
         }
         XrossType::Object { .. } => {
+            quote! { Box::into_raw(Box::new(#val_ident)) as *mut std::ffi::c_void }
+        }
+        XrossType::Option(_)
+        | XrossType::Result { .. }
+        | XrossType::Vec(_)
+        | XrossType::VecDeque(_)
+        | XrossType::LinkedList(_)
+        | XrossType::HashSet(_)
+        | XrossType::BTreeSet(_)
+        | XrossType::BinaryHeap(_)
+        | XrossType::HashMap { .. }
+        | XrossType::BTreeMap { .. } => {
             quote! { Box::into_raw(Box::new(#val_ident)) as *mut std::ffi::c_void }
         }
         XrossType::F32 => quote! { #val_ident.to_bits() as usize as *mut std::ffi::c_void },
@@ -266,44 +324,49 @@ pub fn gen_ret_wrapping(
                 quote! { Box::into_raw(#inner_call) as *mut std::ffi::c_void },
             ),
         },
-        XrossType::Option(inner) => match &**inner {
-            XrossType::String => (
-                quote! { *mut std::ffi::c_char },
-                quote! {
-                    match #inner_call {
-                        Some(s) => std::ffi::CString::new(s).unwrap_or_default().into_raw(),
-                        None => std::ptr::null_mut(),
-                    }
-                },
-            ),
-            XrossType::Object { .. } => (
-                quote! { *mut std::ffi::c_void },
-                quote! {
-                    match #inner_call {
-                        Some(val) => Box::into_raw(Box::new(val)) as *mut std::ffi::c_void,
-                        None => std::ptr::null_mut(),
-                    }
-                },
-            ),
-            XrossType::F32 | XrossType::F64 => (
-                quote! { *mut std::ffi::c_void },
-                quote! {
-                    match #inner_call {
-                        Some(val) => val.to_bits() as usize as *mut std::ffi::c_void,
-                        None => std::ptr::null_mut(),
-                    }
-                },
-            ),
-            _ => (
-                quote! { *mut std::ffi::c_void },
-                quote! {
-                    match #inner_call {
-                        Some(val) => val as usize as *mut std::ffi::c_void,
-                        None => std::ptr::null_mut(),
-                    }
-                },
-            ),
-        },
+        XrossType::Option(inner) => {
+            let some_ptr_logic = gen_single_value_to_ptr(inner, quote! { val });
+            match &**inner {
+                XrossType::String
+                | XrossType::Object { .. }
+                | XrossType::Option(_)
+                | XrossType::Result { .. }
+                | XrossType::Vec(_)
+                | XrossType::VecDeque(_)
+                | XrossType::LinkedList(_)
+                | XrossType::HashSet(_)
+                | XrossType::BTreeSet(_)
+                | XrossType::BinaryHeap(_)
+                | XrossType::HashMap { .. }
+                | XrossType::BTreeMap { .. } => (
+                    quote! { *mut std::ffi::c_void },
+                    quote! {
+                        match #inner_call {
+                            Some(val) => #some_ptr_logic,
+                            None => std::ptr::null_mut(),
+                        }
+                    },
+                ),
+                XrossType::F32 | XrossType::F64 => (
+                    quote! { *mut std::ffi::c_void },
+                    quote! {
+                        match #inner_call {
+                            Some(val) => val.to_bits() as usize as *mut std::ffi::c_void,
+                            None => std::ptr::null_mut(),
+                        }
+                    },
+                ),
+                _ => (
+                    quote! { *mut std::ffi::c_void },
+                    quote! {
+                        match #inner_call {
+                            Some(val) => val as usize as *mut std::ffi::c_void,
+                            None => std::ptr::null_mut(),
+                        }
+                    },
+                ),
+            }
+        }
         XrossType::Result { ok, err } => {
             let ok_ptr_logic = gen_single_value_to_ptr(ok, quote! { val });
             let err_ptr_logic = gen_single_value_to_ptr(err, quote! { e });
@@ -317,6 +380,17 @@ pub fn gen_ret_wrapping(
                 },
             )
         }
+        XrossType::VecDeque(_)
+        | XrossType::LinkedList(_)
+        | XrossType::HashSet(_)
+        | XrossType::BTreeSet(_)
+        | XrossType::BinaryHeap(_)
+        | XrossType::HashMap { .. }
+        | XrossType::BTreeMap { .. }
+        | XrossType::Vec(_) => (
+            quote! { *mut std::ffi::c_void },
+            quote! { Box::into_raw(Box::new(#inner_call)) as *mut std::ffi::c_void },
+        ),
         _ => {
             if let ReturnType::Type(_, ty) = sig_output {
                 let type_str = quote!(#ty).to_string();

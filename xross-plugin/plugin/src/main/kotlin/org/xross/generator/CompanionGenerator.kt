@@ -15,6 +15,7 @@ object CompanionGenerator {
     private val LAYOUT_TYPE = StructLayout::class.asClassName()
     private val MEMORY_SEGMENT = MemorySegment::class.asTypeName()
     private val MEMORY_LAYOUT = MemoryLayout::class.asTypeName()
+    private val JVM_FIELD = ClassName("kotlin.jvm", "JvmField")
 
     fun generateCompanions(companionBuilder: TypeSpec.Builder, meta: XrossDefinition, basePackage: String) {
         defineProperties(companionBuilder, meta, basePackage)
@@ -79,6 +80,7 @@ object CompanionGenerator {
 
         builder.addProperty(
             PropertySpec.builder("linker", Linker::class.asTypeName(), KModifier.INTERNAL)
+                .addAnnotation(JVM_FIELD)
                 .initializer("%T.nativeLinker()", Linker::class.asTypeName())
                 .build(),
         )
@@ -101,8 +103,8 @@ object CompanionGenerator {
                     val baseCamel = field.name.toCamelCase()
                     addPropertyHandles(handles, field, baseCamel)
 
-                    builder.addProperty(PropertySpec.builder("VH_$baseCamel", VH_TYPE, KModifier.INTERNAL, KModifier.LATEINIT).mutable().build())
-                    builder.addProperty(PropertySpec.builder("OFFSET_$baseCamel", Long::class.asTypeName(), KModifier.INTERNAL).mutable().initializer("0L").build())
+                    builder.addProperty(PropertySpec.builder("VH_$baseCamel", VH_TYPE, KModifier.INTERNAL, KModifier.LATEINIT).addAnnotation(JVM_FIELD).mutable().build())
+                    builder.addProperty(PropertySpec.builder("OFFSET_$baseCamel", Long::class.asTypeName(), KModifier.INTERNAL).addAnnotation(JVM_FIELD).mutable().initializer("0L").build())
                 }
             }
             is XrossDefinition.Enum -> {
@@ -116,9 +118,9 @@ object CompanionGenerator {
                         addPropertyHandles(handles, f, combinedName)
 
                         if (!(f.ty is XrossType.Object && f.ty.ownership == XrossType.Ownership.Owned)) {
-                            builder.addProperty(PropertySpec.builder("VH_$combinedName", VH_TYPE, KModifier.INTERNAL, KModifier.LATEINIT).mutable().build())
+                            builder.addProperty(PropertySpec.builder("VH_$combinedName", VH_TYPE, KModifier.INTERNAL, KModifier.LATEINIT).addAnnotation(JVM_FIELD).mutable().build())
                         }
-                        builder.addProperty(PropertySpec.builder("OFFSET_$combinedName", Long::class.asTypeName(), KModifier.INTERNAL).mutable().initializer("0L").build())
+                        builder.addProperty(PropertySpec.builder("OFFSET_$combinedName", Long::class.asTypeName(), KModifier.INTERNAL).addAnnotation(JVM_FIELD).mutable().initializer("0L").build())
                     }
                 }
             }
@@ -134,12 +136,12 @@ object CompanionGenerator {
         meta.methods.filter { !it.isConstructor }.forEach { handles.add("${it.name.toCamelCase()}Handle") }
 
         handles.distinct().forEach { name ->
-            builder.addProperty(PropertySpec.builder(name, HANDLE_TYPE, KModifier.INTERNAL).mutable().build())
+            builder.addProperty(PropertySpec.builder(name, HANDLE_TYPE, KModifier.INTERNAL).addAnnotation(JVM_FIELD).mutable().build())
         }
 
         if (meta !is XrossDefinition.Function) {
-            builder.addProperty(PropertySpec.builder("LAYOUT", LAYOUT_TYPE, KModifier.INTERNAL).mutable().initializer("%T.structLayout()", MEMORY_LAYOUT).build())
-            builder.addProperty(PropertySpec.builder("STRUCT_SIZE", Long::class.asTypeName(), KModifier.INTERNAL).mutable().initializer("0L").build())
+            builder.addProperty(PropertySpec.builder("LAYOUT", LAYOUT_TYPE, KModifier.INTERNAL).addAnnotation(JVM_FIELD).mutable().initializer("%T.structLayout()", MEMORY_LAYOUT).build())
+            builder.addProperty(PropertySpec.builder("STRUCT_SIZE", Long::class.asTypeName(), KModifier.INTERNAL).addAnnotation(JVM_FIELD).mutable().initializer("0L").build())
         }
     }
 

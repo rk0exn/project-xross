@@ -152,6 +152,18 @@ object RuntimeGenerator {
                     .initializer("java.util.concurrent.atomic.AtomicBoolean(false)")
                     .build(),
             )
+            .addProperty(
+                PropertySpec.builder("STRING_VALUE_FIELD", ClassName("java.lang.reflect", "Field").copy(nullable = true), KModifier.PRIVATE)
+                    .delegate(
+                        "lazy(LazyThreadSafetyMode.PUBLICATION) { try { String::class.java.getDeclaredField(\"value\").apply { isAccessible = true } } catch (_: Throwable) { null } }",
+                    ).build(),
+            )
+            .addProperty(
+                PropertySpec.builder("STRING_CODER_FIELD", ClassName("java.lang.reflect", "Field").copy(nullable = true), KModifier.PRIVATE)
+                    .delegate(
+                        "lazy(LazyThreadSafetyMode.PUBLICATION) { try { String::class.java.getDeclaredField(\"coder\").apply { isAccessible = true } } catch (_: Throwable) { null } }",
+                    ).build(),
+            )
             .addFunction(
                 FunSpec.builder("xross_alloc")
                     .addParameter("size", Long::class)
@@ -214,14 +226,14 @@ object RuntimeGenerator {
                 FunSpec.builder("getStringValue")
                     .addParameter("s", String::class)
                     .returns(ByteArray::class.asTypeName().copy(nullable = true))
-                    .addCode("return try { val field = String::class.java.getDeclaredField(\"value\"); field.setAccessible(true); field.get(s) as? ByteArray } catch (e: Throwable) { null }")
+                    .addCode("return try { (STRING_VALUE_FIELD?.get(s) as? ByteArray) } catch (_: Throwable) { null }")
                     .build(),
             )
             .addFunction(
                 FunSpec.builder("getStringCoder")
                     .addParameter("s", String::class)
                     .returns(Byte::class)
-                    .addCode("return try { val field = String::class.java.getDeclaredField(\"coder\"); field.setAccessible(true); field.get(s) as? Byte ?: 0.toByte() } catch (e: Throwable) { 0.toByte() }")
+                    .addCode("return try { (STRING_CODER_FIELD?.get(s) as? Byte) ?: 0.toByte() } catch (_: Throwable) { 0.toByte() }")
                     .build(),
             )
             .addFunction(

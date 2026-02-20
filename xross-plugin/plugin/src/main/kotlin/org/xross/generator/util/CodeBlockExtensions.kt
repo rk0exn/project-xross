@@ -141,7 +141,7 @@ fun CodeBlock.Builder.addRustStringResolution(
     beginControlFlow("%L%L = if (${resultVar}Ptr == %T.NULL || ${resultVar}Len == 0L)", decl, resultVar, MEMORY_SEGMENT)
     addStatement("%S", "")
     nextControlFlow("else")
-    addStatement("String(${resultVar}Ptr.reinterpret(${resultVar}Len).toArray(java.lang.foreign.ValueLayout.JAVA_BYTE), java.nio.charset.StandardCharsets.UTF_8)")
+    addStatement("java.nio.charset.StandardCharsets.UTF_8.decode(${resultVar}Ptr.reinterpret(${resultVar}Len).asByteBuffer()).toString()")
     endControlFlow()
 
     if (shouldFree) {
@@ -257,38 +257,28 @@ fun CodeBlock.Builder.addArgumentPreparation(
 
     when (type) {
         is XrossType.RustString -> {
-            val isHeapCritical = handleMode is org.xross.structures.HandleMode.Critical && handleMode.allowHeapAccess
+            // Prefer true zero-copy string path regardless of handle mode.
+            // If reflection-based extraction is unavailable, fallback to UTF-8 copy.
+            addStatement("val ${name}Value = %T.getStringValue($name)", xrossRuntime)
+            addStatement("val ${name}Coder = %T.getStringCoder($name)", xrossRuntime)
+            addStatement("var ${name}FinalSeg: %T = %T.NULL", MEMORY_SEGMENT, MEMORY_SEGMENT)
+            addStatement("var ${name}FinalLen: Long = 0L")
+            addStatement("var ${name}FinalEnc: Byte = 0")
 
-            if (isHeapCritical) {
-                // True Zero-Copy: Pass heap segment directly
-                addStatement("val ${name}Value = %T.getStringValue($name)", xrossRuntime)
-                addStatement("val ${name}Coder = %T.getStringCoder($name)", xrossRuntime)
-                addStatement("var ${name}FinalSeg: %T = %T.NULL", MEMORY_SEGMENT, MEMORY_SEGMENT)
-                addStatement("var ${name}FinalLen: Long = 0L")
-                addStatement("var ${name}FinalEnc: Byte = 0")
+            beginControlFlow("if (${name}Value != null)")
+            addStatement("${name}FinalSeg = %T.ofArray(${name}Value)", MEMORY_SEGMENT)
+            addStatement("${name}FinalLen = ${name}Value.size.toLong()")
+            addStatement("${name}FinalEnc = ${name}Coder")
+            nextControlFlow("else")
+            addStatement("val ${name}Buf = $arenaName.allocateFrom($name)")
+            addStatement("${name}FinalSeg = ${name}Buf")
+            addStatement("${name}FinalLen = ${name}Buf.byteSize()")
+            addStatement("${name}FinalEnc = 0")
+            endControlFlow()
 
-                beginControlFlow("if (${name}Value != null)")
-                addStatement("${name}FinalSeg = %T.ofArray(${name}Value)", MEMORY_SEGMENT)
-                addStatement("${name}FinalLen = $name.length.toLong()")
-                addStatement("${name}FinalEnc = ${name}Coder")
-                nextControlFlow("else")
-                // Fallback if reflection fails
-                addStatement("val ${name}Buf = $arenaName.allocateFrom($name)")
-                addStatement("${name}FinalSeg = ${name}Buf")
-                addStatement("${name}FinalLen = ${name}Buf.byteSize()")
-                addStatement("${name}FinalEnc = 0")
-                endControlFlow()
-
-                callArgs.add(CodeBlock.of("${name}FinalSeg"))
-                callArgs.add(CodeBlock.of("${name}FinalLen"))
-                callArgs.add(CodeBlock.of("${name}FinalEnc"))
-            } else {
-                // Optimized Copy
-                addStatement("val ${name}Buffer = $arenaName.allocateFrom($name)")
-                callArgs.add(CodeBlock.of("${name}Buffer"))
-                callArgs.add(CodeBlock.of("$name.length.toLong()"))
-                callArgs.add(CodeBlock.of("%T.getStringCoder($name)", xrossRuntime))
-            }
+            callArgs.add(CodeBlock.of("${name}FinalSeg"))
+            callArgs.add(CodeBlock.of("${name}FinalLen"))
+            callArgs.add(CodeBlock.of("${name}FinalEnc"))
         }
 
         is XrossType.Object -> {
