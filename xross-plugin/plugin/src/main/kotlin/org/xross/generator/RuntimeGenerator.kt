@@ -153,15 +153,23 @@ object RuntimeGenerator {
                     .build(),
             )
             .addProperty(
-                PropertySpec.builder("STRING_VALUE_FIELD", ClassName("java.lang.reflect", "Field").copy(nullable = true), KModifier.PRIVATE)
+                PropertySpec.builder("STRING_VALUE_VH", ClassName("java.lang.invoke", "VarHandle").copy(nullable = true), KModifier.PRIVATE)
                     .delegate(
-                        "lazy(LazyThreadSafetyMode.PUBLICATION) { try { String::class.java.getDeclaredField(\"value\").apply { isAccessible = true } } catch (_: Throwable) { null } }",
+                        "lazy(LazyThreadSafetyMode.PUBLICATION) { " +
+                            "try { " +
+                            "val lk = java.lang.invoke.MethodHandles.privateLookupIn(String::class.java, java.lang.invoke.MethodHandles.lookup()); " +
+                            "lk.findVarHandle(String::class.java, \"value\", ByteArray::class.java) " +
+                            "} catch (_: Throwable) { null } }",
                     ).build(),
             )
             .addProperty(
-                PropertySpec.builder("STRING_CODER_FIELD", ClassName("java.lang.reflect", "Field").copy(nullable = true), KModifier.PRIVATE)
+                PropertySpec.builder("STRING_CODER_VH", ClassName("java.lang.invoke", "VarHandle").copy(nullable = true), KModifier.PRIVATE)
                     .delegate(
-                        "lazy(LazyThreadSafetyMode.PUBLICATION) { try { String::class.java.getDeclaredField(\"coder\").apply { isAccessible = true } } catch (_: Throwable) { null } }",
+                        "lazy(LazyThreadSafetyMode.PUBLICATION) { " +
+                            "try { " +
+                            "val lk = java.lang.invoke.MethodHandles.privateLookupIn(String::class.java, java.lang.invoke.MethodHandles.lookup()); " +
+                            "lk.findVarHandle(String::class.java, \"coder\", Byte::class.javaPrimitiveType!!) " +
+                            "} catch (_: Throwable) { null } }",
                     ).build(),
             )
             .addFunction(
@@ -226,14 +234,14 @@ object RuntimeGenerator {
                 FunSpec.builder("getStringValue")
                     .addParameter("s", String::class)
                     .returns(ByteArray::class.asTypeName().copy(nullable = true))
-                    .addCode("return try { (STRING_VALUE_FIELD?.get(s) as? ByteArray) } catch (_: Throwable) { null }")
+                    .addCode("return try { (STRING_VALUE_VH?.get(s) as? ByteArray) } catch (_: Throwable) { null }")
                     .build(),
             )
             .addFunction(
                 FunSpec.builder("getStringCoder")
                     .addParameter("s", String::class)
                     .returns(Byte::class)
-                    .addCode("return try { (STRING_CODER_FIELD?.get(s) as? Byte) ?: 0.toByte() } catch (_: Throwable) { 0.toByte() }")
+                    .addCode("return try { (STRING_CODER_VH?.get(s) as? Byte) ?: 0.toByte() } catch (_: Throwable) { 0.toByte() }")
                     .build(),
             )
             .addFunction(
