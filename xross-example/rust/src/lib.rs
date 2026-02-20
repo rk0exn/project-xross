@@ -26,12 +26,6 @@ mod tests {
     use super::*;
     use crate::counters::{SERVICE_COUNT, SERVICE2_COUNT};
     use std::sync::atomic::Ordering;
-    use std::sync::{Mutex, OnceLock};
-
-    fn test_guard() -> std::sync::MutexGuard<'static, ()> {
-        static TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
-        TEST_MUTEX.get_or_init(|| Mutex::new(())).lock().expect("test mutex poisoned")
-    }
 
     #[test]
     fn test_hello_enum_logic() {
@@ -60,7 +54,6 @@ mod tests {
 
     #[test]
     fn test_service_lifecycle_and_core_methods() {
-        let _guard = test_guard();
         let before = SERVICE_COUNT.load(Ordering::SeqCst);
         let mut service = MyService::new();
         assert_eq!(SERVICE_COUNT.load(Ordering::SeqCst), before + 1);
@@ -80,7 +73,6 @@ mod tests {
 
     #[test]
     fn test_async_and_service2_behaviour() {
-        let _guard = test_guard();
         let before = SERVICE2_COUNT.load(Ordering::SeqCst);
 
         let service = MyService::new();
@@ -104,7 +96,6 @@ mod tests {
 
     #[test]
     fn test_panicable_method_panics_when_requested() {
-        let _guard = test_guard();
         let service = MyService::new();
         let panicked = std::panic::catch_unwind(|| service.cause_panic(1));
         assert!(panicked.is_err());
