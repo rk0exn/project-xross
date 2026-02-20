@@ -57,6 +57,25 @@ object XrossTypeSerializer : KSerializer<XrossType> {
                     "Option" -> XrossType.Optional(deserializeRecursive(body))
                     "Slice" -> XrossType.Slice(deserializeRecursive(body))
                     "Vec" -> XrossType.Vec(deserializeRecursive(body))
+                    "VecDeque" -> XrossType.VecDeque(deserializeRecursive(body))
+                    "LinkedList" -> XrossType.LinkedList(deserializeRecursive(body))
+                    "HashSet" -> XrossType.HashSet(deserializeRecursive(body))
+                    "BTreeSet" -> XrossType.BTreeSet(deserializeRecursive(body))
+                    "BinaryHeap" -> XrossType.BinaryHeap(deserializeRecursive(body))
+                    "HashMap" -> {
+                        val obj = body.jsonObject
+                        XrossType.HashMap(
+                            deserializeRecursive(obj["key"]!!),
+                            deserializeRecursive(obj["value"]!!),
+                        )
+                    }
+                    "BTreeMap" -> {
+                        val obj = body.jsonObject
+                        XrossType.BTreeMap(
+                            deserializeRecursive(obj["key"]!!),
+                            deserializeRecursive(obj["value"]!!),
+                        )
+                    }
                     "Result" -> {
                         val obj = body.jsonObject
                         XrossType.Result(
@@ -87,6 +106,23 @@ object XrossTypeSerializer : KSerializer<XrossType> {
             is XrossType.Optional -> buildJsonObject { put("Option", serializeRecursive(value.inner)) }
             is XrossType.Slice -> buildJsonObject { put("Slice", serializeRecursive(value.inner)) }
             is XrossType.Vec -> buildJsonObject { put("Vec", serializeRecursive(value.inner)) }
+            is XrossType.VecDeque -> buildJsonObject { put("VecDeque", serializeRecursive(value.inner)) }
+            is XrossType.LinkedList -> buildJsonObject { put("LinkedList", serializeRecursive(value.inner)) }
+            is XrossType.HashSet -> buildJsonObject { put("HashSet", serializeRecursive(value.inner)) }
+            is XrossType.BTreeSet -> buildJsonObject { put("BTreeSet", serializeRecursive(value.inner)) }
+            is XrossType.BinaryHeap -> buildJsonObject { put("BinaryHeap", serializeRecursive(value.inner)) }
+            is XrossType.HashMap -> buildJsonObject {
+                putJsonObject("HashMap") {
+                    put("key", serializeRecursive(value.key))
+                    put("value", serializeRecursive(value.value))
+                }
+            }
+            is XrossType.BTreeMap -> buildJsonObject {
+                putJsonObject("BTreeMap") {
+                    put("key", serializeRecursive(value.key))
+                    put("value", serializeRecursive(value.value))
+                }
+            }
             is XrossType.Result -> buildJsonObject {
                 putJsonObject("Result") {
                     put("ok", serializeRecursive(value.ok))

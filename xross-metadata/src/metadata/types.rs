@@ -52,6 +52,20 @@ pub enum XrossType {
     Slice(Box<XrossType>),
     /// An owned vector of values (Vec<T>).
     Vec(Box<XrossType>),
+    /// Double-ended queue (VecDeque<T>).
+    VecDeque(Box<XrossType>),
+    /// Linked list (LinkedList<T>).
+    LinkedList(Box<XrossType>),
+    /// Hash set (HashSet<T>).
+    HashSet(Box<XrossType>),
+    /// B-tree set (BTreeSet<T>).
+    BTreeSet(Box<XrossType>),
+    /// Binary heap (BinaryHeap<T>).
+    BinaryHeap(Box<XrossType>),
+    /// Hash map (HashMap<K, V>).
+    HashMap { key: Box<XrossType>, value: Box<XrossType> },
+    /// B-tree map (BTreeMap<K, V>).
+    BTreeMap { key: Box<XrossType>, value: Box<XrossType> },
     /// A user-defined object type.
     Object {
         /// Unique signature of the object type.
@@ -79,7 +93,16 @@ impl XrossType {
             XrossType::Object { ownership, .. } => {
                 matches!(ownership, Ownership::Owned | Ownership::Boxed)
             }
-            XrossType::Result { .. } | XrossType::Option(_) => true,
+            XrossType::Result { .. }
+            | XrossType::Option(_)
+            | XrossType::Vec(_)
+            | XrossType::VecDeque(_)
+            | XrossType::LinkedList(_)
+            | XrossType::HashSet(_)
+            | XrossType::BTreeSet(_)
+            | XrossType::BinaryHeap(_)
+            | XrossType::HashMap { .. }
+            | XrossType::BTreeMap { .. } => true,
             _ => false,
         }
     }
