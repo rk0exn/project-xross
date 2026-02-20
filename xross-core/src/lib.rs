@@ -73,12 +73,27 @@ impl XrossStringView {
             0 => {
                 // Latin1 (ISO-8859-1) - Direct map to chars
                 let slice = unsafe { std::slice::from_raw_parts(self.ptr, self.len) };
-                slice.iter().map(|&b| b as char).collect()
+                let mut out = String::with_capacity(slice.len());
+                for &byte in slice {
+                    out.push(byte as char);
+                }
+                out
             }
             1 => {
-                // UTF-16 (Little Endian on most modern JVMs/Platforms)
-                let slice = unsafe { std::slice::from_raw_parts(self.ptr as *const u16, self.len) };
-                String::from_utf16_lossy(slice)
+                // UTF-16 input from JVM is passed as a raw byte sequence.
+                // Decode with explicit LE conversion to avoid unaligned reads / UB.
+                let bytes = unsafe { std::slice::from_raw_parts(self.ptr, self.len) };
+                let mut units = Vec::with_capacity(bytes.len() / 2);
+                let mut chunks = bytes.chunks_exact(2);
+                for chunk in &mut chunks {
+                    units.push(u16::from_le_bytes([chunk[0], chunk[1]]));
+                }
+
+                let mut decoded = String::from_utf16_lossy(&units);
+                if !chunks.remainder().is_empty() {
+                    decoded.push('\u{FFFD}');
+                }
+                decoded
             }
             _ => String::new(),
         }
@@ -163,5 +178,31 @@ pub trait XrossClass {
 pub unsafe extern "C" fn xross_free_string(xs: XrossString) {
     if !xs.ptr.is_null() {
         drop(unsafe { xs.into_string() });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::XrossStringView;
+
+    #[test]
+    fn decodes_latin1_losslessly() {
+        let bytes = [0x41, 0xDF, 0xFF];
+        let view = XrossStringView { ptr: bytes.as_ptr(), len: bytes.len(), encoding: 0 };
+        assert_eq!(view.to_string_lossy(), "Aßÿ");
+    }
+
+    #[test]
+    fn decodes_utf16_le_from_raw_bytes() {
+        let bytes = [0x41, 0x00, 0x42, 0x00, 0x3D, 0xD8, 0x00, 0xDE]; // A, B, 😀
+        let view = XrossStringView { ptr: bytes.as_ptr(), len: bytes.len(), encoding: 1 };
+        assert_eq!(view.to_string_lossy(), "AB😀");
+    }
+
+    #[test]
+    fn handles_odd_utf16_byte_length_without_ub() {
+        let bytes = [0x41, 0x00, 0x42];
+        let view = XrossStringView { ptr: bytes.as_ptr(), len: bytes.len(), encoding: 1 };
+        assert_eq!(view.to_string_lossy(), "A�");
     }
 }
